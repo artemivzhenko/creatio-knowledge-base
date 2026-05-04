@@ -8,7 +8,7 @@ using Terrasoft.Core.Entities;
 /// (e.g. LeadFile, ContactFile, AccountFile, etc.).
 /// The file entity must have the standard columns: Name, Data, Size, TypeId, and the parent FK.
 /// </summary>
-class HowToCreateFileViaESQ {
+class HowToCreateFileRecordViaESQ {
 
     public bool CreateFile(UserConnection userConnection, string fileName, byte[] fileBytes, Guid parentRecordId) {
         var schema = userConnection.EntitySchemaManager.GetInstanceByName("LeadFile");

@@ -4,10 +4,10 @@ using Terrasoft.Core.Entities;
 
 /// <summary>
 /// Demonstrates how to query records using EntitySchemaQuery (ESQ).
-/// ESQ is the primary way to read data in Creatio — it respects column and row-level permissions.
+/// ESQ is the primary way to read records in Creatio — it respects column and row-level permissions.
 /// Use FetchFromDB instead when you need a single record by a known key or column value.
 /// </summary>
-class HowToReadDataWithESQ {
+class HowToReadRecordsWithESQ {
 
     // 1. Read a collection of records with filters
     public void ReadCollection(UserConnection userConnection, Guid filterId) {

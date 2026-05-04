@@ -10,7 +10,7 @@ using Terrasoft.Core.DB;
 ///   - you must explicitly control system columns (CreatedOn, CreatedById, etc.).
 /// WARNING: Insert bypasses all entity event handlers (Saving, Saved, etc.).
 /// </summary>
-class CreateRecordWithInsert {
+class HowToCreateRecordWithInsertClass {
 
     public void CreateRecord(UserConnection userConnection) {
         // System columns must be set manually — there is no SetDefColumnValues() here
