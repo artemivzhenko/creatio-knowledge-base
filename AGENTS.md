@@ -7,7 +7,7 @@ recipes, that is a different job — see [skill/creatio-kb/SKILL.md](skill/creat
 
 ## What this repository is
 
-A knowledge base of 168 Creatio development recipes, plus a Python MCP server that makes
+A knowledge base of 171 Creatio development recipes, plus a Python MCP server that makes
 them searchable. See [README.md](README.md) for the full picture.
 
 **Nothing here is application code.** No build, no tests, no dependencies to install for
@@ -87,7 +87,7 @@ Topic folders as they stand:
 - **ClassicUI only:** `BaseMethods`, `BusinessRules`, `Details`, `Diff`, `Dom`, `Modules`,
   `Sections`
 - **FreedomUI only:** `Grids`, `Reference`, `Validation`, `ViewConfig`
-- **Backend:** `API`, `ESQ`, `Events`, `Patterns`, `SQLClasses`
+- **Backend:** `API`, `ESQ`, `Events`, `Files`, `Patterns`, `SQLClasses`
 
 Reuse a shared name when the concept exists in both generations — the point is that the
 same task sits at the same path either side. Put a file at the **root** of an area only
@@ -136,11 +136,12 @@ you.
 
 ## Do not do these
 
-- **Do not add Markdown articles.** `Backend/articles/` is a lossy hand-written duplicate
-  of the C# recipes that has already drifted from its sources, and the index does not read
-  `.md` at all — so an article is invisible to every search tool. Prose that matters
-  belongs in the header block of the source file, where the index reads it into the
-  searchable summary.
+- **Do not add Markdown write-ups of recipes.** The index reads only `.js`, `.cs` and
+  `.sql`, so a `.md` version of a recipe is invisible to every search tool, and a
+  hand-written second copy drifts from the source within a commit or two. Prose that
+  matters belongs in the header block of the source file, where the index reads it into
+  the searchable summary. (A local `articles/` folder is gitignored and personal to the
+  maintainer — not a pattern to extend.)
 - **Do not put a real GUID in a recipe**, even one that "looks harmless". Copied lookup ids
   silently target the wrong record in whatever project the recipe lands in.
 - **Do not duplicate a recipe across areas** to cover both generations. Two recipes with

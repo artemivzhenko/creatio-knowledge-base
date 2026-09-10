@@ -1,6 +1,6 @@
 # Creatio knowledge base
 
-A curated collection of **168 Creatio development recipes** — Classic UI (7.x), Freedom UI
+A curated collection of **171 Creatio development recipes** — Classic UI (7.x), Freedom UI
 (8.x), C# backend and SQL — plus an MCP server that makes them searchable by an AI
 assistant.
 
@@ -22,7 +22,7 @@ counter-intuitive in ways that cost hours:
 Writing this from memory produces code that looks right and fails silently. The recipes
 pin down the shape that actually works.
 
-The second problem is context: 168 files do not fit in a model's context window, and
+The second problem is context: 171 files do not fit in a model's context window, and
 loading them wholesale wastes it. Hence the MCP server — the assistant searches for the
 one recipe it needs.
 
@@ -31,9 +31,8 @@ one recipe it needs.
 ```
 Frontend/ClassicUI/    60   Creatio 7.x — diff, methods, Terrasoft.*
 Frontend/FreedomUI/    44   Creatio 8.x — viewConfigDiff, handlers, crt.*, @creatio-devkit
-Backend/C#/            60   ESQ, Select/Insert/Update, event listeners, web services, processes
+Backend/C#/            63   ESQ, Select/Insert/Update, event listeners, web services, processes, files
 Backend/SQL/            4   PostgreSQL diagnostic queries
-Backend/articles/      46   Markdown variants of the C# recipes (see the caveat below)
 mcp-server/                 Search server exposing the recipes over MCP
 skill/creatio-kb/           Claude Code skill: the habit of consulting the KB
 ```
@@ -132,17 +131,11 @@ Conventions an agent should follow are in [AGENTS.md](AGENTS.md).
 
 ## Known gaps
 
-Two of these are worth knowing before you trust a part of the repo:
+Worth knowing before you trust a part of the repo:
 
-- **`Backend/articles/` is a lossy parallel copy, not a rendering.** It holds 46 Markdown
-  variants of the C# recipes, and they have already drifted: comparing
-  `HowToSendEmailFromBackend` shows the four-sentence `<summary>` compressed to one generic
-  line, an entire method (`SendEmailWithOptions`) dropped, and the logger renamed. **The
-  MCP index does not read `.md` at all**, so these articles are invisible to search. Three
-  of them (`HowToCreateAndWriteFileWithIFile`, `HowToMoveAndDeleteFileWithIFile`,
-  `HowToImplementCustomFileStorage`) have no `.cs` counterpart, which means that content
-  exists *only* in a form nothing can find. Treat the `.cs` files as the source of truth.
 - **SQL recipes lose their descriptions.** The four files open with a `/* … */` block
   comment, but the parser expects line comments (`--`), so each gets a title synthesized
   from its file name and an empty summary. No warning is raised, because the fallback
   happens inside the SQL header parser rather than in the caller.
+- **Backend API coverage is uneven.** `Backend/C#/API/` and `Backend/C#/Patterns/` are the
+  thinnest areas relative to how often they come up.
