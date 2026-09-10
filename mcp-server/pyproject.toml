@@ -1,0 +1,17 @@
+[project]
+name = "creatio-kb-mcp"
+version = "0.1.0"
+description = "MCP server exposing the Creatio development knowledge base (Classic UI, Freedom UI, C# backend)"
+requires-python = ">=3.10"
+
+# The search core (kb_index.py) is pure standard library on purpose - only the
+# MCP transport needs a dependency.
+dependencies = [
+    "mcp>=2.0",
+]
+
+[project.scripts]
+creatio-kb-mcp = "server:main"
+
+[tool.setuptools]
+py-modules = ["server", "kb_index"]

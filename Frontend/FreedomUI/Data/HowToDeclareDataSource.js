@@ -15,6 +15,23 @@ define("MyPage_FormPage", /**SCHEMA_DEPS*/[]/**SCHEMA_DEPS*/, function/**SCHEMA_
 		//
 		// Columns declared in "attributes" become available as attributes in
 		// viewModelConfigDiff using the path "DataSourceName.ColumnName".
+		//
+		// NAMING. The generated primary data source is always "PDS"; extra ones
+		// created by the designer are named "<ElementName>DS".
+		//
+		// FORWARD REFERENCES. To pull a column THROUGH a lookup, give the
+		// attribute a dotted path and mark it with type "ForwardReference":
+		//
+		//   "ContactId":       { "path": "Contact.Id",       "type": "ForwardReference" }
+		//   "ChannelProvider": { "path": "Channel.Provider", "type": "ForwardReference" }
+		//
+		// This is how a page reads a column of a RELATED record without a second
+		// data source or an sdk.Model query. It is also the form the page
+		// designer generates.
+		//
+		// Both `"path": []` with "dataSources" inside `values` and
+		// `"path": ["dataSources"]` with the sources directly in `values` are
+		// valid; the designer emits the second form.
 
 		modelConfigDiff: /**SCHEMA_MODEL_CONFIG_DIFF*/[
 			{
@@ -28,7 +45,12 @@ define("MyPage_FormPage", /**SCHEMA_DEPS*/[]/**SCHEMA_DEPS*/, function/**SCHEMA_
 								"entitySchemaName": "Contact",
 								"attributes": {
 									"Name":  { "path": "Name" },
-									"Email": { "path": "Email" }
+									"Email": { "path": "Email" },
+									// Column reached through the Account lookup.
+									"AccountCity": {
+										"path": "Account.City",
+										"type": "ForwardReference"
+									}
 								}
 							},
 							"scope": "page"
