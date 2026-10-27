@@ -1,0 +1,30 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "module": "ES2020",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "target": "es2019",
+    "lib": [
+      "es2020"
+    ],
+    "allowJs": true,
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "sourceRoot": "src",
+    "outDir": "./out/",
+    "declaration": true,
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "out",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
+}

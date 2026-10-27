@@ -28,6 +28,10 @@ use `find_api` instead: it tells you which recipe demonstrates that exact API.
 
 `kb_overview` maps the areas and topics when you are unsure what is covered.
 
+For C# code, also read `get_code_style` (whole, or a section such as `"logging"` or
+`"review checklist"`): recipes show what to call, the style guide says how the code
+must look — tabs, `#region` layout, `[DefaultBinding]`, exception and logging rules.
+
 ## Pick the right UI generation first
 
 Determine which one the task is about before searching, because the answers do not

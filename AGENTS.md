@@ -7,7 +7,7 @@ recipes, that is a different job — see [skill/creatio-kb/SKILL.md](skill/creat
 
 ## What this repository is
 
-A knowledge base of 167 Creatio development recipes, plus a Python MCP server that makes
+A knowledge base of 169 Creatio development recipes, plus a Python MCP server that makes
 them searchable. See [README.md](README.md) for the full picture.
 
 **Nothing here is application code.** No build, no tests, no dependencies to install for
@@ -32,7 +32,7 @@ The index parses the header to get the title and the summary that search results
 this wrong and the recipe becomes nearly unfindable — it is the single most damaging
 mistake available in this repo.
 
-**`.js`** — a `---` fenced comment line, then `//` lines until the first blank line:
+**`.js` / `.ts`** — a `---` fenced comment line, then `//` lines until the first blank line:
 
 ```js
 // --- How to filter a lookup field --------------------------------------------
@@ -77,6 +77,8 @@ Pick the area first, then the topic folder. Areas are fixed — they are hardcod
 | --- | --- | --- |
 | ClassicUI | `Frontend/ClassicUI` | `.js` |
 | FreedomUI | `Frontend/FreedomUI` | `.js` |
+| RemoteModule | `Frontend/RemoteModule` | `.ts` |
+| Mobile | `Frontend/Mobile` | `.ts` |
 | Backend | `Backend/C#` | `.cs` |
 | SQL | `Backend/SQL` | `.sql` |
 
@@ -87,6 +89,7 @@ Topic folders as they stand:
 - **ClassicUI only:** `BaseMethods`, `BusinessRules`, `Details`, `Diff`, `Dom`, `Modules`,
   `Sections`
 - **FreedomUI only:** `Grids`, `Reference`, `Validation`, `ViewConfig`
+- **RemoteModule, Mobile:** root only - one `.ts` recipe plus a copyable project folder
 - **Backend:** `API`, `ESQ`, `Events`, `Files`, `Patterns`, `SQLClasses`
 
 Reuse a shared name when the concept exists in both generations — the point is that the
@@ -158,6 +161,12 @@ you.
   maintainer — not a pattern to extend.)
 - **Do not put a real GUID in a recipe**, even one that "looks harmless". Copied lookup ids
   silently target the wrong record in whatever project the recipe lands in.
+- **Project templates come in two forms, kept in sync.** The indexed recipe is a single
+  `.ts` with `// ===== file: <path> =====` markers (non-TypeScript files commented out);
+  next to it sits the real folder to copy (`Frontend/Mobile/template/`,
+  `Frontend/RemoteModule/example4/`). Any folder with `package.json` is skipped by the
+  index, so its files never become headerless recipes. Change the code in the folder
+  first, then mirror it into the recipe.
 - **Do not duplicate a recipe across areas** to cover both generations. Two recipes with
   the same name in `ClassicUI` and `FreedomUI` are correct and intended — searching without
   an `area` filter is how a caller sees both and picks.
@@ -174,6 +183,13 @@ Two files, deliberately split:
 - [mcp-server/server.py](mcp-server/server.py) — thin MCP transport plus the tool
   docstrings the model reads. The docstrings are part of the interface; changing their
   wording changes when a model reaches for a tool.
+- [mcp-server/test_kb_index.py](mcp-server/test_kb_index.py) — pins the tokenizer, the
+  ranking of a few known queries and id lookup. `python mcp-server/test_kb_index.py`
+  must stay green after any change to `kb_index.py`.
+
+[CREATIO_CODE_STYLE.md](CREATIO_CODE_STYLE.md) at the root is not a recipe: it is the C#
+style guide, served whole or by `##` section through the `get_code_style` tool. Keep its
+`## N. Heading` numbering — that is what the section lookup matches.
 
 The ranking weights near the top of `kb_index.py` (`W_TITLE_HIT`, `W_BODY_SCALE`,
 `COVERAGE_FLOOR`) are tuned and commented with the reasoning. If you change one, check the

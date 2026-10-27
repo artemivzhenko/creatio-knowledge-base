@@ -7,14 +7,17 @@ recipe for a concrete task instead of loading all 169 files into context.
 
 | Tool | Purpose |
 | --- | --- |
-| `search_recipes(query, area?, limit?)` | Ranked search by task or symptom. `area` = `ClassicUI` / `FreedomUI` / `Backend` / `SQL`. |
+| `search_recipes(query, area?, limit?)` | Ranked search by task or symptom. `area` = `ClassicUI` / `FreedomUI` / `RemoteModule` / `Mobile` / `Backend` / `SQL`. |
 | `get_recipe(recipe_id)` | Full text of one recipe: explanation header plus runnable code. |
 | `find_api(symbol, limit?)` | Reverse lookup — which recipes use `crt.OpenLookupPageRequest`, `UseAdminRights`, `EntitySchemaQuery`… A bare name also matches the dotted one. |
 | `list_recipes(area?, topic?)` | Browse ids and titles. |
 | `kb_overview()` | Map of areas, topics and counts — the entry point when the model does not know what exists. |
+| `get_code_style(section?)` | The C# style and architecture guide (`../CREATIO_CODE_STYLE.md`), whole or one `##` section by number or heading words (`"logging"`, `"9"`). |
 
-Search is lexical BM25 with a title bonus, built in memory at startup. No API keys,
-no network, no embedding service. The index rebuilds automatically when a file in
+Search is lexical BM25 with a title bonus and a light stemmer (`pagination` finds
+`paginate`, `files` finds `file`), built in memory at startup. No API keys, no network,
+no embedding service. The words `creatio`, `freedom`, `classic`, `ui` are ignored in
+queries — the UI generation is the `area` argument, not a search term. The index rebuilds automatically when a file in
 the knowledge base changes, so editing a recipe takes effect on the next call.
 
 ## Install
@@ -43,6 +46,13 @@ python kb_index.py "filter a lookup field"  # try a query
 
 A healthy report ends with no warnings — a warning means a recipe lost its header
 block and only got a title derived from its file name.
+
+`test_kb_index.py` pins the tokenizer, the ranking of a few known queries and the id
+lookup. Run it after touching `kb_index.py`:
+
+```bash
+python test_kb_index.py          # or: pytest
+```
 
 ## Wire it into a client
 
@@ -123,14 +133,17 @@ it before writing Creatio code. Install it by copying the folder into
 ## How indexing works
 
 - Recipes are discovered under `Frontend/ClassicUI`, `Frontend/FreedomUI`,
-  `Backend/C#` and `Backend/SQL`.
+  `Frontend/RemoteModule`, `Frontend/Mobile`, `Backend/C#` and `Backend/SQL`. A folder
+  with `package.json` inside (a copyable project template) is skipped.
 - The title and description come from the header block: `// --- Title ---` in `.js`
-  files, `/// <summary>` in `.cs`, the leading `--` comment in `.sql`.
+  and `.ts` files, `/// <summary>` in `.cs`, the leading `--` comment in `.sql`.
 - A recipe id is its path without the extension, e.g.
   `Frontend/ClassicUI/Fields/HowToFilterLookupField`.
 - Tokenisation splits dotted and camelCase identifiers, so `crt.OpenLookupPageRequest`
   is findable as `crt.OpenLookupPageRequest`, `OpenLookupPageRequest`, and
   `lookup page`.
+- A bare file name in `get_recipe` resolves when unique; when Classic UI and Freedom UI
+  both have it, the tool lists the two full ids instead of failing.
 
 ## Adding recipes
 

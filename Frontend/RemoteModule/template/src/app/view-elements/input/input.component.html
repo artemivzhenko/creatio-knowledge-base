@@ -1,0 +1,14 @@
+<div class="wrapper">
+    <label class="label">{{label}}</label>
+    <input
+        #input
+        class="input"
+        [class.invalid]="
+        valueValidationInfo &&
+        !valueValidationInfo.valid && valueValidationInfo.touched
+        "
+        type="text"
+        [value]="value"
+        (keyup)="valueChange.emit(input.value)"
+    />
+</div>

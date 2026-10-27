@@ -1,0 +1,8 @@
+out/
+temp/
+node_modules/
+package-lock.json
+/npm-package/
+/junit.xml
+/report.json
+/coverage/

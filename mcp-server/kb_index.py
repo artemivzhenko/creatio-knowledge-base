@@ -27,6 +27,8 @@ from pathlib import Path
 AREAS = {
     "ClassicUI": ("Frontend/ClassicUI", (".js",)),
     "FreedomUI": ("Frontend/FreedomUI", (".js",)),
+    "RemoteModule": ("Frontend/RemoteModule", (".ts",)),
+    "Mobile": ("Frontend/Mobile", (".ts",)),
     "Backend": ("Backend/C#", (".cs",)),
     "SQL": ("Backend/SQL", (".sql",)),
 }
@@ -37,6 +39,8 @@ STOPWORDS = {
     "then", "there", "these", "this", "to", "use", "used", "using", "when", "which",
     "with", "you", "your", "we", "do", "does", "can", "will", "would", "should",
     "make", "want", "need", "way", "via",
+    # Area words: the UI generation is a filter (area=...), not a search term.
+    "creatio", "freedom", "classic", "ui",
 }
 
 # Ranking weights. BM25 runs over the code body; a query term appearing in the
@@ -60,26 +64,44 @@ def _split_camel(word: str) -> list[str]:
     return [p.lower() for p in _CAMEL_RE.findall(word) if p]
 
 
+_SUFFIXES = (("ies", "y"), ("ation", "ate"), ("ing", ""), ("ed", ""), ("s", ""))
+
+
+def _stem(word: str) -> str:
+    """
+    Tiny suffix stripper so "pagination" meets "paginate" and "files" meets "file".
+    Both the index and the query go through it, so only consistency matters,
+    not linguistic accuracy ("page" and "pages" both become "page").
+    """
+    for suffix, repl in _SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3 and not word.endswith("ss"):
+            word = word[: -len(suffix)] + repl
+            break
+    if word.endswith("e") and len(word) > 4:
+        word = word[:-1]
+    return word
+
+
 def tokenize(text: str) -> list[str]:
     """
     Lexical tokens tuned for API names.
 
     "crt.OpenLookupPageRequest" yields the whole dotted name, each dotted part,
     and the camelCase pieces, so both "OpenLookupPageRequest" and "lookup page"
-    find it.
+    find it. Plain words are stemmed; dotted names are kept verbatim.
     """
     out: list[str] = []
     for raw in _TOKEN_RE.findall(text):
-        low = raw.lower()
-        out.append(low)
         parts = raw.split(".")
         if len(parts) > 1:
-            for p in parts:
-                out.append(p.lower())
+            out.append(raw.lower())
+            out.extend(_stem(p.lower()) for p in parts)
+        else:
+            out.append(_stem(raw.lower()))
         for p in parts:
             sub = _split_camel(p)
             if len(sub) > 1:
-                out.extend(sub)
+                out.extend(_stem(s) for s in sub)
     return [t for t in out if len(t) > 1 and t not in STOPWORDS]
 
 
@@ -195,6 +217,16 @@ class Recipe:
         return text[: width - 3] + "..." if len(text) > width else text
 
 
+def _in_project_folder(path: Path, base: Path) -> bool:
+    """A folder holding package.json is a copyable project template, not recipes."""
+    for parent in path.parents:
+        if parent == base:
+            return False
+        if (parent / "package.json").is_file():
+            return True
+    return False
+
+
 class KnowledgeBase:
     def __init__(self, root: Path):
         self.root = Path(root).resolve()
@@ -215,6 +247,8 @@ class KnowledgeBase:
             for path in sorted(base.rglob("*")):
                 if not path.is_file() or path.suffix not in suffixes:
                     continue
+                if _in_project_folder(path, base):
+                    continue
                 self._add(area, base, path)
         self._finalize()
 
@@ -226,7 +260,7 @@ class KnowledgeBase:
             return
 
         stem = path.stem
-        if path.suffix == ".js":
+        if path.suffix in (".js", ".ts"):
             title, desc = _js_header(src)
         elif path.suffix == ".cs":
             title, desc = _cs_header(src, stem)
@@ -347,10 +381,31 @@ class KnowledgeBase:
         rid_noext = rid.rsplit(".", 1)[0]
         if rid_noext in self.recipes:
             return self.recipes[rid_noext]
-        matches = [r for r in self.recipes.values() if r.id.endswith("/" + rid_noext)]
+        matches = self.same_name(rid_noext)
         if len(matches) == 1:
             return matches[0]
         return None
+
+    def same_name(self, name: str) -> list[Recipe]:
+        """Recipes whose file name is `name`, e.g. the Classic and Freedom twins."""
+        name = name.strip().strip("/").rsplit(".", 1)[0]
+        return [r for r in self.recipes.values() if r.id.endswith("/" + name)]
+
+    def code_style(self, section: str = "") -> str | None:
+        """CREATIO_CODE_STYLE.md, whole or one `## ` section matched by number or words."""
+        path = self.root / "CREATIO_CODE_STYLE.md"
+        if not path.is_file():
+            return None
+        text = path.read_text(encoding="utf-8")
+        if not section.strip():
+            return text
+        chunks = re.split(r"(?m)^(?=## )", text)
+        key = section.strip().lower().rstrip(".")
+        for chunk in chunks:
+            heading = chunk.split("\n", 1)[0].lower()
+            if heading.startswith("## ") and (heading.startswith(f"## {key}.") or key in heading):
+                return chunk.strip()
+        return ""
 
     def list(self, area: str | None = None, topic: str | None = None) -> list[Recipe]:
         out = [

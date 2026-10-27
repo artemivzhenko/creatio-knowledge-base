@@ -25,11 +25,13 @@ mcp = _Server(
     "creatio-kb",
     instructions=(
         "Curated Creatio development recipes for this solution: Classic UI (7.x) "
-        "pages, details and sections, Freedom UI (8.x) pages, and C# server code. "
+        "pages, details and sections, Freedom UI (8.x) pages and Angular remote "
+        "modules, Mobile SDK handler modules, and C# server code. "
         "Search this knowledge base BEFORE writing Creatio code - it carries the "
         "project's idioms, naming rules and known traps that general knowledge "
         "does not have. Start with search_recipes, then get_recipe for the full "
-        "example."
+        "example. For C# code, read get_code_style before writing: it holds the "
+        "formatting, naming and architecture rules of Creatio platform code."
     ),
 )
 
@@ -47,7 +49,7 @@ def _fingerprint(root: Path) -> tuple[int, float]:
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
-            if path.is_file() and path.suffix in (".js", ".cs", ".sql"):
+            if path.is_file() and path.suffix in (".js", ".ts", ".cs", ".sql"):
                 count += 1
                 newest = max(newest, path.stat().st_mtime)
     return count, newest
@@ -85,7 +87,10 @@ def kb_overview() -> str:
         lines.append("")
     lines.append(
         "Areas: ClassicUI (Creatio 7.x pages, details, sections), "
-        "FreedomUI (8.x Angular pages), Backend (C# server code), SQL."
+        "FreedomUI (8.x pages), RemoteModule (Angular custom view elements), "
+        "Mobile (Mobile SDK handler modules), Backend (C# server code), SQL. "
+        "RemoteModule and Mobile recipes each sit next to a copyable project "
+        "folder named in the recipe header."
     )
     return "\n".join(lines)
 
@@ -102,7 +107,8 @@ def search_recipes(query: str, area: str = "", limit: int = 8) -> str:
     query: what you are trying to do, in plain words or as an API name.
            Examples: "filter a lookup field", "run a business process",
            "crt.OpenLookupPageRequest", "make a detail editable".
-    area:  optional filter - "ClassicUI", "FreedomUI", "Backend" or "SQL".
+    area:  optional filter - "ClassicUI", "FreedomUI", "RemoteModule", "Mobile",
+           "Backend" or "SQL".
            Leave empty to search everything; Classic UI and Freedom UI often have
            a recipe each for the same task, and seeing both tells you which UI
            generation the answer belongs to.
@@ -145,8 +151,14 @@ def get_recipe(recipe_id: str) -> str:
     generated attribute suffixes (PDS_Name_a1b2c3d) must be replaced with the
     real ones from the project.
     """
-    recipe = kb().get(recipe_id)
+    base = kb()
+    recipe = base.get(recipe_id)
     if recipe is None:
+        twins = base.same_name(recipe_id)
+        if twins:
+            lines = [f'"{recipe_id}" exists in more than one area. Pick one:', ""]
+            lines += [f"[{r.area}] {r.id}" for r in twins]
+            return "\n".join(lines)
         return (
             f'No recipe with id "{recipe_id}". '
             "Use search_recipes to find the right id."
@@ -198,7 +210,7 @@ def list_recipes(area: str = "", topic: str = "") -> str:
     """
     Browse recipe ids and titles, optionally narrowed to an area and a topic.
 
-    area:  "ClassicUI", "FreedomUI", "Backend" or "SQL".
+    area:  "ClassicUI", "FreedomUI", "RemoteModule", "Mobile", "Backend" or "SQL".
     topic: a folder inside the area, e.g. "Details", "BaseMethods", "ESQ".
            Call kb_overview to see the available topics.
 
@@ -219,6 +231,27 @@ def list_recipes(area: str = "", topic: str = "") -> str:
         lines.append(f"[{recipe.area}] {recipe.id}")
         lines.append(f"    {recipe.title}")
     return "\n".join(lines)
+
+
+@mcp.tool()
+def get_code_style(section: str = "") -> str:
+    """
+    The C# code style and architecture guide for Creatio back-end code.
+
+    Read it BEFORE writing or reviewing C# for Creatio: formatting (tabs, CRLF,
+    #region layout), naming, DI via [DefaultBinding], error handling, logging,
+    concurrency, XML docs, and a review checklist. Recipes show WHAT to call;
+    this guide says how the code must look.
+
+    section: optional - a section number ("4") or words from its heading
+             ("logging", "review checklist"). Empty returns the whole guide.
+    """
+    text = kb().code_style(section)
+    if text is None:
+        return "No CREATIO_CODE_STYLE.md next to the knowledge base."
+    if not text:
+        return f'No section matches "{section}". Call get_code_style() with no argument to see the headings.'
+    return text
 
 
 def main() -> None:

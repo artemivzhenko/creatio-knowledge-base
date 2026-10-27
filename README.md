@@ -1,6 +1,6 @@
 # Creatio knowledge base
 
-A curated collection of **167 Creatio development recipes** — Classic UI (7.x), Freedom UI
+A curated collection of **169 Creatio development recipes** — Classic UI (7.x), Freedom UI
 (8.x), C# backend and SQL — plus an MCP server that makes them searchable by an AI
 assistant.
 
@@ -29,8 +29,11 @@ one recipe it needs.
 ## Layout
 
 ```
+CREATIO_CODE_STYLE.md       C# style and architecture guide, served by get_code_style
 Frontend/ClassicUI/    57   Creatio 7.x — diff, methods, Terrasoft.*
 Frontend/FreedomUI/    44   Creatio 8.x — viewConfigDiff, handlers, crt.*, @creatio-devkit
+Frontend/RemoteModule/  1   Angular custom view element — recipe + copyable project folder example4/
+Frontend/Mobile/        1   Creatio Mobile SDK — recipe + copyable project folder template/
 Backend/C#/            62   ESQ, Select/Insert/Update, event listeners, web services, processes, files
 Backend/SQL/            4   PostgreSQL diagnostic queries
 mcp-server/                 Search server exposing the recipes over MCP
@@ -48,6 +51,12 @@ Classic UI has `Diff`, `Details`, `Modules`, `Sections`, `Dom`, `BaseMethods`,
 folder for the four lookup tables (stock `crt.*` requests, stock converters, view element
 types, sdk filters and enums).
 
+`Frontend/RemoteModule/` (Angular custom view element) and `Frontend/Mobile/` (Mobile SDK
+handler module) are project templates. Each holds one `.ts` recipe - the whole project in one
+indexed file, split at `===== file:` markers, for the assistant - and a real folder
+(`example4/`, `template/`) to copy and rename. A folder with `package.json` inside is never
+indexed as recipes.
+
 Files sitting **at the root** of an area are the foundational or genuinely ungroupable
 ones — `CommonPitfalls.js`, `HowToExtendStockSchema.js`, `HowToUseLocalizableStrings.js`
 in Classic UI; `HowToCreateReusableRequest.js`, `HowToLoadExternalJsLibrary.js` in Freedom UI.
@@ -59,8 +68,9 @@ as-is.
 
 ## Using it with an AI assistant
 
-Install the MCP server, and the assistant gets five tools: `search_recipes`,
-`get_recipe`, `find_api`, `list_recipes`, `kb_overview`.
+Install the MCP server, and the assistant gets six tools: `search_recipes`,
+`get_recipe`, `find_api`, `list_recipes`, `kb_overview`, and `get_code_style` for the C#
+style guide in [CREATIO_CODE_STYLE.md](CREATIO_CODE_STYLE.md).
 
 ```bash
 cd mcp-server
@@ -76,8 +86,8 @@ Then register it — full instructions for Claude Code, Cursor and Claude Deskto
 claude mcp add creatio-kb -- <path-to-venv-python> <path-to-kb>/mcp-server/server.py
 ```
 
-Search is lexical BM25 with a title bonus, built in memory at startup, rebuilt
-automatically when a file changes. No API keys, no network, no embedding service. The
+Search is lexical BM25 with a title bonus and a light stemmer, built in memory at
+startup, rebuilt automatically when a file changes. No API keys, no network, no embedding service. The
 tokenizer is tuned for API names, so `crt.OpenLookupPageRequest` is findable as the full
 dotted name, as `OpenLookupPageRequest`, and as `lookup page`.
 
@@ -85,6 +95,17 @@ The companion skill in [skill/creatio-kb/](skill/creatio-kb/) supplies the *habi
 consulting the tools before writing Creatio code — the server alone will not make an
 assistant reach for it. Copy the folder into `.claude/skills/` of the project you develop
 Creatio in.
+
+## One-shot agent setup
+
+`agent_setup.py` installs the general development tooling used alongside this knowledge
+base (ponytail, graphify, context7, Microsoft Learn, Roslyn CodeLens) and registers the
+`creatio-kb` server, all at user scope. Python 3.10+, any OS. Re-running it is safe;
+`--dry-run` prints the commands instead of executing them.
+
+```bash
+python agent_setup.py
+```
 
 ## Using it as a human
 
@@ -117,7 +138,7 @@ what supplies the title and the summary the search shows:
 
 | Type | Header |
 | --- | --- |
-| `.js` | `// --- Title ------------` then `//` comment lines until a blank line |
+| `.js`, `.ts` | `// --- Title ------------` then `//` comment lines until a blank line |
 | `.cs` | `/// <summary>` … `/// </summary>`; the first sentence becomes the title |
 | `.sql` | leading `--` comment lines |
 

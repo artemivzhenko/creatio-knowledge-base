@@ -1,0 +1,28 @@
+{
+  "name": "usr-mobile-module",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Creatio Mobile SDK remote module template",
+  "scripts": {
+    "build": "webpack",
+    "deploy": "node ./tools/copy-to-package.js",
+    "build:deploy": "webpack && npm run deploy",
+    "update-source-code": "node ./tools/prepare-for-debug.js",
+    "inject-on-device": "node ./tools/inject-on-device.js",
+    "build:update-source-code": "webpack && npm run update-source-code",
+    "build:inject-on-device": "webpack && npm run inject-on-device",
+    "sdk:surface": "node ./tools/dump-sdk-surface.js"
+  },
+  "dependencies": {
+    "@creatio/mobile-common": "latest"
+  },
+  "devDependencies": {
+    "cpx": "^1.5.0",
+    "ts-loader": "^9.4.2",
+    "tslib": "^2.5.0",
+    "typescript": "^5.0.4",
+    "webpack": "^5.82.1",
+    "webpack-cli": "^5.1.1"
+  }
+}
