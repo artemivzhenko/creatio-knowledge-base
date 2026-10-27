@@ -1,7 +1,7 @@
 # Creatio KB MCP server
 
 Exposes this knowledge base to an AI assistant over MCP, so the model can look up a
-recipe for a concrete task instead of loading all 169 files into context.
+recipe for a concrete task instead of loading all 170 files into context.
 
 ## What it gives the model
 

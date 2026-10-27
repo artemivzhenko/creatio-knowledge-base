@@ -7,7 +7,7 @@ recipes, that is a different job — see [skill/creatio-kb/SKILL.md](skill/creat
 
 ## What this repository is
 
-A knowledge base of 169 Creatio development recipes, plus a Python MCP server that makes
+A knowledge base of 170 Creatio development recipes, plus a Python MCP server that makes
 them searchable. See [README.md](README.md) for the full picture.
 
 **Nothing here is application code.** No build, no tests, no dependencies to install for

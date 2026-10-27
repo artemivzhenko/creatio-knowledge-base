@@ -24,7 +24,7 @@ def test_tokenize_splits_dotted_and_camel_and_stems():
 
 
 def test_index_is_complete_and_headers_parse():
-    assert len(KB.recipes) >= 169
+    assert len(KB.recipes) >= 170
     assert KB.recipes["Frontend/Mobile/HowToCreateMobileRequestHandlerModule"].title.startswith("How to create a Mobile SDK")
     assert not KB.skipped, KB.skipped
 
@@ -38,6 +38,7 @@ def test_ranking_on_known_queries():
     assert top("event listener prevent save") == "Backend/C#/HowToPreventRecordSaveWithEventListener"
     assert top("mobile request handler module") == "Frontend/Mobile/HowToCreateMobileRequestHandlerModule"
     assert top("custom angular component remote module") == "Frontend/RemoteModule/HowToCreateCustomAngularViewElement"
+    assert top("freedom ui request handler remote module scopes") == "Frontend/RemoteModule/HowToCreateRequestHandlerInRemoteModule"
     # Project template folders (package.json inside) are not indexed as recipes.
     assert not [r for r in KB.recipes if "/template/" in r]
 

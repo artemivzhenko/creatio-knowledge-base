@@ -1,6 +1,6 @@
 # Creatio knowledge base
 
-A curated collection of **169 Creatio development recipes** — Classic UI (7.x), Freedom UI
+A curated collection of **170 Creatio development recipes** — Classic UI (7.x), Freedom UI
 (8.x), C# backend and SQL — plus copyable project templates for Freedom UI and Mobile
 modules, a C# style guide, and an MCP server that makes all of it searchable by an AI
 assistant.
@@ -11,8 +11,8 @@ assistant.
 | Frontend — Freedom UI (8.x) | 44 |
 | Backend — C# | 62 |
 | Backend — SQL (PostgreSQL) | 4 |
-| Module templates — Freedom UI custom component, Mobile SDK module | 2 |
-| **Total** | **169** |
+| Module templates — Freedom UI component and request handlers, Mobile SDK module | 3 |
+| **Total** | **170** |
 
 Recipes do not compile or run on their own. Every recipe is a header block that explains
 the API and its traps, followed by a code template you adapt. The value is concentrated in
@@ -60,7 +60,7 @@ counter-intuitive in ways that cost hours:
 Writing this from memory produces code that looks right and fails silently. The recipes
 pin down the shape that actually works.
 
-The second problem is context: 169 files do not fit in a model's context window, and
+The second problem is context: 170 files do not fit in a model's context window, and
 loading them wholesale wastes it. Hence the MCP server — the assistant searches for the
 one recipe it needs.
 
@@ -71,7 +71,7 @@ CREATIO_CODE_STYLE.md          C# style and architecture guide, served by get_co
 agent_setup.py                 one-command setup of the MCP server and companion tooling
 Frontend/ClassicUI/       57   Creatio 7.x — diff, methods, Terrasoft.*
 Frontend/FreedomUI/       44   Creatio 8.x — viewConfigDiff, handlers, crt.*, @creatio-devkit
-Frontend/RemoteModule/     1   Freedom UI custom Angular view element — recipe + template/
+Frontend/RemoteModule/     2   Freedom UI remote module: view element, request handlers — recipes + template/
 Frontend/Mobile/           1   Creatio Mobile SDK handler module — recipe + template/
 Backend/C#/               62   ESQ, Select/Insert/Update, event listeners, web services, processes, files
 Backend/SQL/               4   PostgreSQL diagnostic queries
@@ -106,13 +106,13 @@ rename and build on:
 
 | Template | What it is | Start with |
 | --- | --- | --- |
-| [Frontend/RemoteModule/template/](Frontend/RemoteModule/template/) | Angular remote module with a custom Freedom UI view element | `npm install`, `npm run build`, copy the output into the package file content |
+| [Frontend/RemoteModule/template/](Frontend/RemoteModule/template/) | Angular remote module with a custom Freedom UI view element and request handlers | its [README](Frontend/RemoteModule/template/README.md): rename in three places, `npm install`, `npm run build` |
 | [Frontend/Mobile/template/](Frontend/Mobile/template/) | Creatio Mobile (8.2+) module with request handlers | its [README](Frontend/Mobile/template/README.md): rename in three places, `npm install`, `npm run build:deploy` |
 
-Each template also exists as one indexed recipe next to the folder
-(`HowToCreateCustomAngularViewElement.ts`, `HowToCreateMobileRequestHandlerModule.ts`): the
-whole project in a single file, split at `===== file:` markers, with the traps in the
-header. That is the form the assistant reads. A folder with `package.json` inside is never
+Each template also exists as indexed recipes next to the folder
+(`HowToCreateCustomAngularViewElement.ts` and `HowToCreateRequestHandlerInRemoteModule.ts`
+for Freedom UI, `HowToCreateMobileRequestHandlerModule.ts` for Mobile): the code in a
+single file, split at `===== file:` markers, with the traps in the header. That is the form the assistant reads. A folder with `package.json` inside is never
 indexed, so template files do not show up as recipes.
 
 ## C# code style guide

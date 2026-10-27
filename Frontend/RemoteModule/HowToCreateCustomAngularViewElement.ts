@@ -8,7 +8,8 @@
 // copying the files alone changes nothing. This recipe is the whole project:
 // split it at the "===== file:" markers - or copy the ready folder next to this
 // file, Frontend/RemoteModule/template/ (the official Academy example, Angular 15),
-// and rename the module.
+// and rename the module. Request handlers in the same module are covered by
+// HowToCreateRequestHandlerInRemoteModule.
 //
 // Traps:
 // - Four names must agree: webpack `name`/`uniqueName`, the first argument of

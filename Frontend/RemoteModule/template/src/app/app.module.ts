@@ -4,10 +4,14 @@ import { createCustomElement } from '@angular/elements';
 import { BrowserModule } from '@angular/platform-browser';
 import { bootstrapCrtModule, CrtModule } from '@creatio-devkit/common';
 import { InputComponent } from './view-elements/input/input.component';
+import { MyRequestHandler } from './handlers/my-request.handler';
+import { PageInitHandler } from './handlers/page-init.handler';
 
 @CrtModule({
   /* Specify that InputComponent is a view element. */
   viewElements: [InputComponent],
+  /* Request handlers run in the pages listed in their `scopes`. */
+  requestHandlers: [MyRequestHandler, PageInitHandler],
 })
 
 @NgModule({
