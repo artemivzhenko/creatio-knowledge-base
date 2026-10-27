@@ -39,7 +39,7 @@ def test_ranking_on_known_queries():
     assert top("mobile request handler module") == "Frontend/Mobile/HowToCreateMobileRequestHandlerModule"
     assert top("custom angular component remote module") == "Frontend/RemoteModule/HowToCreateCustomAngularViewElement"
     # Project template folders (package.json inside) are not indexed as recipes.
-    assert not [r for r in KB.recipes if "/template/" in r or "/example4/" in r]
+    assert not [r for r in KB.recipes if "/template/" in r]
 
 
 def test_get_tolerates_ext_and_bare_name_but_not_ambiguity():

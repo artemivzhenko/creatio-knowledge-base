@@ -164,7 +164,7 @@ you.
 - **Project templates come in two forms, kept in sync.** The indexed recipe is a single
   `.ts` with `// ===== file: <path> =====` markers (non-TypeScript files commented out);
   next to it sits the real folder to copy (`Frontend/Mobile/template/`,
-  `Frontend/RemoteModule/example4/`). Any folder with `package.json` is skipped by the
+  `Frontend/RemoteModule/template/`). Any folder with `package.json` is skipped by the
   index, so its files never become headerless recipes. Change the code in the folder
   first, then mirror it into the recipe.
 - **Do not duplicate a recipe across areas** to cover both generations. Two recipes with

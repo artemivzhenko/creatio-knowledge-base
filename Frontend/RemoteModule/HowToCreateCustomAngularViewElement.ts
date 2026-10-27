@@ -7,7 +7,7 @@
 // re-registered (compile / "Update packages from file system" / clio pkg-to-db);
 // copying the files alone changes nothing. This recipe is the whole project:
 // split it at the "===== file:" markers - or copy the ready folder next to this
-// file, Frontend/RemoteModule/example4/ (the official Academy example, Angular 15),
+// file, Frontend/RemoteModule/template/ (the official Academy example, Angular 15),
 // and rename the module.
 //
 // Traps:
