@@ -34,7 +34,12 @@ def run(title: str, cmd: list[str]) -> int:
     print(f"\n== {title}\n   {' '.join(cmd)}")
     if DRY_RUN:
         return 0
-    code = subprocess.run(cmd).returncode
+    try:
+        code = subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        # A missing tool skips this step only; the remaining steps still run.
+        print(f"   warning: command not found: {cmd[0]}")
+        return 127
     if code != 0:
         print(f"   warning: exit code {code}")
     return code
@@ -68,8 +73,9 @@ def main() -> None:
 
     # 2. graphify - a skill, not a server; `graphify install` writes ~/.claude/skills/graphify.
     run("graphify: pip install", [sys.executable, "-m", "pip", "install", "--upgrade", "graphifyy[mcp]"])
-    graphify = shutil.which("graphify") or str(Path(sys.executable).parent / ("Scripts" if WIN else "") / "graphify")
-    run("graphify: register skill", [graphify, "install"])
+    # Via the interpreter: pip may fall back to the per-user site, whose Scripts
+    # folder is usually not on PATH, so a bare `graphify` is not guaranteed to exist.
+    run("graphify: register skill", [sys.executable, "-m", "graphify", "install"])
 
     # 3. context7 - library docs. CONTEXT7_API_KEY raises the rate limit; works without one.
     context7 = ["context7", "--", "npx", "-y", "@upstash/context7-mcp"]

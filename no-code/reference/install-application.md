@@ -1,0 +1,77 @@
+---
+command: install-application
+block: clio-packages
+source: clio 8.1.0.145, clio/docs/commands/install-application.md (MIT)
+---
+# install-application - Install an application package into a Creatio environment
+
+## Name
+
+install-application - Install an application package into a Creatio environment
+
+
+## Description
+
+The install-application command installs an application package file into
+a Creatio environment. It supports registered environments and direct
+connection arguments inherited from EnvironmentOptions.
+
+
+## Synopsis
+
+```bash
+clio install-application <NAME> [options]
+```
+
+
+## Aliases
+
+push-app, install-app
+
+
+## Options
+
+```bash
+Name (pos. 0)            Application package path or name
+
+--ReportPath             -r          Optional path to the installation log file
+
+--check-compilation-errors           Check compilation errors during installation
+
+--uri                    -u          Application uri
+
+--Password               -p          User password
+
+--Login                  -l          User login (administrator permission required)
+
+--Environment            -e          Environment name
+
+--Maintainer             -m          Maintainer name
+```
+
+
+## Exit Codes
+
+```bash
+0    Application installed successfully. Schemas the platform skipped because they
+     were modified on the environment are reported as [WAR] warnings and keep this
+     code, provided nothing else in the run failed.
+1    General installation failure, or an application FOLDER refused before
+     upload because a folder under Schemas/ or Data/ has no descriptor.json
+     (the error names each such folder)
+5    Creatio reported InvalidGZipArchiveException for an invalid or corrupted GZip archive
+```
+
+
+## Example
+
+```bash
+clio install-application C:\Packages\application.gz -e dev
+install an application package into the registered dev environment
+
+clio install-application C:\Packages\application.gz --check-compilation-errors true -e dev
+install an application package and stop when compilation errors are detected
+
+clio install-application C:\Packages\application.gz -r install.log -u https://my-creatio
+install an application package and write the command report to install.log
+```

@@ -1,0 +1,106 @@
+---
+command: turn-farm-mode
+block: clio-infrastructure
+source: clio 8.1.0.145, clio/docs/commands/turn-farm-mode.md (MIT)
+---
+# turn-farm-mode - Configure IIS site for Creatio web farm deployment
+
+Configure IIS site for Creatio web farm deployment.
+
+
+
+## Usage
+
+```bash
+clio turn-farm-mode [<EnvironmentName>] [options]
+```
+
+
+## Description
+
+Configure IIS site for Creatio web farm deployment.
+
+
+## Aliases
+
+`farm-mode`, `tfm`
+
+
+## Examples
+
+```bash
+clio turn-farm-mode [<EnvironmentName>] [options]
+```
+
+
+## Arguments
+
+```bash
+EnvironmentName
+    Application name
+```
+
+
+## Options
+
+```bash
+--tenant-id <VALUE>
+Tenant ID for web farm (same for all nodes). Default: 1.
+--instance-id <VALUE>
+Unique instance ID for this node (use AUTO for automatic generation). Default:
+AUTO.
+--site-path <VALUE>
+Physical path to IIS site (if not using environment name)
+```
+
+
+## Environment Options
+
+```bash
+-u, --uri <VALUE>
+Application uri
+-p, --Password <VALUE>
+User password
+-l, --Login <VALUE>
+User login (administrator permission required)
+-i, --IsNetCore
+Use NetCore application
+-e, --Environment <VALUE>
+Environment name
+-m, --Maintainer <VALUE>
+Maintainer name
+-c, --dev <VALUE>
+Developer mode state for environment
+--WorkspacePathes <VALUE>
+Workspace path
+-s, --Safe <VALUE>
+Safe action in this environment
+--clientId <VALUE>
+OAuth client id
+--clientSecret <VALUE>
+OAuth client secret
+--authAppUri <VALUE>
+OAuth app URI
+--silent
+Use default behavior without user interaction
+--restart-environment
+Restart environment after execute command
+--db-server-uri <VALUE>
+Db server uri
+--db-user <VALUE>
+Database user
+--db-password <VALUE>
+Database password
+--backup-file <VALUE>
+Full path to backup file
+--db-working-folder <VALUE>
+Folder visible to db server
+--db-name <VALUE>
+Desired database name
+--force
+Force restore
+--callback-process <VALUE>
+Callback process name
+--ep <VALUE>
+Path to the application root folder
+```

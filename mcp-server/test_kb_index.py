@@ -24,7 +24,7 @@ def test_tokenize_splits_dotted_and_camel_and_stems():
 
 
 def test_index_is_complete_and_headers_parse():
-    assert len(KB.recipes) >= 170
+    assert len(KB.recipes) >= 430
     assert KB.recipes["Frontend/Mobile/HowToCreateMobileRequestHandlerModule"].title.startswith("How to create a Mobile SDK")
     assert not KB.skipped, KB.skipped
 
@@ -41,6 +41,18 @@ def test_ranking_on_known_queries():
     assert top("freedom ui request handler remote module scopes") == "Frontend/RemoteModule/HowToCreateRequestHandlerInRemoteModule"
     # Project template folders (package.json inside) are not indexed as recipes.
     assert not [r for r in KB.recipes if "/template/" in r]
+
+
+def test_clio_area_skills_and_reference():
+    assert len(KB.list(area="Clio", topic="reference")) >= 250
+    skill = KB.get("clio-sql-and-data")
+    assert skill is not None and skill.id == "no-code/clio-sql-and-data" and skill.area == "Clio"
+    assert skill.title == "clio: SQL and data" and skill.description.startswith("Read and change Creatio data")
+    assert KB.get("execute-sql-script").id == "no-code/reference/execute-sql-script"
+    assert top("execute sql script", "Clio") == "no-code/reference/execute-sql-script"
+    assert top("run sql script with clio") == "no-code/clio-sql-and-data"
+    # Without an area filter a platform question is still answered by a platform recipe.
+    assert top("upload file freedom ui").startswith("Backend/") or top("upload file freedom ui").startswith("Frontend/")
 
 
 def test_get_tolerates_ext_and_bare_name_but_not_ambiguity():

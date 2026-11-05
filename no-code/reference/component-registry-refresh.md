@@ -1,0 +1,135 @@
+---
+command: component-registry-refresh
+block: clio-pages
+source: clio 8.1.0.145, clio/docs/commands/component-registry-refresh.md (MIT)
+---
+# component-registry-refresh - Refresh the local Freedom UI component
+
+## Name
+
+component-registry-refresh - Refresh the local Freedom UI component
+registry cache from the academy.creatio.com CDN.
+
+
+## Description
+
+The component-registry-refresh command force-pulls one or more Freedom UI
+component-registry payloads from the academy.creatio.com CDN regardless of
+the five-minute registry cache TTL applied by the MCP get-component-info tool. This is
+useful when a user needs to pick up a newly published platform GA without
+waiting for the natural refresh window.
+
+The cache lives at `~/.clio/cache/component-registry/`. Each refresh writes
+a fresh `{version}.json` payload and the matching `{version}.meta.json`
+sidecar (ETag, Last-Modified, SHA-256). Failed downloads do not poison the
+cache — the previous entry stays as-is.
+
+Every targeted version is refreshed for the web (`ComponentRegistry.json`, cache
+root), mobile (`MobileComponentRegistry.json`, `mobile/` subdirectory), requests
+(`RequestRegistry.json`, `requests/` subdirectory, the Freedom UI request catalog
+consumed by `get-request-info`), and mobile-requests (`MobileRequestRegistry.json`,
+`mobile-requests/` subdirectory, the mobile Freedom UI request catalog consumed by
+`get-request-info schema-type=mobile`) flavors.
+
+The CDN base URL defaults to
+`https://academy.creatio.com/api/mcp/` and can be overridden with the
+`CLIO_COMPONENT_REGISTRY_CDN_BASE_URL` environment variable for dev or
+staging. Per-version payloads live at
+`{base}{version}/ComponentRegistry.json`, with `latest/ComponentRegistry.json`
+as the alias for the most recently published GA.
+
+### Local file override (developer workflow)
+
+While iterating on the `ComponentRegistry.json` payload itself, point
+`CLIO_COMPONENT_REGISTRY_LOCAL_FILE` at the file you are editing:
+
+```bash
+export CLIO_COMPONENT_REGISTRY_LOCAL_FILE=/path/to/my/ComponentRegistry.json
+```
+
+The value must be an **absolute** path. clio's MCP server runs as a child process
+whose working directory is not your shell's, so a relative path is resolved against
+a directory you did not choose and the override silently misses.
+
+When set, every `get-component-info` call reads the file directly and reports
+`source=local` — the registry's on-disk cache and CDN tiers are bypassed.
+The env variable is read on every call, so edits are visible to a
+long-running `clio mcp serve` without restarting it.
+
+The override also covers the long-form documentation the registry points at.
+`references.docs[]` paths are resolved against the **directory** of the override
+file — the layout the producer-side generator writes — so
+`/path/to/my/ComponentRegistry.json` makes clio read
+`/path/to/my/docs/my-widget.component.md`. While the override is active that
+working copy is the only documentation tier: a declared file you have not
+generated yet is reported as `documentationSource: "none"` with a
+`documentationWarning` naming that path and the override variable, rather than being
+quietly filled in from the published academy copy. Locally-read documentation is never
+written to the docs cache. The override directory is a **trusted** input: containment is
+checked lexically and symlinks inside it are not resolved, so point the variable only at a
+directory you own. Each registry flavour owns one documentation namespace
+(`CLIO_COMPONENT_REGISTRY_LOCAL_FILE` → `docs/`,
+`CLIO_MOBILE_COMPONENT_REGISTRY_LOCAL_FILE` → `mobile-docs/`,
+`CLIO_REQUEST_REGISTRY_LOCAL_FILE` → `request-docs/`,
+`CLIO_MOBILE_REQUEST_REGISTRY_LOCAL_FILE` → `mobile-request-docs/`), so setting one
+flavour's override leaves the other flavours on the normal cache/CDN chain.
+
+Two payload shapes are accepted interchangeably:
+
+- legacy CDN form — a top-level array `[ { "componentType": ..., ... }, ... ]`;
+- wrapped form — an object `{ "components": [ { ... }, ... ] }`.
+
+Either way, the inner items must be `ComponentRegistryEntry` objects (the
+`{version}.meta.json` sidecar format used inside `~/.clio/cache/` is **not**
+supported). The override is **fail-fast**: a non-empty
+`CLIO_COMPONENT_REGISTRY_LOCAL_FILE` that points at a missing or unreadable
+path raises `FileNotFoundException` rather than silently falling through to
+the CDN — otherwise a typo in the env var would let stale CDN data masquerade
+as your in-progress payload. Unset the variable to use the normal CDN/cache
+chain. `component-registry-refresh` itself ignores the override and always
+pulls fresh bytes from the CDN.
+
+
+## Synopsis
+
+```bash
+component-registry-refresh [--version <semver>] [--all]
+```
+
+
+## Aliases
+
+component-registry
+
+
+## Options
+
+```bash
+--version                          Refresh a specific platform version
+                                   (3-part SemVer, for example 8.2.1).
+                                   Omit to refresh latest/ComponentRegistry.json.
+
+--all                              Refresh every version currently present
+                                   in the local cache directory.
+```
+
+
+## Examples
+
+```bash
+clio component-registry-refresh
+
+# Refresh a specific GA file.
+clio component-registry-refresh --version 8.2.1
+
+# Refresh every version already present in the local cache.
+clio component-registry-refresh --all
+```
+
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0    | Every requested refresh returned a 2xx response from the CDN. |
+| 1    | At least one CDN call failed (5xx, network error, exception, or unavailable endpoint). |

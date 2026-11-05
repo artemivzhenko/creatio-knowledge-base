@@ -1,0 +1,58 @@
+---
+command: generate-pkg-zip
+block: clio-packages
+source: clio 8.1.0.145, clio/docs/commands/generate-pkg-zip.md (MIT)
+---
+# generate-pkg-zip - generate-pkg-zip
+
+## Name
+
+generate-pkg-zip
+
+
+## Description
+
+generate-pkg-zip command compress package into *.gz archive for directory
+that contain package folder
+
+
+## Options
+
+```bash
+Package name (pos. 0)    Name/path of package folder
+
+--DestinationPath       -d  Destionation path for result gz file (Optional)
+```
+
+
+## Example
+
+```bash
+clio generate-pkg-zip
+generate-pkg-zip package to .gz file if command run from package directory
+
+clio generate-pkg-zip <PACKAGE_NAME>
+generate-pkg-zip package to .gz file if command run from package containing
+directory
+
+clio generate-pkg-zip <PACKAGE_NAME> -d "C:\STORE\<PACKAGE>.gz"
+generate-pkg-zip package to specified .gz file if command run from package
+containing directory
+
+clio generate-pkg-zip "C:\DEV\PKG\<PACKAG_NAME>" -d "C:\STORE\<PACKAGE>.gz"
+generate-pkg-zip package from specify directory to specify .gz file
+
+clio generate-pkg-zip <PACKAGE_NAME_1>,<PACKAGE_NAME_2>,<PACKAGE_NAME_3>
+generate-pkg-zip more than one packages to single .gz file if command run from
+packages containing directory
+```
+
+
+## Notes
+
+The archive is not built when a folder under `Schemas/` or `Data/` has no
+`descriptor.json`, because Creatio would reject its installation with
+`Invalid descriptor`. Every listed package is checked, an existing archive is left
+in place, and the error names the full local path of each such folder with a
+verdict: delete a folder that holds only `Localization/` files, restore
+`descriptor.json` in a folder that still holds element files.

@@ -28,6 +28,11 @@ use `find_api` instead: it tells you which recipe demonstrates that exact API.
 
 `kb_overview` maps the areas and topics when you are unsure what is covered.
 
+For anything done through the **clio CLI** - installing packages, running SQL, adding
+columns, editing Freedom UI pages, rights, builds - search with `area="Clio"`:
+`get_recipe("clio-sql-and-data")` is the block's workflow with verified traps, and
+`get_recipe("execute-sql-script")` the command's full syntax and options.
+
 For C# code, also read `get_code_style` (whole, or a section such as `"logging"` or
 `"review checklist"`): recipes show what to call, the style guide says how the code
 must look — tabs, `#region` layout, `[DefaultBinding]`, exception and logging rules.

@@ -1,0 +1,76 @@
+---
+command: list-entity-client-schemas
+block: clio-schemas
+source: clio 8.1.0.145, clio/docs/commands/list-entity-client-schemas.md (MIT)
+---
+# list-entity-client-schemas - Resolve the Classic page-role graph (sections, edit pages, mini pages) of an entity
+
+## Name
+
+list-entity-client-schemas - Resolve the Classic page-role graph (sections, edit pages, mini pages) of an entity
+
+**Aliases:** `migration-unit-resolve`
+
+
+## Description
+
+The list-entity-client-schemas command resolves the page-role graph of an entity for a
+Classic→Freedom migration: its Classic sections, edit pages (including per-type / typed pages),
+and add mini pages. Sections, edit pages, and mini pages include template and `kind` metadata
+(`classic`, `freedom`, or `unknown`) so callers do not have to infer page type from names alone.
+If the entity metadata does not contain a confirmed base row (`ExtendParent=false`), the command
+fails instead of guessing which entity schema UId to use.
+
+For a typed entity, each per-type edit page also carries the Type's display name
+(`typeColumnDisplayValue`) alongside its raw `typeColumnValue` GUID, resolved by a deterministic
+GUID→caption join against the entity's Type-column reference lookup. The field is `null` when the
+entity is not typed or the name cannot be resolved on-stand — a best-effort read that never fails
+the command, so the migration engine can fall back to the raw GUID.
+
+This is one level only: the migration workflow recurses into detail entities separately. The
+command is pure ESQ over the page-role metadata; it does not read or parse any schema body (use
+`get-classic-page-sources` to assemble the layer bodies into a migration manifest).
+
+
+## Synopsis
+
+```bash
+clio list-entity-client-schemas [options]
+```
+
+
+## Options
+
+```bash
+--entity-name                      Entity schema name, e.g. 'Contact' or 'SupportUnit'
+                                   (required)
+
+--uri                    -u       Application uri
+
+--Password               -p       User password
+
+--Login                  -l       User login (administrator permission required)
+
+--Environment            -e       Environment name
+
+--Maintainer             -m       Maintainer name
+```
+
+
+## Example
+
+```bash
+clio list-entity-client-schemas --entity-name Contact -e dev
+
+clio migration-unit-resolve --entity-name SupportUnit -e dev
+# Same using the alias
+```
+
+
+## MCP
+
+The MCP `list-entity-client-schemas` tool returns the same response. Its twin
+`list-entity-client-schemas-to-file` takes the same arguments plus `output-file`, writes that
+response to the file, and returns the path with the number of classic, freedom and unknown sections
+and edit pages instead of the lists. The file is confined to the workspace or the OS temp directory
+and must not exist yet.

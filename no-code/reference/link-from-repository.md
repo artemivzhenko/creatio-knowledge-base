@@ -1,0 +1,79 @@
+---
+command: link-from-repository
+block: clio-workspace-and-build
+source: clio 8.1.0.145, clio/docs/commands/link-from-repository.md (MIT)
+---
+# link-from-repository - Link repository package(s) to environment
+
+## Name
+
+link-from-repository - Link repository package(s) to environment.
+
+
+## Description
+
+Links workspace package content into a local Creatio package directory.
+
+You can provide either:
+- -e / --Environment (registered environment)
+- --envPkgPath (direct path to the target package folder)
+
+Environment-name resolution works on Windows, macOS, and Linux when the registered
+environment has EnvironmentPath configured and the local package folder exists under it.
+On Windows, clio also falls back to IIS/URL discovery for older registrations.
+The --envPkgPath value may be absolute or relative to the current working directory.
+
+Use --unlocked to automatically query the Creatio site for unlocked packages
+and link only those. This requires -e or -u for API connection. Supports both
+flat repo structure (repo/PackageName/) and versioned PackageStore structure
+(repo/PackageName/branch/version/).
+
+Once packages are linked, do not run 'clio pkg-to-file-system' or 'clio turn-fsm on'
+against this environment without unlinking them first: the export writes generated
+files into whatever the package folder currently is, including through a symlink,
+so it writes straight into the linked repository instead of the environment. Unlink
+before exporting and re-link afterward. Compiling a linked package also regenerates
+its .csproj on every build, which shows up as repository churn - mark it with
+'git update-index --skip-worktree' and add the package's Assemblies/ output folder
+to .gitignore before compiling a linked workspace.
+
+When packages are incomplete in the Pkg folder, the --packages flow automatically
+prepares them before linking:
+1. Maintainer check - ensures the site's Maintainer sys setting matches the
+package descriptor so Creatio allows editing these packages.
+2. Unlock - unlocks packages on the site for file system development.
+3. 2fs - syncs package content from DB to local file system. This step
+requires file system development mode (FSM) to be enabled on the
+environment; when the export is refused, nothing was written to the
+Pkg folder, so the command stops with exit code 1 instead of linking
+symlinks that point at packages that were never exported.
+Use --skip-preparation to disable this behavior.
+--unlocked and --packages are mutually exclusive.
+
+
+## Options
+
+```bash
+--dry-run             Print a summary without executing any mutations
+--skip-preparation    Skip automatic preparation (Maintainer check, unlock, 2fs)
+--unlocked            Query unlocked packages from the site and link only those
+--packages            Comma-separated package names or * for all
+--repoPath            Path to the package repository folder
+-e / --Environment    Registered environment name
+--envPkgPath          Direct path to the target Pkg folder
+```
+
+
+## Example
+
+```bash
+clio link-from-repository -e MyEnvironment --repoPath ./packages --packages "*"
+
+clio link-from-repository --envPkgPath "/path/to/Creatio/Terrasoft.Configuration/Pkg" --repoPath ./packages --packages "PkgA,PkgB"
+
+clio link-from-repository -e dev --repoPath /path/to/git-repo --unlocked
+
+clio link-from-repository -e dev --repoPath /path/to/git-repo --unlocked --dry-run
+
+clio link-from-repository -e dev --repoPath ./packages --packages "PkgA" --skip-preparation
+```

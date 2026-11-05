@@ -1,0 +1,154 @@
+---
+command: compile-configuration
+block: clio-workspace-and-build
+source: clio 8.1.0.145, clio/docs/commands/compile-configuration.md (MIT)
+---
+# compile-configuration - compile Creatio configuration with real-time progress monitoring
+
+## Name
+
+compile-configuration - compile Creatio configuration with real-time progress monitoring
+
+
+## Aliases
+
+cc, compile-remote
+
+
+## Description
+
+The compile-configuration command compiles the Creatio configuration remotely,
+providing real-time progress monitoring of the compilation process. It tracks
+each project being compiled, displays compilation duration, and reports any
+errors or warnings that occur during compilation.
+
+The command monitors the CompilationHistory table to provide live feedback on:
+- Which project is currently being compiled
+- Duration of each project compilation
+- Errors and warnings for each project
+- Overall compilation time
+- Final compilation status
+
+Rows for Terrasoft.Configuration.ODataEntities.csproj and Terrasoft.Configuration.Dev.csproj are
+highlighted in the progress output. Note that a configuration compile does NOT rebuild the OData
+entities assembly - only an entity-schema publish requests that - so an ODataEntities row seen
+during a compile was produced by something else on the environment.
+
+
+## Synopsis
+
+```bash
+compile-configuration [options]
+```
+
+
+## Options
+
+```bash
+--all                               Compile all configurations (full rebuild)
+Default: false
+
+--timeout                           Overall timeout in milliseconds
+Default: 3600000 (60 minutes)
+
+--wait                              Accepted for symmetry with compile-package --wait;
+                                    changes nothing. compile-configuration always
+                                    blocks until the build has ended, bounded by --timeout
+
+--uri                   -u          Application uri
+
+--Password              -p          User password
+
+--Login                 -l          User login (administrator permission required)
+
+--Environment           -e          Environment name
+
+--Maintainer            -m          Maintainer name
+
+--clientId                          OAuth client id
+
+--clientSecret                      OAuth client secret
+
+--authAppUri                        OAuth app URI
+```
+
+
+## How completion is determined
+Creatio does not answer the configuration-build request. A build's last step is reloading the
+application, which tears down the connection the response would have travelled on, so the
+request typically ends with no response at all.
+
+The command therefore sends the build request ONCE, without retries, and determines the outcome
+by observing the environment:
+  - if a response does arrive, it is used - it carries the compiler diagnostics
+  - otherwise, once compilation activity has been seen and the runtime reload that ends a build
+    has been observed, the result is read from the environment's last-compilation record
+  - a connection dropped by an intermediary WITHOUT a reload is not treated as completion, so a
+    load balancer's idle timeout cannot make a still-running build look finished
+  - a request that fails while the environment never built anything is reported as a connection
+    or authorization failure rather than waited out
+
+
+## Examples
+
+```bash
+clio compile-configuration -e development
+Compiles configuration for the development environment with progress tracking
+
+clio compile-configuration -e production
+Compiles configuration using the short alias
+
+clio compile-configuration --all -e staging
+Performs a full rebuild of all configurations
+
+clio compile-configuration -u "https://myapp.creatio.com" -l "admin" -p "password"
+Compiles using direct connection parameters
+
+clio compile-configuration -e dev --timeout 300000
+Compiles with a custom 5-minute timeout (default is 60 minutes)
+```
+
+
+## Output
+
+    The command provides detailed real-time output including:
+    - Compilation start time
+    - Progress updates for each project compiled
+    - Duration of each project compilation (color-coded):
+        * Green: < 5 seconds
+        * Yellow: 5-10 seconds
+        * Red: > 10 seconds
+    - Highlighted output for OData and Dev projects
+    - Errors and warnings with file locations and line numbers
+    - Total compilation time
+    - Final success/failure status
+
+
+## Prerequisites
+
+- Valid Creatio environment with accessible web services
+- Appropriate credentials (admin permission)
+- Network connectivity to the target Creatio instance
+- cliogate must be installed on the target environment
+
+
+## Notes
+
+- On an interactive terminal the command first warns that compilation is a heavy
+operation that forces a runtime reload affecting every connected user, and asks
+whether to compile now or postpone. Declining postpones the compilation (nothing is
+compiled, exit code 2) and prints how to run it later. Non-interactive hosts
+(scripts, CI, redirected stdin) and `--silent` proceed without asking.
+- The command uses an infinite timeout by default as compilation can take
+significant time depending on configuration size
+- Real-time progress is tracked by monitoring the CompilationHistory table
+- Compilation errors include detailed information: error code, file name,
+line number, and error description
+- The command distinguishes between warnings (yellow) and errors (red)
+
+
+## Return Values
+
+    0       Compilation completed successfully
+    1       Compilation failed or an error occurred
+    2       Compilation postponed by the user (declined the interactive confirmation)

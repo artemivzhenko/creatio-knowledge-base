@@ -1,0 +1,76 @@
+---
+command: add-package-dependency
+block: clio-packages
+source: clio 8.1.0.145, clio/docs/commands/add-package-dependency.md (MIT)
+---
+# add-package-dependency - Add one or more package dependencies to a package
+
+## Name
+
+add-package-dependency - Add one or more package dependencies to a package
+
+
+## Description
+
+Adds one or more package dependencies to a Creatio package via the `PackageService.svc` endpoint, then persists the change.
+
+Use this command when the schema designer or compiler fails for a package because it extends objects owned by an app/package that is not in the target package's dependency list. The symptom is `Schema '<NAME>' could not be opened in package '<PACKAGE>'` when opening a designer for a layered object (for example an app extending the Opportunity layer without depending on `CrtLeadOppMgmtApp`). That error lists the packages that contribute the schema and are not already dependencies of the target, ranked with installed applications first — add the owning one and the designer works. clio reports the candidates instead of picking one, because more than one of them can be a valid dependency.
+
+The operation is idempotent: adding a dependency that is already present is a no-op. When a dependency version is omitted, the installed version of the dependency package is used.
+
+
+## Synopsis
+
+```bash
+clio add-package-dependency --package-name <PACKAGE> --dependencies <DEP[,DEP...]> [OPTIONS]
+```
+
+Aliases: `add-pkg-dependency`, `add-pkg-dep`.
+
+
+## Options
+
+```bash
+--package-name <PACKAGE>
+Target package whose dependency list is extended (required)
+
+--dependencies <DEP[,DEP...]>
+One or more dependency package names to add (required). Each entry is 'name' or 'name:version'.
+Multiple entries can be comma-separated or passed as separate values.
+
+-e, --environment <ENVIRONMENT_NAME>
+Target environment name
+
+-u, --uri <URI>
+Application URI (instead of -e)
+
+-l, --Login <LOGIN>
+User login (administrator permission required)
+
+-p, --Password <PASSWORD>
+User password
+```
+
+
+## Examples
+
+```bash
+clio add-package-dependency --package-name MyApp --dependencies CrtLeadOppMgmtApp -e dev
+Add a single dependency using a configured environment
+
+clio add-package-dependency --package-name MyApp --dependencies CrtLeadOppMgmtApp,CrtCase -e dev
+Add several dependencies at once
+
+clio add-package-dependency --package-name MyApp --dependencies CrtLeadOppMgmtApp:8.2.1.123 -e dev
+Pin an explicit dependency version
+
+clio add-pkg-dep --package-name MyApp --dependencies CrtLeadOppMgmtApp -e dev
+Using the shortest alias
+```
+
+
+## Notes
+
+- Administrator permissions are required on the target environment.
+- The dependency package must already be installed in the environment.
+- After adding a dependency that introduces compilable schemas, a configuration compilation may be required.

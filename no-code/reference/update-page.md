@@ -1,0 +1,658 @@
+---
+command: update-page
+block: clio-pages
+source: clio 8.1.0.145, clio/docs/commands/update-page.md (MIT)
+---
+# update-page - Update the raw schema body of a Freedom UI page
+
+## Name
+
+update-page - Update the raw schema body of a Freedom UI page
+
+**Aliases:** `page-update`
+
+
+## Description
+
+Web page saves resolve explicit `parentName` references against the inherited page
+hierarchy and the submitted diff. An unresolved parent fails before saving, including
+with `validate: false` and during dry runs. The error names the child and parent and
+suggests the closest known element. Root inserts without a parent remain valid. The guard requires a statically
+parseable view-config diff; dynamic JavaScript expressions in that section cannot
+be verified and are rejected even with `validate: false`.
+
+The MCP `validate-page` tool can receive `known-containers`, an array of inherited
+element names obtained from the page bundle. With that context, missing parents
+fail validation; without it, unresolved references produce warnings because a
+parent may be supplied by the template. This offline hint does not bypass the
+authoritative save check.
+
+`--resources` adds missing keys and updates the `en-US` value of existing keys.
+Resource identities, other cultures, and omitted keys are preserved. The
+`resourcesRegistered` count includes only newly declared keys, not value updates.
+
+Resource saves return a warning about workspace capture: `update-page` saves
+through the server designer; it does not synchronize an independent local workspace.
+A later `push-workspace` using stale metadata or culture XML can revert the change.
+Preserve local edits, capture the affected package with `restore-workspace`
+(`pull-workspace`), then review the schema metadata and resource XML before pushing.
+Follow the workspace's capture instructions for linked FSM packages, where the
+native designer can already write into linked source files. Check the diff rather
+than assuming either server success or a JavaScript body file is a complete capture.
+
+
+The update-page command validates and saves the raw JavaScript body of a
+Freedom UI page schema. Pass the full body string directly, typically
+after reading raw.body from get-page.
+
+JSON-backed page sections accept ordinary `//` and `/* ... */` comments and
+trailing commas during validation. Required paired `/**SCHEMA_...*/` markers
+must still surround their sections; they are structural delimiters, not optional
+documentation. Validation does not strip comments or rewrite the supplied body.
+Replace mode preserves the supplied comments; append mode re-serializes merged
+diff sections and can discard comments inside those sections.
+
+> **CLI vs MCP.** The CLI `get-page` verb returns `raw.body` inline, so a CLI caller copies
+> that value. The MCP `get-page` tool returns no `raw` property — it writes the body to disk
+> and reports the path in `files.bodyFile`. MCP callers pass that path straight through as
+> `body-file`, or send the file contents as `body`.
+
+A successful (non-dry-run) MCP `update-page` save also returns `digest`: `validation`
+(`passed`, or `skipped` with `validate: false`), `basis` (`fragment` for append, `body` for
+replace), and `components` - one line per `viewConfigDiff` operation of the body that was
+written, such as `insert UsrPhone (crt.PhoneInput) in MainContainer`, at most 25 with the rest
+counted in `componentsOmitted`, `otherSections` (operation counts of `viewModelConfigDiff`,
+`modelConfigDiff` and `handlers` when present) and `checksum` - the post-save `SysSchema`
+checksum, the next save's conflict baseline (returned when the save ran with a baseline: a
+`get-page` baseline, a pinned `checksum`, or `force`). It confirms the write without a `get-page`
+(ENG-103023). An append whose fragment carried component operations that the merge could not
+write back returns no `digest`.
+
+The MCP `update-page` tool also accepts `include-operations: false`. It applies only with
+`verify: true`: the read-back page then carries `ownBodySummary.viewConfigDiffOpCounts`
+(operations per type) instead of the `viewConfigDiffOps` list.
+
+The MCP `update-page` tool also accepts `validate: false` as an explicit escape
+hatch when a full replacement body contains a pre-existing defect that is
+unrelated to the requested edit. This skips client-side content and run-process
+validation. It does NOT skip the structural floor: JavaScript syntax, AST
+loadability, replace-mode marker integrity, the mobile JSON-object structure
+check, and the page baseline/conflict guard all still run - a body that fails
+any of them is one the tool could no longer read back, so it is never saved.
+It can be combined with `force: true` - the flags are orthogonal, one gating
+content checks and the other the baseline/conflict guard - and the response then
+carries a warning that both guards are down. `sync-pages` accepts the same pair
+through its per-page `force` flag. The CLI command has no equivalent flag.
+
+After a successful non-dry-run save, update-page also attempts a
+best-effort live Designer Presence notification so active Creatio designers
+can be warned that the page was saved outside their session. This live push
+reuses the browser-session/forms-auth path and therefore requires
+login/password-backed cookies. In OAuth-only or credential-less environments,
+the page save still succeeds; the response simply carries a warning when the
+live notification is skipped or fails.
+
+When the body contains #ResourceString(key)# macros, update-page can
+register missing child-schema localizableStrings before saving. Pass
+--resources when you need explicit captions, or let clio derive captions
+automatically for missing Usr* keys.
+
+Use --optional-properties to merge custom key-value pairs into the schema's
+`optionalProperties` array (for example to set `entitySchemaName`).
+
+Keep each field control bound to the declared view-model attribute from
+`viewModelConfig` / `viewModelConfigDiff`. If you add validator or
+handler logic on a different attribute for the same field, rebind the
+control to that attribute as well so the control, validators, and
+handler writes all target the same declared attribute.
+If the control is inherited from a parent schema and there is no local
+entry for it in `viewConfigDiff`, add a local `merge` for that control
+name instead of trying to edit a non-existent local `insert`.
+
+
+## Validation Rules
+
+**Before editing the body**, understand the validation rules:
+
+- **SCHEMA_CONVERTERS keys** (object form) must follow `VendorPrefix.ConverterName` format
+  (e.g., `usr.MyConverter`). Call the MCP `get-guidance` tool with `name=page-schema-converters` for details.
+- **SCHEMA_HANDLERS** must be an array of `{ request, handler }` entries. Each `request` value
+  must follow `VendorPrefix.HandlerName` format (e.g., `crt.HandleViewModelInitRequest`,
+  `usr.HandleSomeRequest`). Call the MCP `get-guidance` tool with `name=page-schema-handlers` for details.
+- **SCHEMA_VALIDATORS keys** (object form) must follow `VendorPrefix.ValidatorName` format
+  (e.g., `usr.RequiredValidator`). Call the MCP `get-guidance` tool with `name=page-schema-validators` for details.
+- **Designer-safe page code.** Keep only `return { ... }` in the page factory body. Extra statements
+  produce `designer-unsafe-factory-statement` warnings because Page Designer regenerates the factory
+  on save. Put helper functions, constants and caches in a client module listed in `SCHEMA_DEPS`,
+  bind its argument in `SCHEMA_ARGS`, and call it from a preserved handler, converter or validator.
+  Read the MCP `get-guidance` tool with `name=shared-client-logic` for the module workflow.
+- **Handler, converter, and validator calls** cannot rely on factory declarations: such direct calls
+  are rejected with `designer-unsafe-section-call` even when the helper exists now. Callback-local
+  declarations, callback parameters, AMD dependency arguments and known JavaScript/Creatio globals
+  remain valid. Missing direct callees produce `undefined-section-call`. These AST checks run only on
+  MCP `update-page` / `sync-pages` / `validate-page`; the CLI `update-page` verb does not run them.
+- **Data-source bindings (web and mobile).** MCP `update-page` / `sync-pages` / `validate-page` only. The first
+  segment of an attribute's `modelConfig.path`, a `dataSourceName`, and the `primaryDataSourceName` must name a data
+  source that the body or the page's inherited `modelConfig` declares, after the body is applied the way the page
+  bundle is built (a non-empty model config diff is applied over the base; otherwise the full `modelConfig` is merged
+  into it; `remove` operations and merges below a missing data source declare nothing). Templates never declare
+  `PDS`: a generated page holds it in its own body, so a replace write that drops it is rejected (ENG-102161). Keep
+  the web `SCHEMA_MODEL_CONFIG` section (or the `dataSources` / `primaryDataSourceName` operations of
+  `SCHEMA_MODEL_CONFIG_DIFF`, or the mobile `modelConfigDiff`) from `get-page` `raw.body`. A non-empty
+  `SCHEMA_MODEL_CONFIG_DIFF` makes `SCHEMA_MODEL_CONFIG` ignored. `mode: "append"`, whose base includes the page's own
+  body, works only on a page in diff form: a generated web form page is full-config and append refuses it. When the inherited `modelConfig` cannot be read the check passes and the
+  response warns that it did not run; `validate-page` has no environment, so it never rejects and warns about
+  bindings the body does not declare itself.
+- **Mobile page rules.** These run only on the MCP `update-page` / `sync-pages` / `validate-page` tools.
+  The CLI `update-page` verb does **not** run them — it validates a mobile body only for disallowed
+  sections — so a body rejected through MCP still saves from the command line.
+  - **Rejected — an authored component's `type` outside `values`.** In `viewConfigDiff`, an
+    `operation:"insert"` or `operation:"set"` that supplies a `values` object carrying no usable `"type"`,
+    while putting `"type"` on the operation object, is refused. (A type present in BOTH places is fine when the
+    two agree — the `values` copy is the one that applies.) The Creatio differ builds the element from `values` alone, so the type is
+    discarded and the page would persist an element the mobile runtime cannot render — the write would
+    otherwise succeed and the component would simply never appear. (`set` is included because it is
+    `remove` + `insert` on the same payload.)
+  - **Rejected — a flat `insert`.** A `"type"` on the operation object with no `values` object at all is
+    refused for the same reason: `insert` declares no required parameters, so the differ does not reject it
+    — it persists a typeless element. A flat `set` is left to the differ, which refuses it for the missing
+    required `values`.
+  - **Rejected — a `merge` that authors child elements in a Scaffold slot the template already fills.** An array
+    (or a lone object) of item configs — objects carrying a non-empty `name` — placed on `Scaffold`'s `actions`,
+    `leading` or `items`. `items` is the page body: every non-blank template puts a `MainContainer` there, so a
+    merge authoring into it is discarded just like the navigation slots. (Membership is only consulted when the
+    merge targets the Scaffold itself, so an `items` slot on any other container stays advisory.) Where the target already holds elements in a slot, the differ strips the whole property out of
+    the merge before copying anything, so the write succeeds and the children never reach the page.
+    Stand-verified for ENG-95429: the button appeared zero times in the server-merged `viewConfig` while
+    remaining in the saved body. Those two slots are blocked rather than warned about because every shipped
+    *form* template populates them — `actions` carries its Save button, `leading` its Close/Cancel — so in
+    practice a merge into them is the discard case. Put the child in a page container instead: its own `insert`
+    with `propertyName: "items"` plus a `layoutConfig`. **Residual:** `BlankMobilePageTemplate` ships a bare
+    Scaffold with no content, so on a page built from it those slots may be empty, the merge would apply, and
+    clio still refuses — it validates `viewConfigDiff` against an empty base and cannot see which case a body is
+    in. Author the child with an `insert` there too rather than reaching for `validate: false`.
+  - **Rejected — a second `crt.Scaffold`.** An `insert`/`set` that declares `crt.Scaffold` ANYWHERE in its
+    `values` subtree — a nested child authors the same second root as a top-level one — or an `insert` of an
+    element NAMED `Scaffold` whatever type it declares, since the template already owns that element name.
+    Every mobile template provides the Scaffold root and it is the page's only permitted one: a second one
+    shadows the native element, so the top navigation bar and the page body silently come from the wrong
+    element. A `merge` onto `Scaffold` is the SUPPORTED way to patch the template's own root and is left
+    alone here — the merge-slot rules above own what may go inside it.
+  - **Rejected — a `crt.IndicatorWidget` that would show no value.** An `insert`, `set` or `merge` authoring a
+    metric must carry `config.layout` and `config.text`, and a `config.data.providing` the mobile runtime can
+    execute: `schemaName` plus `aggregation.column.expression` with `expressionType` 1, a `functionArgument.columnPath` and an
+    `aggregationType` of 1–5, or `expressionSchema` for a calculated metric. Otherwise the page saves, but the
+    metric shows no value or an error placeholder, or the designer canvas does not build. A widget with its own `data` binding is exempt
+    from the providing checks.
+  - **Warned — a `merge` that authors child elements in any other slot.** Same mechanism, different odds: a
+    slot the target does not carry (`menuItems` on a `crt.Button` or `crt.FloatingActionButton`, `items` on
+    `crt.QuickFilterGroup`, `crt.Sort`, `crt.Timeline`) is *created* by the merge and the authoring works.
+    clio validates `viewConfigDiff` against an empty base and cannot tell the two apart, so it steers rather
+    than refuses. To author into a slot the target genuinely lacks, use the platform's two-step idiom: a
+    `merge` creating the slot as an empty array (never flagged), then one `insert` per child — an `insert`
+    into a property the target does not carry throws. Both are `merge`-only: for `insert`/`set` the `values`
+    object becomes the element, so children declared there are the documented way to author a container.
+  - **Warned — no type anywhere**, when `values` carries element properties but declares no `type`
+    (an entry that authors nothing — absent or empty `values` — is silent by design).
+  - **Warned — two DIFFERENT types**, one on the operation object and one inside `values`. The element still
+    renders, as the `values` copy. Two identical types are accepted silently.
+  - **Warned — an operation whose letter case does not match** the differ's exact-case dispatch
+    (`"Insert"`): the whole operation is discarded, so it authors nothing.
+  - **Warned — a component type in NEITHER the mobile nor the web registry.** The type may be a custom
+    mobile component registered in your own package, in which case ignore it; it is equally what a typo
+    looks like. Confirm with `get-component-info` using `schema-type: "mobile"`. Advisory because clio
+    cannot tell a custom registration from a mistake, and refusing would block legitimate packages.
+  - **Warned — a `crt.Button` inserted into the Scaffold `actions` slot** (`parentName: "Scaffold"`,
+    `propertyName: "actions"`). ENG-95429: the save succeeds, but a button placed there does not appear on the
+    Freedom UI mobile designer canvas, so nobody can see or edit it there. Place it as an item of a page
+    container instead — `propertyName: "items"` on a container the page or its template actually declares
+    (confirm the name with `get-page`) — and give it a `layoutConfig`; that is the shape the designer itself
+    emits. Advisory rather than blocking: `actions` is a legitimate runtime slot (the platform's own Save
+    button lives there), so the defect is design-time discoverability, not an invalid write.
+  - If an offending entry came back from `get-page`, the page already carries the defect — correct it in the
+    body you send back.
+  - **Not enforced:** the same type-placement and merge-slot defects break **web** pages identically and are not checked
+    there; `sync-pages` with `validate: false` skips these checks along with every other one.
+  Call the MCP `get-guidance` tool with `name=mobile-page-modification` for details.
+- **User-visible text must be localizable.** Any `label`, `caption`, `title`, `tooltip`, or
+  `placeholder` in `viewConfigDiff` (at any nesting depth) set to an inline string literal is
+  **rejected**. Bind it via `$Resources.Strings.<Key>` (or `#ResourceString(<Key>)#` for data-grid
+  column captions and validator messages) and register the key's default-language value through
+  `--resources`. Binding expressions (any `$`-prefixed value) and non-string values (e.g.
+  `placeholder: false`) are not literals and pass. Call the MCP `get-guidance` tool with `name=page-schema-resources`
+  for the full rule. Gallery's `itemConfig.templateValuesMapping` is excluded: values such as
+  `caption: "GalleryDS_Name"` name projected record attributes. Keep those identifiers unchanged;
+  captions elsewhere on the Gallery or its children still require localization. For a standalone
+  `merge` that patches this mapping, include `type: "crt.Gallery"` unless another entry in the
+  same body declares that node's type. A `crt.Map` node's own `templateValuesMapping` is excluded
+  for the same reason: values such as `title: "Name"` name record columns. A standalone `merge` of
+  that mapping needs `type: "crt.Map"` on the same terms. Designer-only `_designOptions` mappings
+  are also excluded.
+  A **component's own data descriptor is exempt**: a `data` object that carries the platform's
+  `typeName` marker, on a node declaring a component `type`, is component metadata (uId, schemaType,
+  typeName and the caption the platform stamped on it) rather than page-authored text, so a literal
+  anywhere inside it is accepted — at any depth, not only at the entry root. This is what a Timeline
+  composer (`crt.EmailComposer` / `crt.FeedComposer`) ships as `data.caption: "Email"` / `"Feed"`.
+  Do NOT delete such a caption to satisfy the rule: the platform never restores it and the composer
+  stays permanently unlabelled. An author-writable input that merely happens to be named `data`
+  (e.g. `crt.FilterBuilderSource`) carries no `typeName` and stays fully validated.
+- **Inserted widget/metric titles must resolve.** A `title`/`caption`/`tooltip`/`placeholder` on a
+  freshly inserted (`operation:"insert"`) widget/container bound as 
+  `#ResourceString(<Key>)#` is **rejected** when `<Key>` will not resolve — i.e. it is not passed in
+  `--resources`, is not already stored in the target schema's `localizableStrings` (on the first save
+  into a package: in the schema it replaces, whose strings the save copies) or declared by a level of
+  the designer hierarchy clio resolved for the page (not with `--target-schema-uid`), is not a DS-bound
+  attribute, and is not a `Usr`-prefixed key clio auto-derives. A layout-only re-save therefore does not
+  have to repeat keys an earlier save registered. This guards the metric/chart-widget-title case (a title such as
+  `#ResourceString(IndicatorWidget_<slug>_title)#` is registered only when you pass it in `--resources`;
+  otherwise it renders raw as `$Resources.Strings.IndicatorWidget_<slug>_title`).
+- **A placement that names a parent must name its slot** (web and mobile, also with `validate: false`).
+  An `insert` or `move` with a `parentName` but no `propertyName` is **rejected** before saving. The
+  Creatio differ places the element into the parent's `propertyName` slot (usually `"items"`); without
+  it the platform refuses the page (`Item "<parent>" is not a container for other items`) and `get-page`
+  cannot resolve it. Without a `parentName` the element goes to the root list and needs no slot. A page
+  saved this way by an older clio still reads back: `get-page` resolves it without that operation and
+  names it in `warnings`, so the body can be fixed and saved again.
+
+A malformed `VendorPrefix.Name` causes a Creatio runtime error:
+`"Error when register X. Type property should have format VendorPrefix.TypeName"`.
+
+
+## Conflict Detection (external modifications)
+
+update-page compares a baseline checksum against the current `SysSchema.Checksum` of the
+editable schema **before** saving (baseline sources are described below). If the schema
+was modified outside your session (for example, a user edited the page in the Creatio
+designer), the save is blocked and the response carries a structured conflict:
+
+```jsonc
+{
+  "success": false,
+  "conflict": true,
+  "conflictDetails": {
+    "reason": "checksum-mismatch",          // or schema-created-externally |
+                                            //    schema-deleted-externally | schema-uid-mismatch
+    "expectedChecksum": "…", "actualChecksum": "…",
+    "expectedSchemaUId": "…", "actualSchemaUId": "…",
+    "modifiedOn": "…"                       // informational only
+  },
+  "error": "Page schema '…' was modified outside this session …"
+}
+```
+
+Recovery: re-run `get-page`, re-apply your change on top of the fresh body, then retry.
+Pass `--force` to deliberately overwrite the external changes instead.
+
+After a successful save with a baseline in play, the response carries `newChecksum`,
+`newModifiedOn`, and `savedSchemaUId` so the caller can refresh its stored baseline.
+
+Every save that got as far as resolving its target also carries `conflictCheck`: `applied` when
+the target was compared with a baseline (a refused save included), `not-applied` when the write was
+let through without that comparison — no applicable baseline, `--force`, a selector that sent the
+write to another schema, or a schema with no checksum on the server. A successful save with
+`not-applied` may have overwritten someone else's change; for a missing baseline and for a selector,
+`warnings` name the cause. The field is
+omitted when the save failed before its target was resolved.
+
+Successful saves may also return `warnings`. When `success` is true every entry is
+informational only — the schema save already succeeded, so never retry on a warning. A
+rejected save (`success: false`) can carry `warnings` too; nothing was written. On a
+`--dry-run`, a config merge the runtime throws on is listed as a warning that says it
+"breaks the page", and the real save of the same body is rejected (see "Config merges into
+a missing path"). Today they cover the live
+Designer Presence push, a component whose `insert` the submitted body replaced with a
+`merge`/`move`/`remove`, an operation the differ will drop because another operation
+for the same component name cancels it (see "Write modes"), a `viewModelConfigDiff` /
+`modelConfigDiff` `merge` whose `path` does not resolve (see "Config merges into a missing
+path"), and — on `append` — an
+existing operation the merge could not preserve because your fragment superseded an
+identity the page carried more than once. That last one names the component and tells you
+to re-read with `get-page`, because it is the one case where appending removes something
+you did not send.
+
+Baseline sources: both the CLI verb and the MCP `update-page` tool arm this check
+automatically from the baseline that a previous `get-page` stores in
+`.clio-pages/{schema-name}/meta.json` (matching environment required) — so AI-agent CLI
+flows that read a page with `get-page` and then save it with `update-page` are protected
+without extra flags. `--expected-checksum` overrides the on-disk baseline when passed
+explicitly. Over MCP the same baseline is supplied as the `checksum` argument — pass the
+`editable.checksum` that `get-page` returned for the body you edited. Doing so makes the
+comparison run against what you actually fetched, instead of against a `.clio-pages`
+baseline that may be stale or anchored to a different directory and would then report a
+conflict that never happened. After a successful save with an armed baseline the on-disk
+baseline is refreshed automatically, so consecutive updates in the same session do not
+false-conflict. A small race window between the check and the save remains (last write
+wins). A save with `--target-package-uid` / `--target-schema-uid` uses the `.clio-pages`
+baseline only when the target resolves to the page that baseline describes (see below).
+A save with no applicable baseline (no prior `get-page`, an unreadable `meta.json`, a
+baseline captured for another environment or anchor), no explicit checksum and no `--force`
+proceeds unchecked; the response warns `External-modification detection did not run ...` and
+names the cause. A `.clio-pages` location that cannot be resolved is reported as
+`External-modification detection is DISARMED ...` instead. A save that fails before its request
+is sent, or that the server refuses, carries no did-not-run warning; a save whose request got no
+readable reply keeps it, because the write may have landed.
+
+If you pass `--expected-checksum` while an on-disk baseline is also present, the explicit
+value wins the CHECKSUM comparison and the auto-armed baseline's checksum is ignored — so
+supplying a stale checksum by hand can report a conflict against a page that has not
+actually changed. This edge fails safe (it blocks the save rather than overwriting), but if
+you mix the two, keep `--expected-checksum` current or omit it and let the on-disk baseline
+drive the check. On a pinned save neither of the on-disk baseline's identity fields is
+armed. The *schema UId* is not, because the checksum comparison already runs against the
+schema the save resolved to: a pin that matches means the caller read exactly that content,
+so a stale on-disk UId must not veto it. A genuine identity change is still refused — its
+checksum differs, and the conflict comes back as `checksum-mismatch` rather than
+`schema-uid-mismatch`. The *schema-absent* marker is not armed either, because a pinned
+checksum asserts that an editable schema existed, and a stale `editableSchemaExists: false`
+would otherwise veto a pin that matches the server exactly. `schema-deleted-externally`
+still fires on a pinned, non-redirected save: there the resolution says a replacing schema
+must be CREATED while the caller pinned a checksum for an existing one. The unpinned path is
+unchanged — checksum, schema UId and absent marker are all armed from disk.
+
+Two scope limits worth knowing before you rely on the pin:
+
+- **`sync-pages` does not accept a checksum** — a standing scope limit of this change, not a
+  defect on this page. It is the canonical page write path and `update-page` is documented as the
+  fallback, but `PageSyncPageInput` has no `checksum` member, so every `sync-pages` write
+  compares against the `.clio-pages` baseline and has `--force` as its only escape. The
+  remedy on this page is `update-page`-only.
+- **A selector is not by itself a redirect.** `get-page` has no target arguments, so the
+  `.clio-pages` baseline, and any `checksum` copied out of a `get-page` response, describes the
+  schema clio resolves automatically. When `update-page` is called with `--target-package-uid` or
+  `--target-schema-uid`, nothing is armed from disk before the target is resolved. The baseline is
+  carried instead and applied once the target turns out to be the page it describes: the same
+  editable schema (matched by schema UId), or, for a baseline that recorded no editable schema
+  yet, the same design package `get-page` resolved (`--target-package-uid` only, matched by
+  package UId). GUIDs are compared by value, so letter case and braces do not matter. Such a save
+  is checked like a save without the selector, including `schema-created-externally`, and
+  refreshes `meta.json` afterwards. A target that resolves elsewhere is a real redirect: the
+  baseline is not used, and `meta.json` is left alone, because writing the redirected schema's
+  UId and checksum into a baseline keyed by schema name corrupted the baseline of the
+  automatically resolved schema and produced a false `schema-uid-mismatch` on the next ordinary
+  save. An explicit `checksum` is kept and compared with the resolved target in every case; a
+  mismatch is refused as a conflict. Once the target is resolved, an unpinned, unforced save
+  reports what happened: either the conflict check was applied, or the save was NOT checked
+  for conflicts, naming the schema the write went to and the one the baseline describes, and
+  asking the caller to tell the user. A save refused before anything was written carries
+  neither. When nothing on disk can be
+  matched to the target and the save is not forced, the warning says the check did not run and
+  why: no baseline was found for this page, environment and anchor (then the same save without
+  the selector is unchecked too), or the baseline recorded no editable schema and the selector
+  cannot be matched to its design package. Neither case is a reason to reach for `--force`.
+
+A `checksum-mismatch` response returns the server's current value as
+`conflictDetails.actualChecksum`. Re-sending that value as `--expected-checksum` /
+`checksum` is **not** a resolution — it silently discards the out-of-band change exactly
+like `--force`, and needs the same explicit confirmation from the user. Re-run `get-page`
+and re-apply your edit on the fresh body instead.
+
+
+## Write modes
+
+`--mode replace` (default) saves the body verbatim. `--mode append` loads the current
+schema body from the server and merges your incoming fragment into it.
+
+An append body is a **fragment of a page body**, not a bare list of operations. It may omit
+sections — that is the point of append, and full marker integrity is deliberately not required —
+but it must carry **at least one** section marker pair, for example
+`/**SCHEMA_VIEW_CONFIG_DIFF*/[ ... ]/**SCHEMA_VIEW_CONFIG_DIFF*/`. A body carrying none is
+rejected. It used to be accepted: a bare JSON array is valid JavaScript, so it cleared the syntax
+gate, then every section read as empty, the merge became a no-op, and the call reported `success`
+with `incomingOperationCount: 0` — silently discarding the whole fragment while looking clean.
+
+A fragment whose marker pairs are all **empty** is rejected for the same reason: it would save the
+page unchanged and report `success`. So is a fragment section that the stored body has no marker pair
+for (for example `modelConfigDiff` against a body without `SCHEMA_MODEL_CONFIG_DIFF`): the write-back
+replaces marker pairs, so that content would vanish — read the body with `get-page` and save it with
+`--mode replace`. A page whose stored body is empty (a page `create-page` makes without an entity) is appended to as
+the empty page body with all marker pairs; the fragment is never saved as the whole body.
+
+`incomingOperationCount` and the other `appendProjection` counts speak for `viewConfigDiff` only, so
+a fragment carrying only config diffs reads `incomingOperationCount: 0` even though it is written.
+`incomingModelConfigDiffOperationCount` and `incomingViewModelConfigDiffOperationCount` report those.
+
+A `viewConfigDiff` entry is replaced only when **both** `operation` and `name` match one of
+yours — and, for a `remove` or a `set`, whether it targets `properties`. Incoming wins, and the replacement
+keeps the existing entry's position. Every other existing operation is preserved verbatim and in
+place, including a second operation on a component you already target (a `move` and a `merge` for
+one name are both valid and both survive the merge — though "survive" means kept in the body, not
+necessarily applied; see the group-ordering caveat below).
+
+There is one exception. If your fragment supersedes an identity that the page carries **twice**,
+only the first occurrence is replaced and the later one is dropped — keeping it would re-apply its
+stale values *after* your replacement. When those two entries set disjoint keys, the later entry's
+keys go with it. Handlers dedupe by `request`.
+
+`SCHEMA_CONVERTERS` and `SCHEMA_VALIDATORS` entries merge by type key, and incoming wins. The final merged web body is rejected when a custom validator reference has no matching
+`SCHEMA_VALIDATORS` declaration. Built-in `crt.*` validators need no local declaration.
+
+For an undeclared field binding, use `merge` in `viewConfigDiff` only if the component itself comes from a parent
+schema. For an own-body field, submit its complete original `insert` with the edited values and
+the attribute declaration in `viewModelConfigDiff`, even if that declaration is already stored.
+Append replaces a matching insert as a whole, so retain its other values and placement properties.
+`viewModelConfigDiff` concatenates entries: resubmitting an unchanged declaration adds a duplicate
+merge with the same effective values. A second append cannot remove that duplicate.
+
+**Preserved is not the same as applied**, and this part is not about append at all — it is how the
+platform differ resolves any final body, so a hand-authored `--mode replace` body produces it too.
+Operations are applied in whole **groups** in a fixed order (merges, then removes/inserts/moves,
+`set` last), never in array order. So a `merge`, `move`, or element `remove` that ends up beside an
+`insert` for the same `name` resolves against a base that does not contain the component yet and is
+silently dropped; likewise a `move` for a name the same body also element-`remove`s, which the
+differ filters out before applying anything. The same applies wherever one operation's group runs
+after another's for one name: a `merge` beside an element `remove` or a `set` (the remove deletes,
+or the set replaces wholesale, what the merge just patched); a property `remove` beside an
+element `remove` (the element is gone before property removals run — unless an `insert` re-creates
+it, which makes the property removal effective again); and a property `remove` beside a `set` (the
+property group runs first, then the set rebuilds the element from its own `values`, so the strip
+contributes nothing). The save still succeeds and the
+response carries an advisory `warnings` entry naming the component and the dead operation. Fix it by folding the transform's values into the
+`insert` itself, or by using `set`, which runs after the insert — not by reordering the array, which
+changes nothing.
+
+The warning is advisory because it reads one schema body and cannot see the replacing chain: a
+parent schema that inserts the same name puts the component in the base and can make the transform
+apply after all. A `--dry-run` reports it too, against the body that would actually be written — so
+in append mode it sees pairs formed between your fragment and the server's body, not only pairs
+inside your fragment.
+
+### Config merges into a missing path
+
+A `viewModelConfigDiff` or `modelConfigDiff` `merge` is addressed by `path`. The platform differ walks
+that path through the config built from the parent schemas and the merges that come before it in the
+same body. If a segment does not exist, the differ skips the merge. It does not create the
+missing key. The body is saved with the operation in it, but the operation has no effect.
+Typical shapes:
+
+- a new data source written as `path: ["dataSources", "NewDS"]`. The key does not exist yet;
+- `path: ["dependencies"]` on a page whose chain has no `dependencies` yet;
+- a nested key that the parent schema's data source or attribute does not have, for example
+  `path: ["dataSources", "AttachmentListDS", "config", "sortingConfig"]`;
+- a nested merge placed before the merge that creates its target. Merges run in array order.
+
+`update-page` resolves the page's real parent schemas and applies the body's config diffs to that
+config the way the platform does. For every merge that would be skipped, the response gets an advisory
+`warnings` entry naming the section and the path, and the save still succeeds. To
+add a new key, merge into its existing parent and put the key inside `values`: `path: ["dataSources"]`
+with `values: { "NewDS": { ... } }`, or `path: []` with the whole branch. `attributes` and `dataSources`
+always exist at runtime, even on a blank page whose `get-page` bundle shows neither, so merging into
+them is safe. A merge whose path ends on an array, or whose `values` is an array, a string, a number
+or a boolean, is reported the same way, with its own reason.
+
+A merge the runtime throws on makes the page fail to build, so it rejects the save: `success` is
+false, nothing is written, `error` names each such merge on its own line, and the other warnings
+for the body are still returned. A `--dry-run` lists the same merges as warnings that say the merge
+"breaks the page". The cases are a path that ends on a single value, such as `isCollection`; a path
+whose first segment matches an element `_id` but whose rest does not exist under it; and a merge
+with no `values` or `values: null` on a target that exists. If the parent schemas cannot be read for
+this check, the response says the check did not run, and the save is not blocked. If an operation
+that is not a merge makes the differ throw, the merges are still checked and one warning says so.
+
+### What a `--dry-run` tells you about an append
+
+In append mode a dry run resolves the current server body and computes the merge, then returns
+without saving. It reports the outcome as `appendProjection`:
+
+| Field | Meaning |
+|---|---|
+| `currentOperationCount` | `viewConfigDiff` operations in the page's own body today |
+| `incomingOperationCount` | operations in your fragment |
+| `projectedOperationCount` | operations the merged body would carry — **compare this against the number you expect** |
+| `addedOperationCount` | incoming entries that introduce a new identity |
+| `replacedOperations` / `replacedOperationCount` | existing entries your fragment replaces in place; not a loss, the operation survives with your values |
+| `droppedOperations` / `droppedOperationCount` | entries from the **server** body the merge would not carry over — the further-duplicate exception above |
+| `collapsedIncomingOperations` / `collapsedIncomingOperationCount` | entries from **your own fragment** that a later entry in the same fragment supersedes — reported as data, never warned about |
+| `viewConfigDiffApplied` | `false` when the current body has no `SCHEMA_VIEW_CONFIG_DIFF` marker pair, so every count above describes an array the write discards |
+
+Three distinct loss channels, kept separate because the fix differs for each. **Two of them warn.**
+
+- A **dropped server entry** raises one advisory `warnings` entry per affected component, naming it
+  and telling you to re-read with `get-page`. Fix it by folding both entries into one incoming
+  operation.
+- An **unapplied section** (`viewConfigDiffApplied: false`) warns too, and is the one that makes a
+  clean-looking projection dangerous: every count above it describes an array the write throws away.
+  It is not a merge problem at all — use `--mode replace` with a body that carries the marker pair.
+- A **collapsed incoming entry** is reported as data only, with no warning. It is a real loss, but the
+  fragment is yours and you can read it, so a warning about your own input would be noise. It is
+  counted because without it the totals cannot be reconciled and the loss stays invisible.
+
+The named lists are capped in length; every count is always exact.
+
+`collapsedIncomingOperations` is the one most people will hit. Operations merge by
+`(operation, name, targets-properties)`, so a fragment that carries the same identity twice keeps only
+the last spelling — the earlier one is discarded with its values, and before this it went unreported
+anywhere.
+
+Three consequences worth knowing:
+
+- An append dry run runs the **same body checks the save runs, against the same body** — including the
+  save's own widget-caption gate, reported as a warning rather than a refusal. A dry run and a save
+  therefore cannot disagree about a caption, which they previously could in both directions.
+- An append whose real save could not merge — a full-config current body, for instance — now **fails
+  the dry run** with the same error, instead of reporting `success` and failing on the write. Every
+  dry-run failure carries `dryRun: true`, so it stays distinguishable from a failed real save.
+- `--mode replace` is unaffected: it writes the body verbatim, so there is nothing to merge and
+  `appendProjection` is absent. Be precise about what it skips, because it is **not** an offline
+  check — do not plan a workflow around it running without a server. Resolving the schema context
+  happens before either mode is chosen and still queries `SysSchema`, the design package and the
+  parent schemas. What a replace dry run skips is the **designer `GetSchema` fetch of the current
+  body**, which is what `TryUpdatePage_WhenDryRun_SkipsDesignerServiceCalls` asserts. Its caption
+  check first resolves against the body and the resources you pass; only when a binding is still
+  unresolved does it read the keys the schema already stores (one `GetSchema`) together with the keys
+  of its designer hierarchy, the same set the save accepts. A body whose captions all resolve from the
+  body or `--resources` still costs no designer read.
+
+The same `appendProjection` is returned on a real append save, for the caller who skipped the dry
+run.
+
+`appendProjection` speaks for `viewConfigDiff` only. The sibling `*_DIFF` arrays are merged by
+appending and never lose an entry silently: a non-empty section the stored body has no marker pair
+for is rejected with an error (use `--mode replace`), so they have no loss to report. Handlers are **not**
+covered: they dedupe by `request`, and the merge drops every current handler whose `request` appears
+in your fragment — so a current body that carries one `request` twice keeps neither and your fragment
+contributes one. Check the handlers section by hand when that shape is possible.
+
+Append requires the **diff form**. A full-config body — the `SCHEMA_VIEW_MODEL_CONFIG` /
+`SCHEMA_MODEL_CONFIG` markers (mobile: top-level `viewModelConfig` / `modelConfig`) instead
+of the `*_DIFF` markers — cannot be merged. Such a body is rejected with an actionable hint;
+use `--mode replace` to save it verbatim. Both surfaces refuse it: the CLI verb rejects it
+while merging, and the MCP `update-page` tool detects it up front, before any server
+round-trip. Note the `--body` value is always a raw string with `/**MARKER*/` pairs, never a
+structured object.
+
+The rejection message names **which** body is full-config, because the fix differs:
+
+- **Your incoming body is full-config** — you authored it, so convert it to the diff form
+  (`*_DIFF` markers) or use `--mode replace`.
+- **The current page on the server is full-config** — every page `create-app-section`
+  generates is stored this way. You did not author that body and cannot convert it, so
+  append is **not supported** against it by design: a `*_DIFF` is a list of operations
+  relative to a base and cannot be losslessly derived from an already-resolved full-config
+  body without that base (see ENG-93090), and merging diff-form operations into a full-config
+  body would produce an unloadable mixed form. `--mode replace` is the only path for such a page.
+
+
+## Synopsis
+
+```bash
+clio update-page [options]
+```
+
+
+## Options
+
+```bash
+--schema-name                      Page schema name to update
+
+--body                             Full raw JavaScript schema body (a string
+with /**MARKER*/ pairs, not a structured object)
+
+--body-file                        Path to a file containing the body.
+Alternative to --body for large bodies
+
+--mode                             Write mode: 'replace' (default) or 'append'
+(merge with the current body). Append requires the
+diff form; a full-config body is rejected up front —
+use 'replace' for such a body
+
+--dry-run                          Validate only and do not save
+
+--resources                        Valid JSON object of resource key-value
+pairs for #ResourceString(key)# macros
+Malformed JSON is rejected during
+validation
+
+--optional-properties              JSON array of {key, value} objects to
+merge into schema optionalProperties,
+e.g. '[{"key":"entitySchemaName","value":"UsrMyEntity"}]'
+
+--expected-checksum                Baseline SysSchema checksum of the editable
+schema (from get-page). Blocks the save with
+a structured conflict when the server-side
+checksum differs
+
+--force                            Skip the external-modification check and
+deliberately overwrite out-of-band changes
+
+--target-package-uid               Explicit target package UId for the replacing
+schema (overrides automatic design-package
+resolution). A redirected save skips only the
+on-disk baseline; an explicit checksum is still
+compared with the resolved target, and a mismatch
+remains a conflict. With no explicit pin the save
+proceeds unchecked and warns
+
+--target-schema-uid                Explicit schema UId to save into (bypasses
+hierarchy resolution). A redirected save skips only
+the on-disk baseline; an explicit checksum is still
+compared with the resolved target, and a mismatch
+remains a conflict. With no explicit pin the save
+proceeds unchecked and warns
+
+--uri                    -u       Application uri
+
+--Password               -p       User password
+
+--Login                  -l       User login (administrator permission required)
+
+--Environment            -e       Environment name
+
+--Maintainer             -m       Maintainer name
+```
+
+
+## Example
+
+```bash
+clio update-page --schema-name UsrTodo_FormPage --body "<raw body>" --dry-run true -e dev
+validate a raw Freedom UI body without saving it
+
+clio update-page --schema-name UsrTodo_FormPage --body "<edited raw body>" -e dev
+save the edited raw Freedom UI body to the registered dev environment
+
+clio update-page --schema-name UsrTodo_FormPage --body "<edited raw body>" --resources "{\"UsrDetailsTab_caption\":\"Details\"}" -e dev
+save the page and register the missing child-schema localizable string
+
+clio update-page --schema-name UsrTodo_FormPage --body "<edited raw body>" --optional-properties "[{\"key\":\"entitySchemaName\",\"value\":\"UsrTodo\"}]" -e dev
+save the page and merge custom optional properties into the schema
+```

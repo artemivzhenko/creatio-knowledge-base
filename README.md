@@ -2,22 +2,30 @@
 
 A curated collection of **170 Creatio development recipes** — Classic UI (7.x), Freedom UI
 (8.x), C# backend and SQL — plus copyable project templates for Freedom UI and Mobile
-modules, a C# style guide, and an MCP server that makes all of it searchable by an AI
-assistant.
+modules, a C# style guide, **a no-code layer for the clio CLI** (13 block skills and a
+reference page for each of its 261 commands), and an MCP server that makes all of it
+searchable by an AI assistant.
 
-| Area | Recipes |
+| Area | Entries |
 | --- | --- |
 | Frontend — Classic UI (7.x) | 57 |
 | Frontend — Freedom UI (8.x) | 44 |
 | Backend — C# | 62 |
 | Backend — SQL (PostgreSQL) | 4 |
 | Module templates — Freedom UI component and request handlers, Mobile SDK module | 3 |
-| **Total** | **170** |
+| **Code recipes** | **170** |
+| clio — block skills with verified traps | 13 |
+| clio — command reference (generated from clio's docs) | 261 |
 
 Recipes do not compile or run on their own. Every recipe is a header block that explains
 the API and its traps, followed by a code template you adapt. The value is concentrated in
 the headers — they carry the things general Creatio knowledge gets wrong. The two module
 templates are the exception: they are real projects that build.
+
+The clio layer in [no-code/](no-code/README.md) is the counterpart for everything an agent
+does *without* writing code: packages, SQL, objects and columns, Freedom UI pages,
+applications, rights, builds, and clio's own MCP server. Its skills record what was
+verified on a real Creatio 8.2.3 environment — including what clio silently gets wrong there.
 
 ## Quick start
 
@@ -75,6 +83,7 @@ Frontend/RemoteModule/     2   Freedom UI remote module: view element, request h
 Frontend/Mobile/           1   Creatio Mobile SDK handler module — recipe + template/
 Backend/C#/               62   ESQ, Select/Insert/Update, event listeners, web services, processes, files
 Backend/SQL/               4   PostgreSQL diagnostic queries
+no-code/                       clio CLI for agents: clio-*/SKILL.md per block, reference/<command>.md, tools/sync_clio_docs.py
 mcp-server/                    search server exposing the recipes over MCP
 skill/creatio-kb/              Claude Code skill: the habit of consulting the KB
 ```
@@ -136,7 +145,11 @@ The MCP server gives the assistant six tools:
 | `kb_overview()` | map of areas, topics and counts |
 | `get_code_style(section?)` | the C# style guide, whole or by section |
 
-`area` is one of `ClassicUI`, `FreedomUI`, `RemoteModule`, `Mobile`, `Backend`, `SQL`.
+`area` is one of `ClassicUI`, `FreedomUI`, `RemoteModule`, `Mobile`, `Backend`, `SQL`,
+`Clio`. In the `Clio` area `get_recipe("execute-sql-script")` returns a command's reference
+page and `get_recipe("clio-sql-and-data")` a block skill. Without an area filter, clio pages
+are scaled down so that a platform question ("upload a file") is still answered by a
+platform recipe; name clio or a command in the query to bring them up.
 
 Search is lexical BM25 with a title bonus and a light stemmer (`pagination` finds
 `paginate`), built in memory at startup and rebuilt automatically when a file changes. No
@@ -184,6 +197,7 @@ what supplies the title and the summary the search shows:
 | `.js`, `.ts` | `// --- Title ------------` then `//` comment lines until a blank line |
 | `.cs` | `/// <summary>` … `/// </summary>`; the first sentence becomes the title |
 | `.sql` | leading `--` comment lines |
+| `.md` (no-code only) | the first `# ` heading; description from frontmatter `description:` or the first paragraph |
 
 Name the file for the task: `HowToDoTheThing`. The words in the file name are folded into
 the search terms, so the name carries real weight.

@@ -1,0 +1,59 @@
+---
+command: remove-data-binding-row-db
+block: clio-sql-and-data
+source: clio 8.1.0.145, clio/docs/commands/remove-data-binding-row-db.md (MIT)
+---
+# remove-data-binding-row-db - Removes a row from a DB-first package data binding
+
+## Description
+
+Removes a row from a DB-first package data binding. Deletes the binding schema data record when no rows remain.
+
+
+## Usage
+
+```bash
+clio remove-data-binding-row-db -e <ENVIRONMENT_NAME> --package <PACKAGE_NAME>
+--binding-name <BINDING_NAME> --key-value <PRIMARY_KEY_VALUE>
+```
+
+
+## Options
+
+```bash
+-e, --environment          Creatio environment name (required when --uri is omitted)
+--uri                      Creatio application URI (alternative to --environment)
+--package                  Target package name (required)
+--binding-name             Binding folder name (required)
+--key-value                Primary-key value of the row to remove (required)
+-H, --help                 Show this help
+```
+
+
+## Behavior
+
+Looks up the entity schema name from the remote SysPackageSchemaData table.
+Fetches bound rows via GetBoundSchemaData to locate the target row.
+Deletes the entity record via DeleteQuery.
+When rows remain, rebuilds SaveSchema metadata from the primary key plus the columns
+present in the remaining bound rows.
+When no rows remain, deletes the binding schema data record via DeletePackageSchemaDataRequest.
+After remote mutation, read back from Creatio instead of treating the request payload
+or install log as proof.
+
+In file system development mode the platform applies the binding change to the database only, so
+the package folder on disk (`Pkg/<package>/Data/<binding>`) does not get the change and a commit
+of that folder does not carry it. The command still exits 0 and prints a warning naming the
+folder. Run `clio pkg-to-file-system -e <ENVIRONMENT_NAME>` to write it to disk. That command
+rewrites every package folder on disk from the database (except client modules and C# source code)
+and removes on-disk items the database does not have, so commit on-disk work that is not in the
+database yet first, and run it before the next `pkg-to-db`, which makes the database match the
+disk.
+
+
+## Example
+
+```bash
+clio remove-data-binding-row-db -e dev --package Custom --binding-name SysSettings \
+--key-value 4f41bcc2-7ed0-45e8-a1fd-474918966d15
+```

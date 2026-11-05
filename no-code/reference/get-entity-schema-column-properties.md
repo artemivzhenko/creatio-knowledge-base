@@ -1,0 +1,81 @@
+---
+command: get-entity-schema-column-properties
+block: clio-schemas
+source: clio 8.1.0.145, clio/docs/commands/get-entity-schema-column-properties.md (MIT)
+---
+# get-entity-schema-column-properties - Get column properties from a remote Creatio entity schema
+
+## Name
+
+get-entity-schema-column-properties - Get column properties from a remote Creatio entity schema
+
+
+## Synopsis
+
+```bash
+clio get-entity-schema-column-properties [OPTIONS]
+```
+
+
+## Description
+
+Prints a human-readable summary for one remote entity schema column. Omit
+`--package` to discover the column in the merged runtime schema across all
+packages. Supply `--package` to retain the package-scoped designer read and
+inspect that package layer's full metadata.
+
+
+## Options
+
+```bash
+--package              Optional target package; omit for merged discovery
+--schema-name          Entity schema name
+--column-name          Column name
+
+Environment options are also available:
+-e, --Environment      Environment name from the registered configuration
+-u, --uri              Application URI
+-l, --Login            User login
+-p, --Password         User password
+```
+
+
+## Examples
+
+```bash
+clio get-entity-schema-column-properties -e dev --schema-name Contact --column-name UsrStatus
+
+# Read properties of an own column
+clio get-entity-schema-column-properties -e dev --package Custom --schema-name UsrVehicle --column-name Name
+
+# Read properties of an inherited column
+clio get-entity-schema-column-properties -e dev --package Custom --schema-name UsrVehicle --column-name Owner
+```
+
+
+## Notes
+
+- output is human-readable text, not JSON
+- the report includes whether the column is own or inherited
+- in merged mode, `source` describes parent-schema inheritance, not package ownership
+- merged mode reports `track-changes`, `localizable-text`, and
+  `do-not-control-integrity` as `<unknown>` because `RuntimeEntitySchemaRequest`
+  does not expose them; do not interpret those values as `false`
+- supply `--package` when those three values or package-layer ownership must be authoritative
+- the report includes the usage type (`General`, `Advanced`, or `None`) as a friendly
+  name that can be passed back to `modify-entity-schema-column --usage-type`
+- the report includes default-value-source, default-value, and
+structured default-value-config
+- structured default-value-config includes `resolved-value-source` for canonical
+  identifiers (`SystemValue` Guid, `Settings` code)
+- for a **lookup** column with a `Const` default, default-value-config is enriched with
+  `display-value` (the referenced record's display value, resolved in the connected user's
+  culture); when it cannot be resolved, `record-resolution` carries a marker
+  (`no-access`, `not-found-or-no-access`, or `display-column-unavailable`) and `display-value` is empty
+- `SystemValue` defaults on any supported column type include the native catalog
+  caption in `display-value` while preserving the canonical GUID. This identifies
+  the configured source, not its evaluated runtime value. If unavailable,
+  `source-resolution` is `invalid-source`, `unsupported-type`, `not-found-for-type`,
+  `caption-unavailable`, or `catalog-unavailable`. Catalog unavailability does not
+  imply that the stored selector is invalid. This applies to package-scoped and merged reads.
+- column type names are normalized to readable values such as Binary, Image, File, and ImageLookup

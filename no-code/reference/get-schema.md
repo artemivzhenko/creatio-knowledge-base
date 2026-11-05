@@ -1,0 +1,71 @@
+---
+command: get-schema
+block: clio-schemas
+source: clio 8.1.0.145, clio/docs/commands/get-schema.md (MIT)
+---
+# get-schema - Read body and metadata of a C# source-code schema on a remote Creatio environment
+
+## Name
+
+get-schema - Read body and metadata of a C# source-code schema on a remote Creatio environment
+
+**Aliases:** `schema-get`
+
+
+## Description
+
+The get-schema command reads the body and metadata of an existing C# source-code schema on a
+remote Creatio environment via SourceCodeSchemaDesignerService. The schema is resolved by name
+(ManagerName=SourceCodeSchemaManager) and the full schema descriptor (UId, name, caption,
+package, body, etc.) is returned. No local workspace files are created or modified.
+`caption` is in the connected user's profile culture, else `en-US`, else the first culture the
+designer service returned.
+
+When `--output-file` is set, the schema body is written to the specified file and the body
+field is omitted from the response JSON printed to stdout. This keeps the terminal output
+small and makes it easy to edit the body locally before piping it back through
+`update-schema`. The output path is confined to the workspace or the OS temp directory
+(symlinks are resolved; a path resolving outside both, or one that already exists, is rejected before
+any write), because this command is MCP-callable and its path can be agent-supplied.
+
+
+## Synopsis
+
+```bash
+clio get-schema [options]
+```
+
+
+## Options
+
+```bash
+--schema-name                      C# source-code schema name (required)
+
+--output-file                      Optional absolute path. When set, the schema body is
+                                   written to this file and the body field is omitted
+                                   from the response JSON. Confined to the workspace or
+                                   the OS temp directory
+
+--uri                    -u       Application uri
+
+--Password               -p       User password
+
+--Login                  -l       User login (administrator permission required)
+
+--Environment            -e       Environment name
+
+--Maintainer             -m       Maintainer name
+```
+
+
+## Example
+
+```bash
+clio get-schema --schema-name UsrMyHelper -e dev
+
+clio get-schema --schema-name UsrMyHelper --output-file /tmp/UsrMyHelper.cs -e dev
+# Save the body to /tmp/UsrMyHelper.cs; response JSON omits the body
+
+clio schema-get --schema-name UsrMyHelper -e dev
+# Same as the first example using the alias
+```

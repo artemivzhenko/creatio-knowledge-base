@@ -1,0 +1,82 @@
+---
+command: delete-app-section
+block: clio-apps
+source: clio 8.1.0.145, clio/docs/commands/delete-app-section.md (MIT)
+---
+# delete-app-section - Delete a section from an existing installed application
+
+## Name
+
+delete-app-section - Delete a section from an existing installed application
+
+
+## Description
+
+The delete-app-section command removes a section and its explicitly referenced
+metadata artifacts from a Creatio application. The following artifacts
+are deleted in order:
+
+- SysModuleInWorkplace records (workplace visibility entries)
+- SysModuleLcz records (section localizations, if any)
+- Declared list and form page schemas (by UId, via WorkspaceExplorer)
+- SysModule record (the section itself)
+- Unshared SysModuleEntity record (section-to-entity binding)
+
+By default, the underlying entity schema is preserved so that data in the
+underlying database table is not lost. Pass `--delete-entity-schema` to also
+remove the entity schema.
+
+> **This is not the command for removing a section from a workplace.** It deletes
+> the section itself, from every workplace at once. To take a section out of one
+> workplace while keeping it elsewhere, delete only its `SysModuleInWorkplace`
+> row — read `get-guidance name=workplaces` for the recipe and the matching data
+> binding update.
+
+
+## Synopsis
+
+```bash
+clio delete-app-section [options]
+```
+
+
+## Options
+
+```bash
+--application-code               Installed application code. Required.
+
+--section-code                   Section code (schema name). Required.
+
+--delete-entity-schema           Also delete the underlying entity schema.
+                                 Default: false
+
+--Environment            -e      Environment name. Required.
+```
+
+
+## Output
+
+The command prints structured JSON that includes:
+
+- application identity
+- deleted section identity and metadata
+
+
+## Example
+
+```bash
+clio delete-app-section --application-code UsrOrdersApp --section-code UsrOrders -e dev
+
+clio delete-app-section --application-code UsrOrdersApp --section-code UsrOrders --delete-entity-schema -e dev
+# delete the section and also remove the UsrOrders entity schema
+```
+
+
+## Notes
+
+- The entity schema is preserved by default so data in the underlying table is not lost.
+- The form page is retained with its entity. Pages registered as edit, mini or search-row pages and pages or entity bindings shared by another section are retained. Entity deletion is refused if another section uses it.
+- Schema identities are logged before deletion and each successful schema deletion is logged afterwards. A failed schema delete stops the command; deletion is not transactional and may be partial.
+- The command is destructive and cannot be undone.
+- No name-prefix matching is used. Auxiliary schemas (details, mobile pages, addons, listeners) without an explicit section reference are retained.
+- Declared list and form page schemas are deleted through WorkspaceExplorer and require developer mode to be active on the target environment.

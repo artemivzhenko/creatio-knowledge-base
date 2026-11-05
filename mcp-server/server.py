@@ -31,7 +31,12 @@ mcp = _Server(
         "project's idioms, naming rules and known traps that general knowledge "
         "does not have. Start with search_recipes, then get_recipe for the full "
         "example. For C# code, read get_code_style before writing: it holds the "
-        "formatting, naming and architecture rules of Creatio platform code."
+        "formatting, naming and architecture rules of Creatio platform code. "
+        "The Clio area covers the clio CLI (packages, SQL, schemas, pages, apps, "
+        "rights, its own MCP server): search_recipes(query, area='Clio') finds the "
+        "block skill and the command reference; get_recipe('execute-sql-script') "
+        "returns a command's full syntax, options and examples; get_recipe("
+        "'clio-sql-and-data') returns the block's workflow and verified traps."
     ),
 )
 
@@ -44,12 +49,12 @@ def _fingerprint(root: Path) -> tuple[int, float]:
     """Cheap staleness check: file count plus the newest mtime."""
     count = 0
     newest = 0.0
-    for sub in ("Frontend", "Backend"):
+    for sub in ("Frontend", "Backend", "no-code"):
         base = root / sub
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
-            if path.is_file() and path.suffix in (".js", ".ts", ".cs", ".sql"):
+            if path.is_file() and path.suffix in (".js", ".ts", ".cs", ".sql", ".md"):
                 count += 1
                 newest = max(newest, path.stat().st_mtime)
     return count, newest
@@ -88,7 +93,9 @@ def kb_overview() -> str:
     lines.append(
         "Areas: ClassicUI (Creatio 7.x pages, details, sections), "
         "FreedomUI (8.x pages), RemoteModule (Angular custom view elements), "
-        "Mobile (Mobile SDK handler modules), Backend (C# server code), SQL. "
+        "Mobile (Mobile SDK handler modules), Backend (C# server code), SQL, "
+        "Clio (the clio CLI: one skill per functional block at the root, one "
+        "reference page per command under reference/). "
         "RemoteModule and Mobile recipes each sit next to a copyable project "
         "folder named in the recipe header."
     )
@@ -106,9 +113,10 @@ def search_recipes(query: str, area: str = "", limit: int = 8) -> str:
 
     query: what you are trying to do, in plain words or as an API name.
            Examples: "filter a lookup field", "run a business process",
-           "crt.OpenLookupPageRequest", "make a detail editable".
+           "crt.OpenLookupPageRequest", "make a detail editable",
+           "execute sql script", "push package to environment".
     area:  optional filter - "ClassicUI", "FreedomUI", "RemoteModule", "Mobile",
-           "Backend" or "SQL".
+           "Backend", "SQL" or "Clio" (the clio CLI and its MCP server).
            Leave empty to search everything; Classic UI and Freedom UI often have
            a recipe each for the same task, and seeing both tells you which UI
            generation the answer belongs to.
@@ -145,7 +153,9 @@ def get_recipe(recipe_id: str) -> str:
 
     recipe_id: the id from search_recipes, for example
                "Frontend/ClassicUI/Fields/HowToFilterLookupField".
-               A bare file name is accepted when it is unambiguous.
+               A bare file name is accepted when it is unambiguous; for clio a
+               command name ("execute-sql-script") or a block skill name
+               ("clio-sql-and-data") works directly.
 
     The code is a template, not a drop-in: schema names, column names and the
     generated attribute suffixes (PDS_Name_a1b2c3d) must be replaced with the
@@ -210,8 +220,9 @@ def list_recipes(area: str = "", topic: str = "") -> str:
     """
     Browse recipe ids and titles, optionally narrowed to an area and a topic.
 
-    area:  "ClassicUI", "FreedomUI", "RemoteModule", "Mobile", "Backend" or "SQL".
-    topic: a folder inside the area, e.g. "Details", "BaseMethods", "ESQ".
+    area:  "ClassicUI", "FreedomUI", "RemoteModule", "Mobile", "Backend", "SQL" or "Clio".
+    topic: a folder inside the area, e.g. "Details", "BaseMethods", "ESQ",
+           "reference" (clio command pages; the block skills sit at the root).
            Call kb_overview to see the available topics.
 
     Prefer search_recipes when you have a task in mind; this tool is for

@@ -1,0 +1,98 @@
+---
+command: autoupdate
+block: clio-basics
+source: clio 8.1.0.145, clio/docs/commands/autoupdate.md (MIT)
+---
+# autoupdate - Enable or disable automatic clio updates on startup
+
+## Name
+
+autoupdate - Enable or disable automatic clio updates on startup
+
+
+## Synopsis
+
+```bash
+autoupdate [--enable | --disable]
+```
+
+
+## Description
+
+Controls the `clio` policy in the automatic-update settings. Running the
+command without arguments displays whether automatic clio updates are enabled.
+
+By default, automatic clio and toolkit updates are disabled; knowledge updates are enabled.
+Existing explicitly configured values, including legacy scalar values, are preserved.
+
+Clio also has independent knowledge and toolkit policies. On an eligible
+command startup, each due enabled policy advances its `next-run` timestamp and
+calls the existing updater on a best-effort basis.
+
+The MCP verbs (`mcp-server`, `mcp-http`) are excluded from that startup check, so the `knowledge`
+policy is additionally evaluated **when guidance is read**: a `get-guidance` lookup answers from the
+active generation and, when the cache is due for verification, starts the refresh beside the answer
+(ENG-99899). Without it, an installation used only through MCP would never refresh its guidance — a
+warm start activates the cached generation without contacting the publisher. It is the same policy, so
+`"knowledge": { "enabled": false }` stops the read-triggered refresh as well, `frequency-minutes` sets
+its cadence, and the persisted `next-run` keeps a CLI command and a resident MCP host from each
+running their own update.
+
+```json
+"autoupdate": {
+  "clio":      { "enabled": false, "frequency-minutes": 480, "next-run": "2026-09-04T08:00:00Z" },
+  "knowledge": { "enabled": true, "frequency-minutes": 60,  "next-run": "2026-09-04T01:00:00Z" },
+  "toolkit":   { "enabled": false, "frequency-minutes": 60,  "next-run": "2026-09-04T01:00:00Z" }
+}
+```
+
+The timestamps are maintained by clio. An existing scalar `Autoupdate` value
+is accepted and applied only to the clio policy.
+
+
+## Options
+
+```bash
+--enable    Enable automatic clio updates
+
+--disable   Disable automatic clio updates (default behavior)
+```
+
+
+## Examples
+
+```bash
+autoupdate
+
+# Disable automatic updates
+autoupdate --disable
+
+# Re-enable automatic updates
+autoupdate --enable
+```
+
+
+## Behavior
+
+- With no flags: prints whether auto-update is currently enabled or disabled
+- --enable and --disable control only `autoupdate.clio.enabled`
+- Default frequencies are 480 minutes for clio and 60 minutes for knowledge and toolkit
+- Due policies reuse the existing clio, knowledge, and toolkit update services
+- The `knowledge` policy is evaluated both at CLI startup and on a guidance read inside a running
+  `mcp-server` / `mcp-http` host; disabling it stops both
+- Manual update commands remain available and bypass the schedule
+- `next-run` is optional: a policy that has never run carries no `next-run`, which means it is due
+- The clio self-update is deferred while an MCP host (`mcp-server` or `mcp-http`) is resident for this
+  user — replacing binaries under a running host breaks it for the rest of its session. The marker is
+  per user, not per clio home, because the update replaces one per-user tool installation.
+  The deferral prints `clio self-update deferred: MCP host pid <N> (version <X>) is running` to
+  stderr (stdout keeps only the command's own output) and leaves `next-run` untouched, so the update
+  happens at the next start with no host running.
+  Knowledge and toolkit updates are never deferred, and `clio update-cli` always updates now
+- While `appsettings.json` holds a member this clio build cannot bind, clio refuses every settings
+  write — including the automatic update schedule — and says so once per run
+
+
+## Exit Codes
+
+    0   Setting applied successfully (or status displayed)

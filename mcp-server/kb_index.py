@@ -31,6 +31,8 @@ AREAS = {
     "Mobile": ("Frontend/Mobile", (".ts",)),
     "Backend": ("Backend/C#", (".cs",)),
     "SQL": ("Backend/SQL", (".sql",)),
+    # clio CLI: one SKILL.md per functional block plus a generated reference per command.
+    "Clio": ("no-code", (".md",)),
 }
 
 STOPWORDS = {
@@ -55,6 +57,10 @@ W_DESC_HIT = 0.9
 W_BODY_SCALE = 0.5
 # Documents matching only one term of a multi-word query are damped by coverage.
 COVERAGE_FLOOR = 0.35
+# Without an area filter, a platform question ("upload a file") must not be
+# answered by a clio command page ("upload-file"); the CLI pages are long and
+# word-dense, so they are scaled down unless the query names clio or a command.
+W_CLIO_UNFILTERED = 0.6
 
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
 _CAMEL_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
@@ -176,6 +182,32 @@ def _cs_header(src: str, stem: str) -> tuple[str, str]:
     return title, text
 
 
+_MD_FRONT_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+_MD_H1_RE = re.compile(r"(?m)^# (.+?)\s*$")
+
+
+def _md_header(src: str) -> tuple[str, str]:
+    """Title from the first H1; description from frontmatter `description:` or the first paragraph."""
+    front = _MD_FRONT_RE.match(src)
+    body = src[front.end():] if front else src
+    desc = ""
+    if front:
+        m = re.search(r"(?m)^description:\s*(.+)$", front.group(1))
+        if m:
+            desc = m.group(1).strip()
+    h1 = _MD_H1_RE.search(body)
+    if not h1:
+        return "", desc
+    if not desc:
+        for para in re.split(r"\n\s*\n", body[h1.end():]):
+            para = " ".join(para.split())
+            # The generated command pages repeat the title as their first paragraph.
+            if para and para != h1.group(1).strip() and not para.startswith(("#", "```", "|", "<!--")):
+                desc = para
+                break
+    return h1.group(1).strip(), desc
+
+
 def _sql_header(src: str, stem: str) -> tuple[str, str]:
     body: list[str] = []
     for line in src.split("\n"):
@@ -264,6 +296,8 @@ class KnowledgeBase:
             title, desc = _js_header(src)
         elif path.suffix == ".cs":
             title, desc = _cs_header(src, stem)
+        elif path.suffix == ".md":
+            title, desc = _md_header(src)
         else:
             title, desc = _sql_header(src, stem)
 
@@ -274,6 +308,11 @@ class KnowledgeBase:
         rel = path.relative_to(self.root).as_posix()
         topic = path.parent.relative_to(base).as_posix()
         topic = "" if topic == "." else topic
+        if stem == "SKILL":
+            # A skill is its folder: id "no-code/clio-sql-and-data", found by that bare name.
+            stem = path.parent.name
+            rel = path.parent.relative_to(self.root).as_posix() + ".md"
+            topic = ""
 
         # The file name carries real intent here - every recipe is named
         # HowToDoTheThing - and the words in it are not always repeated in the
@@ -318,6 +357,7 @@ class KnowledgeBase:
         unique = list(dict.fromkeys(terms))
         n = len(self.recipes) or 1
         k1, b = 1.2, 0.75
+        damp_clio = not area and "clio" not in unique and "-" not in query
 
         scored: list[tuple[Recipe, float]] = []
         for r in self.recipes.values():
@@ -351,6 +391,8 @@ class KnowledgeBase:
                 + W_TITLE_HIT * title_hits
                 + W_DESC_HIT * desc_hits
             ) * damp
+            if damp_clio and r.area == "Clio":
+                score *= W_CLIO_UNFILTERED
             scored.append((r, score))
 
         scored.sort(key=lambda pair: (-pair[1], pair[0].id))

@@ -1,0 +1,135 @@
+---
+command: get-page
+block: clio-pages
+source: clio 8.1.0.145, clio/docs/commands/get-page.md (MIT)
+---
+# get-page - Read a Freedom UI page as a merged bundle plus raw schema body
+
+## Name
+
+get-page - Read a Freedom UI page as a merged bundle plus raw schema body
+
+**Aliases:** `page-get`
+
+
+## Description
+
+The get-page command resolves the requested Freedom UI page, loads its full
+designer hierarchy, builds the effective merged bundle, and returns a JSON
+envelope with nested page metadata, bundle data, and raw.body. Use raw.body
+as the editable payload for update-page.
+
+The command resolves the design package independently of the current hierarchy
+leaf. page.packageName (also page.currentLeafPackageName) names that leaf and
+may identify a read-only vendor package. page.designPackageUId and
+page.designPackageName identify the default write destination, including a
+virtual customer package before its first save. The name is best-effort and
+may be absent if package metadata is unavailable. Read-time design resolution
+can fall back to the leaf; update-page resolves its destination again and
+fails closed if that resolution fails.
+
+page.willCreateReplacingInDesignPackage means the design package has no
+replacing schema yet; it does not by itself mean the package is new. raw.body
+contains the design-package schema body, or an empty scaffold for its first
+replacement. Normal update-page/sync-pages calls create that replacement;
+there is no need to copy vendor bodies or override the target package.
+
+> **CLI vs MCP envelope.** The CLI verb returns `bundle` and `raw.body` inline. The MCP
+> `get-page` tool deliberately compacts its successful response to `page` and `files`,
+> plus `editable` **when the checksum probe succeeded** — the body and the bundle live on
+> disk instead, at the paths reported in `files.bodyFile` / `files.bundleFile`. MCP callers
+> read `files.bodyFile`; there is no `raw` property in the MCP response.
+>
+> **`include-operations` (MCP only, default `false`).** By default the MCP response leaves
+> `page.ownBodySummary.viewConfigDiffOps` out and returns `page.ownBodySummary.viewConfigDiffOpCounts`
+> (number of operations per operation type) in its place; pass `true` to get the per-operation list in
+> the response. `meta.json` is written first and keeps the full list either way. (The default was
+> `true` before ENG-103023; a page's own body routinely names dozens of components.)
+>
+> **`editable` is optional.** The capture is best-effort: when the `SysSchema` checksum row
+> is missing or the query fails, the successful envelope carries no `editable` key at all.
+> Treat its absence as *baseline unavailable*, never as *no editable schema exists* — the
+> update still works, it just runs without the conflict-detection baseline.
+>
+> **The paths are on the MCP server host.** They are consumable only when the client shares
+> that filesystem — stdio, or `mcp-http` on loopback. A remote `mcp-http` client receives
+> absolute paths it cannot open; there is no API-native body-retrieval path today.
+>
+> **get-page REPLACES the schema directory on every call.** `.clio-pages/{schema-name}/` is
+> deleted recursively before the fresh `body.js` / `bundle.json` / `meta.json` are written,
+> so a second `get-page` of the same schema destroys an edit made in place (and anything
+> else kept in that directory). Send the edit through `update-page` / `sync-pages`, or copy
+> it out first.
+>
+> **`warnings` is optional.** A schema chain that the Creatio differ rejects fails get-page with
+> an error naming the page. One shape is read anyway so the page can be repaired: a
+> `viewConfigDiff` `insert` or `move` with a `parentName` but no `propertyName` (older clio
+> versions saved it). get-page then resolves the bundle without that operation and returns a
+> `warnings` entry naming the schema, the operation index and the fix; `raw.body` / `body.js`
+> still contains the operation. Add the parent's slot (e.g. `"propertyName": "items"`) or remove
+> the operation, then save with `update-page`.
+
+
+## Conflict-Detection Baseline
+
+The response carries an `editable` block with the editable schema state captured at
+fetch time (best-effort — a failed capture never fails get-page):
+
+```jsonc
+{
+  "editable": {
+    "editableSchemaExists": true,
+    "editableSchemaUId": "…",
+    "checksum": "…",        // SysSchema.Checksum at fetch time
+    "modifiedOn": "…"        // informational only
+  }
+}
+```
+
+Both the CLI verb and the MCP `get-page` tool write `body.js`, `bundle.json` and
+`meta.json` into `.clio-pages/{schema-name}/` (anchored at the workspace root, or at
+`--output-directory`). The `meta.json` persists this state as a `baseline` block
+(together with the environment identity), so a later `update-page` / `sync-pages` for the
+same environment arms the conflict check from it automatically — no need to pass
+`--expected-checksum` by hand. Pass `--expected-checksum` explicitly only to override the
+on-disk baseline.
+
+
+## Synopsis
+
+```bash
+clio get-page [options]
+```
+
+
+## Options
+
+```bash
+--schema-name                      Page schema name to read
+
+--output-directory                 Directory that anchors the .clio-pages output
+                                   tree (body.js / bundle.json / meta.json).
+                                   Defaults to the workspace root, or the clio
+                                   home root when no workspace is found
+
+--uri                    -u       Application uri
+
+--Password               -p       User password
+
+--Login                  -l       User login (administrator permission required)
+
+--Environment            -e       Environment name
+
+--Maintainer             -m       Maintainer name
+```
+
+
+## Example
+
+```bash
+clio get-page --schema-name UsrTodo_FormPage -e dev
+return the merged Freedom UI bundle and raw body for UsrTodo_FormPage
+
+clio get-page --schema-name UsrTodo_FormPage -u https://my-creatio -l Supervisor -p Supervisor
+read a Freedom UI page using direct connection arguments
+```

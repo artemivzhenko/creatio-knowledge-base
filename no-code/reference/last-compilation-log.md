@@ -1,0 +1,52 @@
+---
+command: last-compilation-log
+block: clio-workspace-and-build
+source: clio 8.1.0.145, clio/docs/commands/last-compilation-log.md (MIT)
+---
+# last-compilation-log - Get last compilation log
+
+## Timeout
+
+The read is bounded at 60 seconds. It used to be unbounded, which meant an environment that accepted
+the connection and then said nothing held the command for the life of the process.
+
+
+## Name
+
+last-compilation-log - Get last compilation log
+
+
+## Description
+
+Retrieves the most recently persisted configuration compilation result from the selected environment.
+The command does not start or track a compilation. Creatio must expose
+`GetLastCompilationResult`, and the current user must be allowed to manage the solution.
+
+
+## Synopsis
+
+```bash
+clio last-compilation-log [OPTIONS]
+```
+
+
+## Options
+
+```bash
+-e, --environment <ENVIRONMENT_NAME>
+Target environment name
+
+--raw
+Print the unformatted JSON response
+```
+
+
+## Examples
+
+```bash
+clio last-compilation-log -e dev
+Print the last compilation log from the dev environment
+
+clio last-compilation-log -e dev --raw
+Print Creatio's raw JSON response
+```

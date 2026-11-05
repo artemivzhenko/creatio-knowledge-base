@@ -7,8 +7,8 @@ recipe for a concrete task instead of loading all 170 files into context.
 
 | Tool | Purpose |
 | --- | --- |
-| `search_recipes(query, area?, limit?)` | Ranked search by task or symptom. `area` = `ClassicUI` / `FreedomUI` / `RemoteModule` / `Mobile` / `Backend` / `SQL`. |
-| `get_recipe(recipe_id)` | Full text of one recipe: explanation header plus runnable code. |
+| `search_recipes(query, area?, limit?)` | Ranked search by task or symptom. `area` = `ClassicUI` / `FreedomUI` / `RemoteModule` / `Mobile` / `Backend` / `SQL` / `Clio`. |
+| `get_recipe(recipe_id)` | Full text of one recipe: explanation header plus runnable code. For clio, a command name (`execute-sql-script`) or a block skill (`clio-sql-and-data`) resolves directly. |
 | `find_api(symbol, limit?)` | Reverse lookup — which recipes use `crt.OpenLookupPageRequest`, `UseAdminRights`, `EntitySchemaQuery`… A bare name also matches the dotted one. |
 | `list_recipes(area?, topic?)` | Browse ids and titles. |
 | `kb_overview()` | Map of areas, topics and counts — the entry point when the model does not know what exists. |
@@ -133,10 +133,15 @@ it before writing Creatio code. Install it by copying the folder into
 ## How indexing works
 
 - Recipes are discovered under `Frontend/ClassicUI`, `Frontend/FreedomUI`,
-  `Frontend/RemoteModule`, `Frontend/Mobile`, `Backend/C#` and `Backend/SQL`. A folder
-  with `package.json` inside (a copyable project template) is skipped.
+  `Frontend/RemoteModule`, `Frontend/Mobile`, `Backend/C#`, `Backend/SQL` and, as area
+  `Clio`, the Markdown under `no-code/`. A folder with `package.json` inside (a copyable
+  project template) is skipped.
 - The title and description come from the header block: `// --- Title ---` in `.js`
-  and `.ts` files, `/// <summary>` in `.cs`, the leading `--` comment in `.sql`.
+  and `.ts` files, `/// <summary>` in `.cs`, the leading `--` comment in `.sql`, the first
+  `# ` heading plus frontmatter `description:` in `.md`. A `SKILL.md` is indexed under its
+  folder name (`no-code/clio-pages`).
+- Without an `area`, Clio pages are scaled by `W_CLIO_UNFILTERED` unless the query names
+  clio or a kebab-case command, so CLI pages do not answer platform questions.
 - A recipe id is its path without the extension, e.g.
   `Frontend/ClassicUI/Fields/HowToFilterLookupField`.
 - Tokenisation splits dotted and camelCase identifiers, so `crt.OpenLookupPageRequest`

@@ -1,0 +1,200 @@
+---
+command: modify-entity-schema-column
+block: clio-schemas
+source: clio 8.1.0.145, clio/docs/commands/modify-entity-schema-column.md (MIT)
+---
+# modify-entity-schema-column - Add, modify, or remove a column in a remote Creatio entity schema
+
+## Name
+
+modify-entity-schema-column - Add, modify, or remove a column in a remote Creatio entity schema
+
+
+## Synopsis
+
+```bash
+clio modify-entity-schema-column [OPTIONS]
+```
+
+
+## Description
+
+Loads the full entity schema design item from the remote Creatio environment,
+mutates one own column locally, and saves the schema back through
+EntitySchemaDesignerService.
+
+This command is part of the canonical clio MCP mutation surface for
+explicit single-column edits. Use update-entity-schema when the work spans
+several column operations on one schema.
+
+After saving, the configuration is always published, so the changed column
+becomes visible to lookup pickers without a manual compile. The OData
+entities are rebuilt only when the mutation changes the published OData
+contract - adding or removing a column, renaming one (--new-name), or
+changing its type or reference schema. Changing a column's caption,
+description, default value, mask, usage type, or required flag leaves the
+OData contract unchanged and does
+not trigger a rebuild. When a rebuild is requested, it runs in the
+background (~1-2 min); a 404 (or "The request is invalid") from OData right
+after the change is the expected async gap, so wait and retry rather than
+compiling. Each call
+publishes once - to change several columns at once, batch them through
+update-entity-schema.
+
+Supported actions:
+- add
+- modify
+- remove
+
+Supported types for add and modify:
+- Guid
+- Text, ShortText, MediumText, LongText, MaxSizeText
+- Text50, Text250, Text500, TextUnlimited, PhoneNumber, WebLink, Email, RichText
+- Binary, Image, File, SecureText (Blob is accepted as an alias for Binary; Encrypted and Password are accepted as aliases for SecureText; EmailAddress is accepted as an alias for Email)
+- ImageLookup (ImageLink is accepted as an alias; references the SysImage schema automatically — no --reference-schema)
+- Integer
+- Float
+- Decimal0, Decimal1, Decimal2, Decimal3, Decimal4, Decimal8, Currency0, Currency1, Currency2, Currency3
+(Money is accepted as an alias for Currency2 — the normal two-decimal Creatio money column;
+Decimal is accepted as an alias for Decimal2, same as Float)
+- Boolean
+- DateTime (Date and Time are accepted, but are aliases of DateTime: the column is stored as DateTime
+and read back as DateTime, so date-only or time-only intent is not preserved)
+- Lookup (requires --reference-schema)
+- Color (stores a hex color string such as #RRGGBB; not a text column — the text-only options multiline/accent-insensitive/format-validated/masked do not apply)
+
+For image/photo fields rendered with the crt.ImageInput Freedom UI component, use the
+ImageLookup ("Image link") type. The binary Image type does not work with crt.ImageInput.
+
+
+## Options
+
+```bash
+--package                      Target package name. Required
+--schema-name                  Entity schema name. Required
+--action                       Column action: add, modify, or remove. Required
+--column-name                  Target column name. Required
+--new-name                     New column name for rename operations
+--type                         Column type for add/modify
+--title                        Column title/caption
+--description                  Column description
+--reference-schema             Lookup reference schema name (not used for ImageLookup)
+--required                     Set required flag
+--indexed                      Set indexed flag
+--cloneable                    Set make-copy flag
+--track-changes                Set update-change-log flag
+--default-value-source         Legacy default value shorthand: Const or None
+--default-value                Legacy constant default value shorthand
+--multiline-text               Set multi-line text flag (Text only)
+--localizable-text             Set localizable text flag (Text only)
+--accent-insensitive           Set accent-insensitive flag (Text only)
+--masked                       Set masked flag (Text/SecureText only)
+--format-validated             Set format-validated flag (Text only)
+--use-seconds                  Set use-seconds flag (DateTime only)
+--simple-lookup                Set simple-lookup flag (Lookup only)
+--cascade                      Set cascade-connection flag (Lookup only)
+--do-not-control-integrity     Set do-not-control-integrity flag (Lookup only)
+--usage-type                   Column usage type: General (default), Advanced,
+or None (case-insensitive; any column type). On
+modify the stored value is left unchanged when omitted.
+--caption-culture              Override the culture for the written column
+caption/description (e.g. en-US, uk-UA).
+Precedence: override > profile culture > en-US.
+Supplying it skips the profile-culture lookup.
+--timeout                      Request timeout in milliseconds. Default: 100000
+
+Environment options are also available:
+-e, --environment              Environment name from the registered configuration
+-u, --uri                      Application URI
+-l, --login                    User login
+-p, --password                 User password
+--client-id                    OAuth client id; with --client-secret and
+--auth-app-uri, replaces --login/--password
+--client-secret                OAuth client secret
+--auth-app-uri                 OAuth app URI
+--external-access-token        Support access-list token, exchanged for a
+Creatio session instead of a login and password
+```
+
+
+## Requirements
+
+cliogate must be installed on the target Creatio environment.
+
+
+## Examples
+
+```bash
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicle --action add --column-name Name --type Text --title "Vehicle name"
+
+# Add a lookup column
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicle --action add --column-name Owner --type Lookup --reference-schema Contact --title "Owner"
+
+# Rename and update a column
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicle --action modify --column-name Owner --new-name PrimaryOwner --title "Primary owner"
+
+# Clear a previously configured default value
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicle --action modify --column-name Status --default-value-source None
+
+# Set a column's usage type
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicle --action modify --column-name Status --usage-type Advanced
+
+# Remove an own column
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicle --action remove --column-name LegacyCode
+
+# Redirect an inherited lookup on a child of a virtual parent
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrVehicleInFolder --action modify --column-name Folder --reference-schema UsrVehicleFolder
+
+# Override the caption of an inherited column on a replacing/child schema
+clio modify-entity-schema-column -e dev --package Custom --schema-name UsrTickets --action modify --column-name Symptoms --title "Description"
+```
+
+
+## Notes
+
+- own columns support all mutations; an INHERITED column can have its caption/description
+overridden (--title/title-localizations, --description/description-localizations) on a
+replacing/child schema — its name, type, and flags stay read-only (a Lookup's reference schema
+is the exception below), and it cannot be removed.
+The override is stored on the child schema and does not change the parent
+- an INHERITED Lookup column also accepts --reference-schema on modify, which redirects the
+inherited reference in place. The parent must be virtual (for example BaseItemInFolder), the
+schema must not replace its parent, and the target must be a non-virtual schema that inherits
+from the column's reference in the parent schema, so a redirected column can be redirected again;
+the new reference is read back after saving
+- add refuses a name the parent schema already has and names the parent
+- remove clears schema-level references to the deleted column and validates required fallbacks locally
+- unspecified modify options are preserved as-is in the saved payload
+- MCP callers can also send structured default-value-config with source
+None, Const, Settings, SystemValue, or Sequence; direct CLI flags remain
+shorthand for Const and None
+- For default-value-config source=SystemValue:
+value-source can be Guid, enum alias, or caption; values are normalized
+to Guid before save
+- For default-value-config source=Settings:
+value-source can be setting code, setting name, or setting id; values are
+normalized to setting code before save
+- For default-value-config source=Sequence (text columns only):
+set the static prefix via sequence-prefix (e.g. LN-) or a value mask
+ending with {0} (e.g. LN-{0} produces LN-00001), not both; masks with
+static text after {0} are rejected with a validation error
+- If Settings or SystemValue lookup is ambiguous, the command fails with a
+validation error and requests explicit code/Guid input
+- For a lookup column, a Const value is the GUID of a record in the
+referenced schema; the command validates the record exists before save and
+rejects an unknown GUID (point-in-time check; skipped when the referenced
+record cannot be read)
+- Binary, Image, and File columns do not support --default-value or --default-value-source Const
+- After save, the schema is reloaded immediately; save is treated as failed if the mutated column cannot be read back
+- when --caption-culture is omitted, clio uses the connected user's profile
+culture (see get-user-culture) and falls back to en-US if it cannot be resolved;
+column reads (get-entity-schema-column-properties) keep using the host locale
+- (MCP only; the CLI sets one caption through --title / --description) each
+title-localizations / description-localizations value must be written in
+the language of its culture key: the en-US value must be English, and a value in
+a script that does not match a Latin-script culture key (for example Cyrillic
+under en-US) is rejected; put localized text under its own culture key (uk-UA)
+- every caption culture must exist in the Languages section (System Designer -> Languages).
+Creatio silently drops a value in a culture it does not have, so a culture the
+environment does not have fails before anything is saved, listing the
+available cultures; an inactive culture is saved with a warning

@@ -1,0 +1,69 @@
+---
+command: create-data-binding-db
+block: clio-sql-and-data
+source: clio 8.1.0.145, clio/docs/commands/create-data-binding-db.md (MIT)
+---
+# create-data-binding-db - Creates a DB-first package data binding by persisting row data directly to the remote Creatio database
+
+## Description
+
+Creates a DB-first package data binding by persisting row data directly to the remote Creatio database.
+
+
+## Usage
+
+```bash
+clio create-data-binding-db -e <ENVIRONMENT_NAME> --package <PACKAGE_NAME> --schema <SCHEMA_NAME>
+[--binding-name <BINDING_NAME>] [--rows <JSON_ARRAY>]
+```
+
+
+## Options
+
+```bash
+-e, --environment          Creatio environment name (required when --uri is omitted)
+--uri                      Creatio application URI (alternative to --environment)
+--package                  Target package name (required)
+--schema                   Entity schema name (required)
+--binding-name             Binding folder name (defaults to <schema>)
+--rows                     JSON array of row objects, each with a 'values' key:
+[{"values":{"Col":"Value"}}]
+-H, --help                 Show this help
+```
+
+
+## Behavior
+
+Resolves the package UId from the remote environment, fetches the entity schema column
+list from Creatio, and calls SchemaDataDesignerService.svc/SaveSchema to create or
+update the binding schema data record in the DB.
+SaveSchema metadata is projected to the primary key plus the columns referenced by
+currently bound or requested rows, so unrelated runtime-only columns do not block
+Account-like schemas. Explicitly requested unsupported runtime columns still fail.
+A requested row that already exists in the table is adopted into the binding instead of
+re-inserted — matched by Name when the schema has a Name column, otherwise by its Id. This
+lets you bind an existing keyed row (e.g. a `SysSchemaAdminUnitRight` grant) by passing its Id
+without creating a duplicate.
+After remote mutation, read back from Creatio instead of treating the request payload
+or install log as proof.
+To sync the result to a local workspace, use restore-workspace separately.
+
+In file system development mode the platform applies the binding change to the database only, so
+the package folder on disk (`Pkg/<package>/Data/<binding>`) does not get the change and a commit
+of that folder does not carry it. The command still exits 0 and prints a warning naming the
+folder. Run `clio pkg-to-file-system -e <ENVIRONMENT_NAME>` to write it to disk. That command
+rewrites every package folder on disk from the database (except client modules and C# source code)
+and removes on-disk items the database does not have, so commit on-disk work that is not in the
+database yet first, and run it before the next `pkg-to-db`, which makes the database match the
+disk.
+
+
+## Examples
+
+```bash
+clio create-data-binding-db -e dev --package Custom --schema SysSettings
+
+clio create-data-binding-db -e dev --package Custom --schema SysSettings \
+--binding-name UsrMyBinding \
+--rows "[{\"values\":{\"Name\":\"Row\",\"Code\":\"UsrRow\"}}]"
+```

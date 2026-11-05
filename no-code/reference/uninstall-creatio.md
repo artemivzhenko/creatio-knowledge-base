@@ -1,0 +1,342 @@
+---
+command: uninstall-creatio
+block: clio-infrastructure
+source: clio 8.1.0.145, clio/docs/commands/uninstall-creatio.md (MIT)
+---
+# uninstall-creatio - Completely remove a local Creatio instance
+
+## Name
+
+uninstall-creatio - Completely remove a local Creatio instance
+
+
+## Aliases
+
+uc
+
+
+## Description
+
+uninstall-creatio command removes a local Creatio instance from your machine,
+including the target IIS site or application, database (both local and
+containerized), and application files. The application pool is removed only
+when no other IIS application uses it.
+
+When uninstalling by environment name, the registered `EnvironmentPath` in
+`appsettings.json` is authoritative. Clio reads a complete, unfiltered IIS
+inventory and removes every safely validated site or application whose physical
+directory identity matches that path, including classic nested `/0` applications.
+Filesystem aliases are resolved when the directories exist. Every pool assigned to
+the selected applications is handled independently; shared pools remain available
+to unrelated applications. The registered environment URI is not used to
+discover the filesystem target. Incomplete IIS discovery aborts before database
+or file deletion. If a complete inventory has no matching target, uninstall
+continues as a non-IIS local removal. Operations using the same environment name
+or physical directory are serialized, and final unregister succeeds
+only while the registration still has the path that authorized the uninstall.
+
+On Windows, the command also attempts to remove the registered IIS
+application-pool virtual-account profile. This is best-effort: a locked,
+access-denied, or otherwise undeletable profile produces one warning after
+three attempts, while the uninstall continues and exits successfully.
+
+The command reads the database connection string from ConnectionStrings.config
+in the Creatio installation directory and uses it to connect and drop the
+database. This works for both local databases (PostgreSQL, MSSQL) and
+containerized databases (Kubernetes/Rancher).
+
+This is a destructive operation that permanently deletes the Creatio
+instance, its files, and its database. Administrator privileges are required
+to manage IIS sites and application pools.
+
+IMPORTANT: Ensure you have backups of any important data before proceeding.
+This operation cannot be undone.
+
+
+## Uninstall Process
+
+When removing a named environment with a populated `IdentityService` attachment, Clio
+prevalidates its recorded folder and IIS target before changing anything. After reading
+the CRM connection configuration, it removes the attached identity first. Identity
+cleanup failure prevents CRM IIS, database and file removal. Its shared database is
+dropped only by the normal CRM removal stage. Empty attachments add no identity stage;
+credentials alone do not authorize identity deletion. Use `uninstall-identity` to remove
+the identity component while retaining Creatio and its database.
+
+    When using environment name (-e):
+        1. Retrieves environment settings from clio configuration
+        2. Uses the registered EnvironmentPath as the removal target
+        3. Finds every IIS site/application with that exact normalized path
+        4. Proceeds after all matching IIS targets pass safety validation
+
+    Uninstall operations (all methods):
+        1. Extracts database connection string from ConnectionStrings.config
+        2. Parses connection parameters (host, port, username, password)
+        3. Validates that the target IIS site/application can be removed without siblings
+        4. Stops every target site; stops a pool only when all its applications
+           belong to the selected targets
+        5. Deletes every target site/application, then deletes each pool only when unused
+        6. Connects and drops the database (local or Kubernetes/Rancher)
+        7. Deletes all files in installation directory
+        8. Deletes the registered IIS application-pool profile on Windows
+           (best-effort; missing/non-Windows is not applicable)
+        9. Removes the clio-owned dbHub source when automatic synchronization is enabled
+           (best-effort; TOML changes are retained when dbHub is offline)
+        10. Unregisters the environment (final step, including after a best-effort warning)
+
+
+## Synopsis
+
+```bash
+uninstall-creatio [options]
+```
+
+
+## Options
+
+```bash
+--environment, -e       Name of registered environment to uninstall
+
+--physicalPath, -d      Physical path to Creatio installation folder
+(e.g., C:\inetpub\wwwroot\mysite)
+```
+
+
+## Validation Rules
+
+    - You must provide either -e or -d (but not both)
+    - Physical path must be a valid absolute directory path
+    - Physical path must point to an existing directory
+    - A named environment must have a non-empty EnvironmentPath setting
+
+
+## Examples
+
+```bash
+Uninstall by environment name (recommended):
+clio uninstall-creatio -e production
+clio uninstall-creatio -e development
+
+Uninstall by physical path:
+clio uninstall-creatio -d C:\inetpub\wwwroot\mysite
+clio uninstall-creatio --physicalPath C:\inetpub\wwwroot\creatio-dev
+```
+
+
+## Output
+
+    The command provides detailed progress information:
+        [INF] - Scanning IIS sites...
+        [INF] - Found matching IIS site: mysite
+        [INF] - Stopping application pool: mysite-pool
+        [INF] - Stopping IIS site: mysite
+        [INF] - Deleting IIS site: mysite
+        [INF] - Deleting application pool: mysite-pool
+        [INF] - Found db: CreatioDB, Server: PostgreSql
+        [INF] - Parsed PostgreSQL connection: Host=127.0.0.1, Port=5432, User=postgres
+        [INF] - Using local database connection from ConnectionStrings.config
+        [INF] - Postgres DB: CreatioDB dropped
+        [INF] - Directory: C:\inetpub\wwwroot\mysite deleted
+		[INF] - Application-pool profile 'C:\Users\mysite-pool' deleted
+        [INF] - Done removing Creatio instance
+
+    If Windows keeps the profile locked, the command writes exactly one final
+    warning after its retries and still exits with code 0:
+        [WAR] - Creatio was uninstalled, but application-pool profile
+                'C:\Users\mysite-pool' could not be removed because it is
+                currently in use or Windows denied access. Delete it manually
+                after the locking process exits.
+
+    If dbHub is offline or cannot verify its hot reload, the command retains the
+    valid TOML removal, writes one dbHub warning, unregisters the environment,
+    and still exits with code 0.
+
+
+## Common Errors
+
+    Environment not found:
+        [WAR] - Environment 'name' not found in clio configuration
+        Solution: Verify environment name with 'clio show-env'
+
+    Invalid path format:
+        Error: PhysicalPath must be a valid directory path
+        Solution: Provide absolute path (e.g., C:\inetpub\wwwroot\mysite)
+
+    Directory does not exist:
+        Error: PhysicalPath must be a valid directory path to an Existing directory
+        Solution: Verify the path exists
+
+    Insufficient permissions:
+        [ERR] - Access denied: Administrator privileges required
+        Solution: Run terminal as Administrator
+
+    Application-pool profile could not be deleted:
+        Result: The command retries three times, writes one warning, completes
+                remaining cleanup and environment unregistration, and exits 0
+        Solution: Delete the named profile manually after the locking process exits
+
+    EnvironmentPath is missing:
+        [ERR] - Environment 'name' does not have a registered EnvironmentPath
+        Result: The command exits with code 1 and performs no destructive cleanup
+        Solution: Correct EnvironmentPath in appsettings.json, or use -d with the verified physical path
+
+
+## Best Practices
+
+    Before uninstalling:
+        - Backup important data, configurations, and packages
+        - Stop active processes and connections
+        - Verify the target environment to avoid mistakes
+        - Check for dependencies on this instance
+
+    Recommended workflow:
+        1. List environments: clio show-env
+        2. Verify instance status: clio hosts
+        3. Uninstall: clio uninstall-creatio -e development
+        4. Verify removal: clio hosts
+
+    After uninstalling:
+        - Verify all files and IIS components were removed
+        - Manually cleanup database if not automatically dropped
+        - Run disk cleanup to reclaim space
+        - Update team documentation
+
+
+## Platform Requirements
+
+    - Windows operating system with IIS
+    - Administrator privileges required
+    - Primarily designed for local development environments
+
+
+## Database Handling
+
+    The command automatically drops databases from both local and containerized
+    environments:
+
+    Connection String Parsing:
+        - Reads ConnectionStrings.config from the Creatio directory
+        - Extracts connection parameters (host, port, username, password)
+        - Supports PostgreSQL and MSSQL connection strings
+
+    Local Databases:
+        - PostgreSQL: Uses parsed host and port (default: 5432)
+        - MSSQL: Supports both username/password and Integrated Security
+        - MSSQL: Handles named instances (e.g., server\instance)
+
+    Kubernetes/Rancher:
+        - Falls back to K8s connection if parsing fails
+        - Uses cluster DNS and connection parameters
+
+    The command will:
+        - Log the database name and type found
+        - Log whether using local or K8s connection
+        - Drop the database automatically
+        - Log success or failure of database operations
+
+
+## Notes
+
+- This is an irreversible operation - files are permanently deleted
+- No confirmation prompt - command executes immediately
+- Consider using 'clear-local-env' if you want to clean data without
+destroying the entire instance
+- When `-e` is used, environment unregistration is the final stage and still
+  runs after a profile-cleanup or dbHub warning
+- A named uninstall uses `EnvironmentPath`, not the environment URI, and removes
+  all safely validated IIS targets at that exact normalized path
+- Shared pools and their Windows profiles are preserved when any unrelated IIS
+  application still uses them
+- dbHub source removal is available only for `-e`, because a physical path alone
+  has no registered environment-to-source ownership mapping
+
+
+## Progress and Stage Events (MCP)
+
+    When run as an MCP tool, uninstall-creatio emits a typed, versioned progress
+    stream over MCP notifications/progress in the _meta.clioStageEvent field, so a
+    GUI client can render a live step list instead of parsing log lines. This is
+    additive: CLI behavior, tool arguments, descriptions, and the Destructive flag
+    are unchanged.
+
+    The stream is:
+    - one "manifest" event up front listing every stage that will run, in order
+    - a "stage" event per transition (running -> done / failed / warning / skipped, with
+      index / total / durationMs)
+    - one terminal "run-completed" event with outcome = success,
+      success-with-warnings, or failure; warning detail is carried by a warning stage
+
+    Uninstall stages (in order):
+        read-config             Read the environment / connection configuration
+        stop-iis                Stop the IIS site / application pool
+        delete-iis              Delete the IIS site / application pool
+        drop-db                 Drop the application database
+        delete-files            Delete the application files
+        delete-apppool-profile  Conditional: delete the SID-validated registered
+                                IIS virtual-account profile; warning after retries,
+                                or skipped / not-applicable when absent/non-Windows
+        remove-dbhub-source     Conditional: remove the exact clio-owned source after
+                                destructive cleanup; offline verification is a warning
+        unregister              Unregister the environment last, including after
+                                a non-fatal best-effort warning
+
+    A profile cleanup warning uses status = warning and stable error code
+    APPPOOL_PROFILE_DELETE_FAILED. The terminal outcome is success-with-warnings,
+    while the warning stage retains the detail. The MCP command result keeps exit code 0 and the tool
+    response is not marked as an error.
+
+    If another IIS application shares the target application pool, uninstall removes
+    only the target site/application and leaves the shared pool and its Windows profile intact;
+    delete-apppool-profile is skipped as not applicable.
+
+    A dbHub removal warning likewise uses status = warning and preserves primary
+    uninstall success. Failed destructive cleanup skips remove-dbhub-source with
+    after-failure, leaving the source available for reconciliation or retry.
+
+    Honest failure: read-config runs before stop-iis. If it fails, the run aborts safely
+    (the site remains running, the environment is NOT unregistered, and success is NOT
+    reported), the stage is emitted failed, and
+    the run ends run-completed / failure. Any stage failure emits failed, cascades
+    the remaining stages to skipped (after-failure), and ends run-completed /
+    failure. A non-zero stage result is never masked as success.
+
+    The envelope carries a schemaVersion field (currently 1) and is forward-compatible.
+
+    Bounded by the terminal stage, never by a stopwatch. Over MCP the tool runs in a
+    short-lived clio worker process, and the parent waits for the run's own
+    "run-completed" event rather than for a fixed budget: an uninstall that keeps
+    streaming stages is never truncated. Two bounds apply, and neither is a total:
+      - stage-event silence: 300 s with no stage event of any kind. Every stage event
+        restarts it, and a stage that is still working re-announces itself as running
+        every 30 s, so a long stage keeps the stream alive and silence means the worker
+        itself stopped talking. Override with CLIO_MCP_WORKER_STAGE_SILENCE_SECONDS
+        (seconds, 0 < n <= 3600); lowering it below a few of those 30 s refreshes puts
+        healthy long stages back at risk.
+        The first window starts when the tool call is sent to the worker, not when the
+        worker starts: its handshake has its own bound (the same value, same override),
+        so the longest wait before the first stage event is handshake plus silence -
+        up to 600 s with the defaults. A worker that never finishes the handshake is
+        terminated and answered as never started, not as INDETERMINATE.
+      - post-terminal exit grace: 30 s between "run-completed" and the worker exiting.
+        A worker that hangs afterwards is terminated and the tool result is the
+        terminal outcome, not an error.
+
+    If the run never reports a terminal stage - the worker crashed, was cancelled, or
+    went silent past the bound - the tool answers with an explicit INDETERMINATE error
+    naming the last stage reached (outcome=indeterminate,
+    error-class=clio-deploy-indeterminate, environment-state=possibly-half-installed).
+    clio does NOT retry it, and neither should a caller: the instance may be partly
+    removed, so inspect the site, application pool, database and files before any new
+    attempt. There is no "cancelled" run outcome in the stage-event contract, so a
+    cancelled uninstall resolves through this same indeterminate path.
+
+
+## Related Commands
+
+    deploy-creatio       Deploy a new Creatio instance
+    reg-web-app         Register a Creatio instance in clio
+    unreg-web-app       Unregister a Creatio instance from clio
+    show-env            Show all registered environments
+    hosts               Monitor running Creatio instances
+    restart-web-app     Restart a Creatio instance
+    clear-local-env     Clear environment data without destroying instance
