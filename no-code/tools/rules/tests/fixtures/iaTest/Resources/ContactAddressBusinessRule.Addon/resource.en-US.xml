@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="AddonConfig.Rules.0a2df3a2-63f7-4182-a857-eb2b6846f88c.Caption" Value="Zip read-only for the test marker" />
+			<Item Name="Caption" Value="Contact address (Business rules)" />
+		</Items>
+	</Group>
+</Resources>

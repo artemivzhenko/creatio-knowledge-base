@@ -45,10 +45,20 @@ application exposes it ([clio-apps](../clio-apps/SKILL.md)).
 
 ## Business rules
 
-MCP tools: `create|read|update|delete-entity-business-rules` and the `-page-` family.
-Read `get-guidance business-rules` and the full tool contract first (the short contract
-drops the 25 examples). A rule is a condition group plus actions (`make-required`,
-`make-read-only`, `set-values`, `apply-filter`, show/hide for page rules).
+Two routes, same storage (addon schema `<Target>BusinessRule`):
+
+- **Files in the package** - [tools/rules](../tools/rules/README.md): `rules.py add <pkg>
+  <Target> --spec rule.json`, then `push-pkg`, then `rules.py probe` runs the deployed object
+  rules in the platform's own rule engine. Use it when the package is the source of truth
+  (git), for base objects/pages (replacing addons, disabling a base rule), for filter-lookup
+  with its generated rules, and to read or review existing rules (`rules.py inspect`).
+- **clio MCP on the environment**: `create|read|update|delete-entity-business-rules` and the
+  `-page-` family. Read `get-guidance business-rules` and the full tool contract first (the
+  short contract drops the 25 examples). It saves through the designer service, so the addon
+  becomes "modified locally" and later file pushes skip it until it is pulled.
+
+A rule is a condition group plus actions: required / optional / read-only / editable (both
+kinds), show / hide (pages), set values and lookup filters (objects).
 
 ## Traps (verified)
 

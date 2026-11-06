@@ -42,6 +42,20 @@ the clio source and docs at that tag. [VERIFIED.md](VERIFIED.md) is the ledger: 
 MCP tool and CLI command that was actually run, with what happened. clio is written against Creatio 10.x first; several
 no-code tools silently store things an 8.x designer cannot show, and the skills say which.
 
+## Process tools
+
+[tools/process/](tools/process/README.md) builds and refactors business processes as
+package files (`proc.py`, `refactor.py`, `pschema.py`), the route that works on Creatio 8.x
+where clio's own process tools do not. It ships the decoded key map of the process
+metadata and the user-task definitions of 8.2.3.
+
+## Business-rule tools
+
+[tools/rules/](tools/rules/README.md) creates and edits object and Freedom UI page business
+rules as package files (`rules.py`, `brules.py`) from a short JSON spec, including replacing
+addons of base objects and the generated rules of a lookup filter, and proves object rules
+through the platform's rule engine (`rules.py probe`).
+
 ## Regenerating the reference
 
 ```bash

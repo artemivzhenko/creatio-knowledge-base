@@ -1,0 +1,150 @@
+"""
+Checks for the business-rule tools. Pure standard library:  python tests/test_rules_tools.py
+(also collected by pytest). The fixtures are a Creatio 8.2.3 export of the iaTest package after
+rules built by these tools were pushed and pulled back: an own entity addon, an own page addon
+and a replacing addon of a base entity (ContactAddress, base rules in CrtBase).
+"""
+
+import json
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+
+from brules import OPS, T_FILTER_LOOKUP, T_GROUP, RuleSchema, create_rule_schema  # noqa: E402
+
+FIXTURES = HERE / "fixtures" / "iaTest"
+SCHEMAS = ("iaTestBusinessRule", "iaTests_FormPageBusinessRule", "ContactAddressBusinessRule")
+
+
+def read(path: Path) -> str:
+    with open(path, encoding="utf-8", newline="") as fh:
+        return fh.read()
+
+
+def copy() -> Path:
+    tmp = Path(tempfile.mkdtemp())
+    shutil.copytree(FIXTURES, tmp / "iaTest")
+    return tmp
+
+
+def test_round_trip_is_byte_identical():
+    for name in SCHEMAS:
+        rs = RuleSchema(FIXTURES, name)
+        for path, (text, bom) in rs.files().items():
+            assert read(path) == ("﻿" if bom else "") + text, path
+
+
+def test_inspect_decodes_all_three_forms():
+    entity = RuleSchema(FIXTURES, "iaTestBusinessRule")
+    assert entity.kind == "entity" and not entity.replacing and entity.target == "iaTest"
+    text = entity.describe()
+    assert "then filter iaContactLookup by iaContactLookup.Account = iaAccount" in text
+    assert "when iaNumber empty or iaAmount empty" in text
+    assert "iaContactLookup = sys:CurrentUserContact" in text
+    page = RuleSchema(FIXTURES, "iaTests_FormPageBusinessRule")
+    assert page.kind == "page" and "then hide: iaDate,iaDateTime" in page.describe()
+    repl = RuleSchema(FIXTURES, "ContactAddressBusinessRule")
+    assert repl.replacing and repl.target == "ContactAddress"  # base target: named after the addon
+    assert repl.base_edits() == ['+ MetaData.Schema.AD4.BRS1.["34a9fedf-e4d8-f6e1-cb04-2e74816d4502"].BR4 false']
+    for name in SCHEMAS:
+        assert [p for p in RuleSchema(FIXTURES, name).validate() if not p.startswith("warning:")] == [], name
+
+
+def test_build_entity_rules_and_edit_them():
+    tmp = copy()
+    try:
+        rs = RuleSchema(tmp / "iaTest", "iaTestBusinessRule")
+        before = len(rs.rules)
+        rule = rs.add({"caption": "Amount required for big numbers", "logic": "or",
+                       "conditions": [{"left": "iaNumber", "op": "equal", "value": 100}, {"left": "iaIsActive", "op": "equal", "value": True}],
+                       "actions": [{"type": "required", "items": ["iaAmount"]}]})[0]
+        cond = rule["BR1"][0]["BRC1"]
+        assert cond["JI0"] == T_GROUP and cond["BGC1"] == 2
+        assert cond["BGC2"][0]["BCO1"]["BRE1"] == "Integer" and cond["BGC2"][0]["BCO2"]["BVE1"] == 100  # types come from the entity
+        assert [t.get("BRT1", t.get("BRT2")) for t in rule["BR2"]] == ["iaNumber", "iaIsActive", 2]
+        kids = rs.add({"caption": "Filter", "actions": [{"type": "filter-lookup", "column": "iaContactLookup", "by": "Account", "source": "iaAccount",
+                                                          "column_ref": "Contact", "source_ref": "Account", "populate": False}]})
+        parent, clear, populate = kids
+        assert parent["BR1"][0]["BRC2"][0]["JI0"] == T_FILTER_LOOKUP and "BRC1" not in parent["BR1"][0]
+        assert clear["BR5"] == parent["UId"] and clear["BR6"] == parent["BR1"][0]["BRC2"][0]["UId"]
+        assert clear["BR1"][0]["BRC1"]["BCO3"] == OPS["not-equal"] and populate["BR4"] is False
+        assert rs.resources.get(f"AddonConfig.Rules.{clear['UId']}.Caption") == f"ChildRule-{parent['UId']}-ClearValue"
+        rs.save()
+
+        rs = RuleSchema(tmp / "iaTest", "iaTestBusinessRule")
+        assert len(rs.rules) == before + 4 and rs.validate() == []
+        position = [r["UId"] for r in rs.rules].index(parent["UId"])
+        rs.replace(parent["BR3"], {"actions": [{"type": "filter-lookup", "column": "iaContactLookup", "by": "Account", "source": "iaAccount",
+                                                  "column_ref": "Contact", "source_ref": "Account"}]})
+        assert [r["UId"] for r in rs.rules].index(parent["UId"]) == position  # edited in place, same UId
+        assert rs.caption(rs.rule(parent["UId"])) == "Filter"
+        assert len([r for r in rs.rules if r.get("BR5") == parent["UId"]]) == 2
+        removed = rs.remove(parent["BR3"])
+        assert len(removed) == 3 and not any(k.startswith(f"AddonConfig.Rules.{u}") for u in removed for k in rs.resources.cultures["en-US"])
+        rs.set_enabled(rule["BR3"], False)
+        assert rs.rule(rule["UId"])["BR4"] is False
+        rs.save()
+        assert len(RuleSchema(tmp / "iaTest", "iaTestBusinessRule").rules) == before + 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_page_rules_map_paths_and_check_elements():
+    tmp = copy()
+    try:
+        rs = RuleSchema(tmp / "iaTest", "iaTests_FormPageBusinessRule")
+        rule = rs.add({"conditions": [{"left": "PDS.iaIsActive", "op": "equal", "value": True}],
+                       "actions": [{"type": "show", "items": ["iaDate"]}, {"type": "editable", "items": ["iaName"]}]})[0]
+        left = rule["BR1"][0]["BRC1"]["BGC2"][0]["BCO1"]
+        assert left["BRX1"] == "iaIsActive" and left["BRE1"] == "Boolean"  # PDS.Column resolves to the page attribute bound to it
+        assert rs.caption(rule) == "Show elements: iaDate"
+        rs.add({"caption": "bad", "actions": [{"type": "hide", "items": ["NoSuchElement"]}]})
+        assert any("NoSuchElement" in p and p.startswith("warning:") for p in rs.validate())
+        try:
+            rs.add({"caption": "x", "actions": [{"type": "set", "values": {"iaName": "a"}}]})
+            raise AssertionError("set values must be refused on a page")
+        except ValueError:
+            pass
+        rs.add({"caption": "8.3 only", "conditions": [{"left": "iaNumber", "op": "greater", "value": 5}], "actions": [{"type": "hide", "items": ["iaDate"]}]})
+        assert any("needs Creatio 8.3+" in p for p in rs.validate())
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_replacing_and_new_addons():
+    tmp = copy()
+    try:
+        pkg = tmp / "iaTest"
+        rs = RuleSchema(pkg, "ContactAddressBusinessRule")
+        new = rs.add({"caption": "Zip required", "conditions": [{"left": "Country", "op": "filled"}], "actions": [{"type": "required", "items": ["Zip"]}]})[0]
+        rs.set_enabled("34a9fedf-e4d8-f6e1-cb04-2e74816d4502", True)  # re-enable the base rule: the override line goes away
+        rs.remove_base("ac27cf9c-1a50-3db2-30b9-b6479422cc25")
+        rs.save()
+        text = read(pkg / "Schemas" / "ContactAddressBusinessRule" / "metadata.json")
+        assert "BR4 false" not in text and '- MetaData.Schema.AD4.BRS1.["ac27cf9c-1a50-3db2-30b9-b6479422cc25"]' in text
+        assert text.count("+ MetaData.Schema.AD4.BRS1 {") == 2 and not text.startswith("﻿")
+        assert new["UId"] in [r["UId"] for r in RuleSchema(pkg, "ContactAddressBusinessRule").rules]
+
+        own = create_rule_schema(pkg, "Contact", target_uid="16be3651-8fe2-4159-8dd0-a803d4683dd3", kind="entity")
+        own.add({"caption": "Notes read-only for the marker", "conditions": [{"left": "JobTitle", "op": "equal", "value": "x", "type": "ShortText"}],
+                 "actions": [{"type": "readonly", "items": ["Notes"]}]})
+        own.save()
+        again = RuleSchema(pkg, "ContactBusinessRule")
+        meta = json.loads(read(pkg / "Schemas" / "ContactBusinessRule" / "metadata.json").lstrip("﻿"))["MetaData"]["Schema"]
+        assert meta["AD1"] == "16be3651-8fe2-4159-8dd0-a803d4683dd3" and meta["AD3"] == "BusinessRule" and len(again.rules) == 1
+        assert '"ModifiedOnUtc": "\\/Date(' in read(pkg / "Schemas" / "ContactBusinessRule" / "descriptor.json")
+        repl = create_rule_schema(pkg, "Account", parent_uid="11111111-1111-1111-1111-111111111111", target_uid="25d7c1ab-1de0-4501-b402-02e0e5a72d6e", kind="entity")
+        assert repl.replacing and repl.rules == []
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
+            print("ok", name)

@@ -1,0 +1,10 @@
+﻿{
+  "Descriptor": {
+    "UId": "2d029c05-a43a-4d02-9e04-669e114074b7",
+    "Name": "iaTestBusinessRule",
+    "ModifiedOnUtc": "\/Date(1793902338000)\/",
+    "ManagerName": "AddonSchemaManager",
+    "Caption": "Test (Business rules)",
+    "DependsOn": []
+  }
+}

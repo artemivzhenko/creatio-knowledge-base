@@ -67,6 +67,33 @@ Status legend: **works** - did what the contract says and the result was read ba
 | validate-page | works | offline; warns on every template container (use `update-page --dry-run`) |
 | get-record-rights (also CLI) | fails on 8.2.3 | `RightsService/GetRecordRights` answers an HTML page |
 
+## Processes built as files (tools/process)
+
+| What | Status | What happened |
+| --- | --- | --- |
+| `proc.py new` + `push-pkg` | works | start → end process installed; `run-process` and `get-process-signature` read it |
+| parameters (Integer, Text; In/Out/Variable) | works | `ProcessEngineService.svc/<P>/Execute?Counter=100&ResultParameterName=Counter` → 141 |
+| formula task into a process parameter | works | `{Parameter:Counter} + 41` → 42 |
+| exclusive gateway + conditional and default flows | works | `Counter=-100` → "small", `5` → "big" |
+| Read data (count mode) over a package entity | works | `ResultCount` → 1, equal to `select count(*)` |
+| captions in en-US / ru-RU / uk-UA | works | stored as UTF-8, visible in `SysLocalizableValue` after the push |
+| `refactor.py rename-schema` + push | works | `iaDemoA` → `iaDemoRenamed`, same `SysSchema.UId`, executes |
+| clio `run-process` on a schema with activities | fails (clio) | "FromJson - Error deserializing process schema" from clio's reader; the platform runs it |
+| round-trip of designer-made processes | works | 235 processes (8.2.3 + 8.3.x), 1338 files byte-identical |
+
+## Business rules built as files (tools/rules)
+
+| What | Status | What happened |
+| --- | --- | --- |
+| own object addon: 4 rules added to `iaTestBusinessRule` + `push-pkg` | works | designer service loads 7 rules with captions; engine: required, set values (text, integer, `CurrentUserContact`), lookup filter, read-only with reset |
+| lookup filter + its two generated rules | works | engine returns `crt.FilterLookup`; changing the source returns ClearValue `crt.SetValue ... = null` |
+| set values on an existing record | by design | skipped (`skip: true`) on "data loaded" of an existing record; fires on a change or `--state Create` |
+| own page addon: hide two elements, required via `PDS.iaNumber` | works | `GetBusinessRules` serves both rules to the page; execution is client-side (not run here) |
+| replacing addon of a base object (`ContactAddressBusinessRule`, base in CrtBase) | works | new rule fires; base generated rule disabled by `BR4 false`: `PopulateValue` fired before, not after |
+| pull after push | works | metadata, properties, resources identical; descriptor date loses milliseconds |
+| push over an addon saved by the designer / clio MCP | skipped | "modified locally" (`IsChanged`, `IsLocked`); pulled first, cleared the two flags, pushed |
+| round trip of real rule schemas | works | 134 schemas (8.2 / 8.3 / 10.0, own and replacing) metadata byte-identical |
+
 ## CLI commands run on the same environment
 
 | Command | Status | What happened |

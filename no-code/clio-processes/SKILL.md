@@ -7,6 +7,23 @@ description: Business processes and user tasks through clio - generate process m
 
 Verified on clio 8.1.0.145, Creatio 8.2.3. Command pages: [reference/](../reference/).
 
+## On 8.x: build processes as package files
+
+clio's process tools need CrtProcessBuilder, which does not compile on 8.2.x. The working
+route is the toolkit in [tools/process/](../tools/process/README.md): `proc.py` creates and
+edits `Schemas/<Process>/metadata.json` plus its resources, `refactor.py rename-schema`
+renames a schema everywhere, `clio push-pkg` installs, and
+`clio call-service --method GET --service-path "ServiceModel/ProcessEngineService.svc/<Process>/Execute?ResultParameterName=X"`
+runs it. Verified end to end on 8.2.3: formulas, gateways with conditions, a Read data
+task, captions in several cultures, a rename that kept the schema UId.
+
+```bash
+python no-code/tools/process/proc.py inspect  packages/UsrPkg UsrOrder_Process
+python no-code/tools/process/proc.py element  packages/UsrPkg UsrOrder_Process add CountOrders --kind readData --after StartEvent1 --before TerminateEvent1 --entity UsrOrder --set ResultType=1 FunctionType=0
+python no-code/tools/process/proc.py caption  packages/UsrPkg UsrOrder_Process CountOrders en-US="Count orders" uk-UA="Порахувати замовлення"
+python no-code/tools/process/refactor.py rename-schema . UsrProcess_7ab12c3 UsrOrder_Process --apply
+```
+
 ## What clio offers
 
 - MCP-only process tools: `create-business-process`, `modify-business-process`,
@@ -36,6 +53,13 @@ Verified on clio 8.1.0.145, Creatio 8.2.3. Command pages: [reference/](../refere
   8.2.3 (a type id the platform does not know).
 - **Installing CrtProcessBuilder rebuilds the configuration and restarts the site** for
   everyone; ask before running it.
+- **`run-process` / `get-process-signature` work without CrtProcessBuilder only for trivial
+  schemas** (start → end, parameters). Anything with activities fails in clio's own reader
+  ("FromJson - Error deserializing process schema") even though the platform runs the
+  process; execute through `ProcessEngineService.svc` instead and read `SysProcessLog`.
+- **Platform rules a hand-written schema must respect** (the toolkit does): nodes before
+  flows in `BK4`, `"\/Date(ms)\/"` in descriptor.json, compact filter JSON, Read data's
+  entity in `ResultEntity.L9`.
 
 ## Commands
 

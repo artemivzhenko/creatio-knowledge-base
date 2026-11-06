@@ -1,0 +1,61 @@
+= MetaData.Schema.UId "43342b55-f323-4fb0-879d-08d2a420f60d"
+= MetaData.Schema.A5 "90ae4ed1-55f1-40c8-b1c1-c22f5beea180"
+= MetaData.Schema.B6 "90ae4ed1-55f1-40c8-b1c1-c22f5beea180"
++ MetaData.Schema.B7 true
+= MetaData.Schema.B8 "8.2.3.1351"
+= MetaData.Schema.AD5 "97376e01-6bb8-4cdf-a7d4-face0ff752b5"
++ MetaData.Schema.AD4.BRS1 {
+  "JI0": "Terrasoft.Core.BusinessRules.BusinessRule",
+  "UId": "0a2df3a2-63f7-4182-a857-eb2b6846f88c",
+  "BR1": [
+    {
+      "JI0": "Terrasoft.Core.BusinessRules.Models.BusinessRuleCase",
+      "UId": "b37e00ff-c8e7-4fe6-940d-d506aeffc0eb",
+      "BRC1": {
+        "JI0": "Terrasoft.Core.BusinessRules.Models.Conditions.BusinessRuleGroupCondition",
+        "UId": "a65114c3-08c9-42a2-b369-b51ccec0f18e",
+        "BGC1": 1,
+        "BGC2": [
+          {
+            "JI0": "Terrasoft.Core.BusinessRules.Models.Conditions.BusinessRuleCondition",
+            "UId": "8e2b8db1-ba7f-48a2-9e53-4aec14b04e8d",
+            "BCO1": {
+              "JI0": "Terrasoft.Core.BusinessRules.Models.Expressions.BusinessRuleAttributeExpression",
+              "UId": "bccf336c-ee1d-4e72-bd09-0cbbb994852d",
+              "BRE2": "AttributeValue",
+              "BRX1": "Address"
+            },
+            "BCO2": {
+              "JI0": "Terrasoft.Core.BusinessRules.Models.Expressions.BusinessRuleValueExpression",
+              "UId": "5c043eab-a730-446d-bc15-8c322ab59426",
+              "BRE1": "MediumText",
+              "BVE1": "ia-rule-test"
+            },
+            "BCO3": 2
+          }
+        ]
+      },
+      "BRC2": [
+        {
+          "JI0": "Terrasoft.Core.BusinessRules.Models.Actions.BusinessRuleActionReadonlyElement",
+          "UId": "145776ed-41a4-4ecc-be27-b554eaf44c88",
+          "BRA4": "Zip"
+        }
+      ]
+    }
+  ],
+  "BR2": [
+    {
+      "JI0": "Terrasoft.Core.BusinessRules.Models.Trigger",
+      "UId": "d266c8ed-af10-4238-8790-187eb334c9ea",
+      "BRT1": "Address"
+    },
+    {
+      "JI0": "Terrasoft.Core.BusinessRules.Models.Trigger",
+      "UId": "5efc606a-a683-42f7-8048-9ada5ff4b19f",
+      "BRT2": 2
+    }
+  ],
+  "BR3": "BusinessRule_0a2df3a"
+}
++ MetaData.Schema.AD4.BRS1.["34a9fedf-e4d8-f6e1-cb04-2e74816d4502"].BR4 false

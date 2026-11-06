@@ -1,0 +1,10 @@
+﻿{
+  "Descriptor": {
+    "UId": "9f482571-5c03-46cc-be08-35b25dcecf72",
+    "Name": "iaTests_FormPageBusinessRule",
+    "ModifiedOnUtc": "\/Date(1793902338000)\/",
+    "ManagerName": "AddonSchemaManager",
+    "Caption": "tests form page (Business rules)",
+    "DependsOn": []
+  }
+}

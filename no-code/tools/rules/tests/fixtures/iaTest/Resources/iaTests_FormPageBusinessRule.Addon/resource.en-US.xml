@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="AddonConfig.Rules.2eb1f564-b536-4033-b188-80b53fd350fc.Caption" Value="Amount required when number is filled" />
+			<Item Name="AddonConfig.Rules.80ee331e-6e78-4946-9844-216ec80308ab.Caption" Value="Hide dates when inactive" />
+			<Item Name="Caption" Value="tests form page (Business rules)" />
+		</Items>
+	</Group>
+</Resources>

@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="AddonConfig.Rules.0070979f-ba24-4555-80c6-81e316b0fe8c.Caption" Value="ChildRule-8bd81116-4136-4347-ba54-5538a010b6f4-PopulateValue" />
+			<Item Name="AddonConfig.Rules.4d88aa91-ee3a-4c88-9b74-5ad9741ad2bd.Caption" Value="Comment required when active" />
+			<Item Name="AddonConfig.Rules.87f8b6a2-4efe-4730-934a-f23628a44397.Caption" Value="Name required when number is filled in (v2)" />
+			<Item Name="AddonConfig.Rules.8bd81116-4136-4347-ba54-5538a010b6f4.Caption" Value="Contact filtered by account" />
+			<Item Name="AddonConfig.Rules.8c9965da-a0f1-4747-ade6-a9749d8edb6c.Caption" Value="Defaults when name is auto" />
+			<Item Name="AddonConfig.Rules.d4c83dc0-4e8b-4328-8015-031bf55eafcc.Caption" Value="ChildRule-8bd81116-4136-4347-ba54-5538a010b6f4-ClearValue" />
+			<Item Name="AddonConfig.Rules.eb9103ad-9ee3-4ef9-bae6-843c2825baf8.Caption" Value="Date read-only while number or amount is empty" />
+			<Item Name="Caption" Value="Test (Business rules)" />
+		</Items>
+	</Group>
+</Resources>
