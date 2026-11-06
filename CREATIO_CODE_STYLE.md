@@ -258,6 +258,14 @@ Better: hide the boilerplate behind an executor: `_executor.Execute(client => cl
 - Throw only for configuration that makes the component unusable: `ConfigurationErrorsException`, `AppConfigurationException` (wrong version, missing type).
 - Feature toggles: a nested class deriving from `FeatureMetadata` inside an `XxxFeatures` container, checked with `Features.GetIsEnabled<TFeature>()`. Keep both branches (old and new behavior) working until the toggle is removed.
 
+### 3.7 Where the code lives
+
+**C# goes into `<Package>/Files/cs/` as plain `.cs` files**, in folders by role (`Files/cs/Collectors/`, `Files/cs/Sinks/`). Do not create a source code schema for it.
+
+- The package must be an assembly package: `descriptor.json` has `"Type": 1` and `"ProjectPath": "Files/<Package>.csproj"`. The SDK-style project compiles everything under `Files/cs` into the package assembly; `clio push-pkg` builds and installs it. Code there is ordinary code: reviewed and diffed in git, unit-testable, no designer involved.
+- **The exception is an API on the Creatio side** - a configuration web service the platform exposes as `ServiceModel/<Name>.svc/...` (`[ServiceContract]`, a class deriving from `BaseService`). Create it as a **source code schema** (`Schemas/<Name>/`, `SourceCodeSchemaManager`, caption `[API] ...`). Keep it thin: read the request, call the classes from `Files/cs`, map the result.
+- Database objects (views, functions, triggers, data fixes) are not C#: they are package SQL scripts (`SqlScripts/<Name>/`, see `no-code/tools/sqlscripts`), one per database engine you support.
+
 ---
 
 ## 4. Error handling
@@ -411,6 +419,7 @@ In configuration packages, use schema resources (`GetLocalizableString(...)` or 
 - [ ] Tabs, CRLF, `using` inside the namespace, K&R member braces, braces on every `if`.
 - [ ] `#region Class:` wrapper; member regions `Kind: Visibility` in the canonical order; private → public.
 - [ ] `_camelCase` private fields, `PascalCase` constants, unit suffixes (`Ms`, `Sec`) on numeric time values.
+- [ ] Code in `Files/cs/` of an assembly package; a source code schema only for a Creatio-side API (`BaseService`), kept thin.
 - [ ] Interface for every service; implementation `internal` unless it is an extension point.
 - [ ] Constructor injection only; dependencies `private readonly`; guard clauses with `CheckArgumentNull(nameof(...))`.
 - [ ] Convenience constructors only delegate to the full one via `: this(...)`.

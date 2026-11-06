@@ -1,0 +1,11 @@
+﻿{
+  "SqlScript": {
+    "UId": "61cd3580-b38e-4974-9d2b-57a7947088c9",
+    "Name": "iaSqlRunLogPostgreSql",
+    "DBEngineType": 2,
+    "InstallType": 1,
+    "ModifiedOnUtc": "\/Date(1793958044000)\/",
+    "BackwardCompatibilityConfirmed": false,
+    "DependsOn": []
+  }
+}

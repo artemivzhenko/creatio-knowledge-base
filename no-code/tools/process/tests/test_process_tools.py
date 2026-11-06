@@ -10,10 +10,10 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE.parent.parent))
 
-from pschema import ELEMENT_TYPES, TASK_ALIASES, USER_TASKS, Process, create_process, short_type  # noqa: E402
-from refactor import rename_schema  # noqa: E402
+from creatio_schemas import ProcessSchema, rename_schema  # noqa: E402
+from creatio_schemas.process import ELEMENT_KINDS, TASK_ALIASES, USER_TASKS, short_type  # noqa: E402
 
 FIXTURES = HERE / "fixtures" / "iaTest"
 
@@ -25,13 +25,16 @@ def read(path: Path) -> str:
 
 def test_round_trip_is_byte_identical():
     for name in ("iaProcess_0d4c445", "iaDeleteOldLogs_Process"):
-        p = Process(FIXTURES, name)
-        for path, text in p.files().items():
-            assert read(path) == text, path
+        p = ProcessSchema(FIXTURES, name)
+        files = p.files()
+        for path, (text, bom) in files.items():
+            assert read(path) == ("﻿" if bom else "") + text, path
+        p.describe()
+        assert p.files() == files and p.diff() == ""  # reading never changes the metadata
 
 
 def test_inspect_decodes_user_task_and_captions():
-    p = Process(FIXTURES, "iaDeleteOldLogs_Process")
+    p = ProcessSchema(FIXTURES, "iaDeleteOldLogs_Process")
     text = p.describe()
     assert "DeleteDataUserTask1 [DeleteDataUserTask]" in text
     assert "cron '0 0 0 * * ? *'" in text
@@ -44,7 +47,7 @@ def test_build_process_from_scratch():
     try:
         pkg = tmp / "iaTest"
         shutil.copytree(FIXTURES, pkg)
-        p = create_process(pkg, "iaDemo_Process", "Demo", ["en-US", "ru-RU"])
+        p = ProcessSchema.create(pkg, "iaDemo_Process", "Demo", ["en-US", "ru-RU"])
         p.add_param("Counter", "Integer", "Variable", "Counter", 1)
         p.add_param("Verdict", "Text", "Out", "Verdict")
         p.add_element("formula", "Compute", "Add 41", after="StartEvent1", before="TerminateEvent1")
@@ -58,7 +61,7 @@ def test_build_process_from_scratch():
         p.set_caption("Compute", "Прибавить 41", ["ru-RU"])
         p.save()
 
-        q = Process(pkg, "iaDemo_Process")
+        q = ProcessSchema(pkg, "iaDemo_Process")
         assert q.validate() == []
         names = [e["A2"] for e in q.elements]
         # every node precedes every flow: the platform resolves flow endpoints while reading
@@ -67,7 +70,7 @@ def test_build_process_from_scratch():
         assert all(short_type(e).endswith("Flow") for e in q.elements[first_flow:])
         assert "ConditionalSequenceFlow3" in names
         assert q.element("ConditionalSequenceFlow3")["CI4"] == 2
-        assert "{Parameter:Counter} > 10" == q.decode_expr(q.element("ConditionalSequenceFlow3")["CI3"])
+        assert "{Parameter:Counter} > 10" == q.expressions.decode(q.element("ConditionalSequenceFlow3")["CI3"])
         assert q.element("Compute")["HS1"] == q.param("Counter")["UId"]
         rt = q.element("ReadTests")
         assert q.element_param(rt, "ResultEntity")["L9"] == "8e9352c9-3362-4c77-8dc2-acbb079c1040"
@@ -78,7 +81,7 @@ def test_build_process_from_scratch():
         assert q.resources.get("BaseElements.ReadTests.Parameters.ResultType.Caption", "ru-RU") == expected["ru-RU"]
         assert q.resources.get("BaseElements.ReadTests.Parameters.ResultType.Caption", "en-US") == expected["en-US"]
         assert q.resources.get("BaseElements.Compute.Caption", "ru-RU") == "Прибавить 41"
-        assert '"Caption": "Demo"' in q.descriptor_text and "\\/Date(" in q.descriptor_text
+        assert '"Caption": "Demo"' in q.descriptor.text and "\\/Date(" in q.descriptor.text
 
         q.rename_element("Compute", "AddFortyOne")
         assert q.resources.get("BaseElements.AddFortyOne.Caption") == "Add 41"
@@ -88,7 +91,7 @@ def test_build_process_from_scratch():
 
         report = rename_schema(pkg, "iaDemo_Process", "iaRenamed_Process", apply=True)
         assert any("Schemas\\iaDemo_Process -> Schemas\\iaRenamed_Process" in r.replace("/", "\\") for r in report)
-        r = Process(pkg, "iaRenamed_Process")
+        r = ProcessSchema(pkg, "iaRenamed_Process")
         assert r.uid == q.uid and r.name == "iaRenamed_Process"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -99,10 +102,10 @@ def test_every_element_kind_builds_and_validates():
     try:
         pkg = tmp / "iaTest"
         shutil.copytree(FIXTURES, pkg)
-        p = create_process(pkg, "iaAll_Process", "All kinds")
+        p = ProcessSchema.create(pkg, "iaAll_Process", "All kinds")
         p.add_param("Counter", "Integer", "Variable", "Counter", 1)
         prev = "StartEvent1"
-        for i, kind in enumerate(k for k in ELEMENT_TYPES if k != "userTask"):
+        for i, kind in enumerate(ELEMENT_KINDS):
             el = p.add_element(kind, f"El{i}_{kind}", kind, after=None if kind.startswith("start") else prev)
             if kind.startswith("start"):
                 p.add_flow(el["A2"], "TerminateEvent1")
@@ -125,9 +128,36 @@ def test_every_element_kind_builds_and_validates():
             prev = f"Alias{i}"
         p.add_flow(prev, "TerminateEvent1")
         p.save()
-        q = Process(pkg, "iaAll_Process")
+        q = ProcessSchema(pkg, "iaAll_Process")
         assert q.validate() == [], q.validate()
-        assert len(q.nodes()) == 2 + len(ELEMENT_TYPES) - 1 + len(USER_TASKS) + len(TASK_ALIASES)
+        assert len(q.nodes()) == 2 + len(ELEMENT_KINDS) + len(USER_TASKS) + len(TASK_ALIASES)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_command_line():
+    import contextlib
+    import io
+    sys.path.insert(0, str(HERE.parent))
+    import proc
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        pkg = tmp / "iaTest"
+        shutil.copytree(FIXTURES, pkg)
+        meta = pkg / "Schemas" / "iaProcess_0d4c445" / "metadata.json"
+        before = read(meta)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert proc.main(["param", str(pkg), "iaProcess_0d4c445", "add", "Counter", "--type", "Integer", "--dry-run"]) == 0
+        assert '"A2": "Counter"' in out.getvalue() and read(meta) == before  # a dry run writes nothing
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert proc.main(["param", str(pkg), "iaProcess_0d4c445", "add", "Counter", "--type", "Integer"]) == 0
+            assert proc.main(["element", str(pkg), "iaProcess_0d4c445", "add", "Calc", "--kind", "formula", "--after", "StartEvent1"]) == 0
+            assert proc.main(["element", str(pkg), "iaProcess_0d4c445", "formula", "Calc", "{Parameter:Counter} + 1", "--result", "Counter"]) == 0
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert proc.main(["element", str(pkg), "iaProcess_0d4c445", "remove", "Nope"]) == 2
+        q = ProcessSchema(pkg, "iaProcess_0d4c445")
+        assert q.expressions.decode(q.element("Calc")["CH1"]) == "{Parameter:Counter} + 1" and q.validate() == []
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

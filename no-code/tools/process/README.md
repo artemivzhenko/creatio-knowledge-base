@@ -8,10 +8,9 @@ CrtProcessBuilder and do not work on Creatio 8.x). Pure Python standard library.
 | --- | --- |
 | `proc.py` | CLI: inspect, create, captions, parameters, elements, flows, formulas, scripts, validate |
 | `refactor.py` | `rename-schema`: rename any schema across a workspace and fix every reference |
-| `pschema.py` | the library behind both; import it for anything the CLI does not cover |
-| `assets/keymap.json` | the 569 obfuscated metadata keys (`BK4` = FlowElements, `CI2` = TargetRefUId ...) |
-| `assets/user_tasks.json` | 18 designer user tasks of 8.2.3: parameters, types, defaults, captions in 28 cultures |
-| `assets/data_value_types.json` | data value type ids |
+| [`../creatio_schemas/process/`](../creatio_schemas/README.md) | the library behind both (`ProcessSchema`, element kinds, expression codec); import it for anything the CLI does not cover |
+| `../creatio_schemas/process/assets/keymap.json` | the 569 obfuscated metadata keys (`BK4` = FlowElements, `CI2` = TargetRefUId ...) |
+| `../creatio_schemas/process/assets/user_tasks.json` | 18 designer user tasks of 8.2.3: parameters, types, defaults, captions in 28 cultures |
 | `tests/` | `python tests/test_process_tools.py` - round-trip and build checks on two real processes |
 
 Verified on Creatio 8.2.3 (ti823): processes built only with these scripts were pushed with
@@ -121,7 +120,7 @@ value today.
 
 ## Regenerating the assets
 
-`assets/keymap.json` comes from the `DesignModeProperty` attributes and serializer code of
-the platform assemblies; `assets/user_tasks.json` from `SysSchema.MetaData` and
+`creatio_schemas/process/assets/keymap.json` comes from the `DesignModeProperty` attributes and serializer code of
+the platform assemblies; `user_tasks.json` next to it from `SysSchema.MetaData` and
 `SysLocalizableValue` of a Creatio 8.2.3 site (package CrtProcessDesigner). Re-export them
 from the target version when element parameters differ; the tests pin the 8.2.3 shapes.

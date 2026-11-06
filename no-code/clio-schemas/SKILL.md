@@ -14,6 +14,13 @@ package you name, not in your local files. Pull the package afterwards
 
 ## Objects and columns
 
+On Creatio 8.x prefer the file route for objects: [tools/objects](../tools/objects/README.md)
+(`objects.py column <pkg> <Object> add ...`, then `push-pkg`, then `objects.py probe`). It has no
+clio trap below (date-only columns, captions in every culture, 8.3-only types refused), sets
+object flags clio cannot, and shows the diff before anything is written. The commands below
+write to the environment directly.
+
+
 ```bash
 clio get-entity-schema-properties <Entity> -e dev          # merged view, all columns
 clio get-entity-schema-column-properties <Entity> <Column> -e dev
@@ -31,6 +38,14 @@ Float Decimal0-4/8 Currency0-3 Boolean DateTime Lookup Binary Image ImageLookup 
 Verified on 8.2.3: ShortText, Boolean (with a `Const` default that a created row received),
 Currency2, Lookup to a stock object and to a new lookup, Integer, DateTime - all created
 physical columns, were visible through OData and landed in the package.
+
+## SQL scripts and C# code
+
+- Package SQL scripts (views, functions, triggers, data fixes): prefer the file route,
+  [tools/sqlscripts](../tools/sqlscripts/README.md) - engine, install type and run order in the
+  files, `push-pkg` runs them. `create-sql-schema` writes an empty script on the environment instead.
+- C#: plain files in `<Package>/Files/cs/` of an assembly package; a source code schema only for a
+  Creatio-side API (`BaseService` web service). See `get_code_style("architecture")`, 3.7.
 
 ## Traps (verified)
 

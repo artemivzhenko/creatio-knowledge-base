@@ -47,7 +47,14 @@ transfer:
 - `"EditViewModelSchema"`, `"GridDetailViewModelSchema"`, `"ModuleViewModelSchema"`
   → **Classic UI** (`diff`, `methods`, `Terrasoft.*`). Search with
   `area="ClassicUI"`.
-- C# under `Schemas/<Name>/<Name>.cs` → **Backend**. Search with `area="Backend"`.
+- C# → **Backend**. Search with `area="Backend"`.
+
+**Where new C# goes** (`get_code_style("architecture")`, 3.7): plain files in
+`<Package>/Files/cs/` of an assembly package (`"Type": 1`, `"ProjectPath"` in the package
+descriptor). Only an API the platform exposes - a configuration web service
+(`ServiceModel/<Name>.svc`, `BaseService`) - is a source code schema in
+`Schemas/<Name>/`, and it stays a thin wrapper over the `Files/cs` classes. Database views,
+functions and triggers are package SQL scripts, not C#.
 
 Searching without `area` is useful on purpose when you want to see how the same task
 is solved on both sides.

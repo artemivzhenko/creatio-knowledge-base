@@ -6,12 +6,12 @@ description: Freedom UI page business rules and object (entity) business rules o
 
 Scripts that create and change Creatio **business rules** (object level and Freedom UI page
 level) as **package files**, then prove them on an environment through the platform's own rule
-engine. Pure Python standard library; reuses the resource writer of `../process/pschema.py`.
+engine. Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
 | `rules.py` | CLI: inspect, new, add, replace, remove, enable/disable, remove-base, caption, validate, probe |
-| `brules.py` | the library behind it; import it for anything the CLI does not cover |
+| [`../creatio_schemas/rules/`](../creatio_schemas/README.md) | the library behind it (`RuleSchema`, spec builder, action registry, both storage forms, `RuleEngine`); import it for anything the CLI does not cover |
 | `tests/` | `python tests/test_rules_tools.py` - round trip and build checks on a real 8.2.3 export |
 
 Verified on Creatio 8.2.3 (ti823): rules built only with these scripts were pushed with

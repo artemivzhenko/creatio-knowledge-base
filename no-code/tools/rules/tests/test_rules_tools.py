@@ -12,9 +12,10 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE.parent.parent))
 
-from brules import OPS, T_FILTER_LOOKUP, T_GROUP, RuleSchema, create_rule_schema  # noqa: E402
+from creatio_schemas import RuleSchema  # noqa: E402
+from creatio_schemas.rules.model import OPS, T_FILTER_LOOKUP, T_GROUP  # noqa: E402
 
 FIXTURES = HERE / "fixtures" / "iaTest"
 SCHEMAS = ("iaTestBusinessRule", "iaTests_FormPageBusinessRule", "ContactAddressBusinessRule")
@@ -34,8 +35,11 @@ def copy() -> Path:
 def test_round_trip_is_byte_identical():
     for name in SCHEMAS:
         rs = RuleSchema(FIXTURES, name)
-        for path, (text, bom) in rs.files().items():
+        files = rs.files()
+        for path, (text, bom) in files.items():
             assert read(path) == ("﻿" if bom else "") + text, path
+        rs.describe()
+        assert rs.files() == files and rs.diff() == ""  # reading never changes the metadata
 
 
 def test_inspect_decodes_all_three_forms():
@@ -129,7 +133,7 @@ def test_replacing_and_new_addons():
         assert text.count("+ MetaData.Schema.AD4.BRS1 {") == 2 and not text.startswith("﻿")
         assert new["UId"] in [r["UId"] for r in RuleSchema(pkg, "ContactAddressBusinessRule").rules]
 
-        own = create_rule_schema(pkg, "Contact", target_uid="16be3651-8fe2-4159-8dd0-a803d4683dd3", kind="entity")
+        own = RuleSchema.create(pkg, "Contact", target_uid="16be3651-8fe2-4159-8dd0-a803d4683dd3", kind="entity")
         own.add({"caption": "Notes read-only for the marker", "conditions": [{"left": "JobTitle", "op": "equal", "value": "x", "type": "ShortText"}],
                  "actions": [{"type": "readonly", "items": ["Notes"]}]})
         own.save()
@@ -137,8 +141,34 @@ def test_replacing_and_new_addons():
         meta = json.loads(read(pkg / "Schemas" / "ContactBusinessRule" / "metadata.json").lstrip("﻿"))["MetaData"]["Schema"]
         assert meta["AD1"] == "16be3651-8fe2-4159-8dd0-a803d4683dd3" and meta["AD3"] == "BusinessRule" and len(again.rules) == 1
         assert '"ModifiedOnUtc": "\\/Date(' in read(pkg / "Schemas" / "ContactBusinessRule" / "descriptor.json")
-        repl = create_rule_schema(pkg, "Account", parent_uid="11111111-1111-1111-1111-111111111111", target_uid="25d7c1ab-1de0-4501-b402-02e0e5a72d6e", kind="entity")
+        repl = RuleSchema.create(pkg, "Account", parent_uid="11111111-1111-1111-1111-111111111111", target_uid="25d7c1ab-1de0-4501-b402-02e0e5a72d6e", kind="entity")
         assert repl.replacing and repl.rules == []
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_command_line():
+    import contextlib
+    import io
+    sys.path.insert(0, str(HERE.parent))
+    import rules
+    tmp = copy()
+    try:
+        pkg, spec = tmp / "iaTest", tmp / "rule.json"
+        spec.write_text(json.dumps({"caption": "Comment required when active", "conditions": [{"left": "iaIsActive", "op": "equal", "value": True}],
+                                    "actions": [{"type": "required", "items": ["iaComment"]}]}), encoding="utf-8")
+        meta = pkg / "Schemas" / "iaTestBusinessRule" / "metadata.json"
+        before = read(meta)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert rules.main(["add", str(pkg), "iaTest", "--spec", str(spec), "--dry-run"]) == 0
+        assert "Comment required when active" in out.getvalue() and read(meta) == before
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert rules.main(["add", str(pkg), "iaTestBusinessRule", "--spec", str(spec)]) == 0  # the addon name works too
+            assert rules.main(["disable", str(pkg), "iaTest", "Comment required when active"]) == 0
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert rules.main(["remove-base", str(pkg), "iaTest", "34a9fedf-e4d8-f6e1-cb04-2e74816d4502"]) == 2  # own addon: refused
+        assert RuleSchema(pkg, "iaTestBusinessRule").rule("Comment required when active")["BR4"] is False
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

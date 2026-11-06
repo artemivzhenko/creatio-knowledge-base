@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Command line over pschema.py: inspect and change business processes stored in a package.
+Inspect and change business processes stored in a package (library: ../creatio_schemas/process).
 
     python proc.py inspect   <package> <Process>
     python proc.py new       <package> <Process> --caption "..." [--cultures en-US ru-RU]
     python proc.py caption   <package> <Process> <target> en-US="..." [ru-RU="..."]   target: Process | Element | Element.Param | Parameter:Name
-    python proc.py captions  <package> <Process> [--missing]
+    python proc.py captions  <package> <Process> [--missing] [--from en-US]
     python proc.py fill-captions <package> <Process> [--from en-US]
     python proc.py param     <package> <Process> add <Name> --type Text [--direction In|Out|Variable] [--caption ..] [--default ..] [--ref-schema Contact]
     python proc.py param     <package> <Process> rename <Old> <New> | remove <Name>
@@ -24,196 +24,176 @@ UId meta paths; the rest of the text is passed through.
 
 from __future__ import annotations
 
-import argparse
-import difflib
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pschema import DVT_OF, Process, create_process  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from creatio_schemas import DVT_OF, ProcessSchema  # noqa: E402
+from creatio_schemas.cli import CommandLine, parse_assignments  # noqa: E402
+from creatio_schemas.process import ELEMENT_KINDS, TASK_ALIASES  # noqa: E402
 
 
-def parse_assignments(items: list[str]) -> dict[str, str]:
-    out = {}
-    for item in items:
-        if "=" not in item:
-            raise SystemExit(f"expected Name=value, got {item!r}")
-        k, v = item.split("=", 1)
-        out[k] = v
-    return out
+# -- whole process ------------------------------------------------------------ #
+
+def new(_, a):
+    print(ProcessSchema.create(Path(a.package), a.process, a.caption, a.cultures).describe())
 
 
-def finish(proc: Process, dry_run: bool) -> None:
-    if dry_run:
-        for path, text in proc.files().items():
-            try:
-                with open(path, encoding="utf-8", newline="") as fh:
-                    old = fh.read()
-            except FileNotFoundError:
-                old = ""
-            if old != text:
-                rel = str(path.relative_to(proc.package))
-                sys.stdout.writelines(difflib.unified_diff(old.splitlines(True), text.splitlines(True), f"a/{rel}", f"b/{rel}"))
-        print("\n(dry run: nothing written)")
-        return
+def inspect(proc, a):
+    print(proc.describe())
+
+
+def validate(proc, a):
     problems = proc.validate()
-    proc.save()
-    print(f"saved {proc.name}" + (f"; validation: {len(problems)} problem(s)" if problems else ""))
-    for p in problems:
-        print("  -", p)
+    print("\n".join(problems) if problems else "ok")
+    return 1 if problems else 0
+
+
+# -- captions ------------------------------------------------------------------ #
+
+def caption(proc, a):
+    values = parse_assignments(a.values)
+    if not values:
+        raise SystemExit('give culture=value pairs, e.g. en-US="Read contact"')
+    for culture, value in values.items():
+        print(f"{culture}: {proc.set_caption(a.target, value, [culture])} = {value!r}")
+
+
+def captions(proc, a):
+    if a.missing:
+        for culture, keys in proc.resources.missing(a.source).items():
+            if keys:
+                print(f"{culture}: {len(keys)} missing")
+                for k in keys:
+                    print(f"   {k} = {proc.resources.get(k, a.source)!r}")
+        return
+    for k, v in sorted(proc.resources.cultures.get(a.source, {}).items()):
+        print(f"{k} = {v!r}")
+
+
+def fill_captions(proc, a):
+    n = 0
+    for culture, keys in proc.resources.missing(a.source).items():
+        for k in keys:
+            proc.resources.set(k, proc.resources.get(k, a.source), [culture])
+            n += 1
+    print(f"copied {n} caption(s) from {a.source}")
+
+
+# -- elements -------------------------------------------------------------------- #
+
+def element_add(proc, a):
+    el = proc.add_element(a.kind, a.name, a.caption or "", a.after, a.before)
+    if a.entity:
+        proc.set_entity(el, a.entity)
+    if a.calls:
+        proc.set_calls(el, a.calls)
+    if a.message:
+        proc.set_message(el, a.message)
+    for k, v in parse_assignments(a.set).items():
+        proc.set_value(el, k, v, a.expr)
+
+
+def element_set(proc, a):
+    el = proc.element(a.name)
+    for k, v in parse_assignments(a.values).items():
+        proc.set_value(el, k, v, a.expr)
+
+
+def script_get(proc, a):
+    body = proc.get_script(a.element)
+    if a.out:
+        Path(a.out).write_text(body, encoding="utf-8")
+        print(f"{len(body)} chars -> {a.out}")
+    else:
+        print(body)
+
+
+def build() -> CommandLine:
+    cli = CommandLine(__doc__, "process")
+    c = cli.command
+    p = c("new", new, "create a process: one lane, start -> terminate", target=False)
+    p.add_argument("package")
+    p.add_argument("process")
+    p.add_argument("--caption", required=True)
+    p.add_argument("--cultures", nargs="*")
+    c("inspect", inspect, "elements, parameters, flows and problems, with decoded names")
+    c("validate", validate, "problems only; exit code 1 when there are any")
+
+    p = c("caption", caption, "set a caption: Process | Element | Element.Param | Parameter:Name | a raw key", writes=True)
+    p.add_argument("target")
+    p.add_argument("values", nargs="+", metavar="culture=value")
+    p = c("captions", captions, "list captions of a culture, or those missing in the others")
+    p.add_argument("--from", dest="source", default="en-US")
+    p.add_argument("--missing", action="store_true")
+    p = c("fill-captions", fill_captions, "copy captions missing in a culture from --from", writes=True)
+    p.add_argument("--from", dest="source", default="en-US")
+
+    g = cli.group("param", "process parameters")
+    p = c("add", lambda proc, a: proc.add_param(a.name, a.type, a.direction, a.caption or "", a.default, a.ref_schema), "add a parameter", True, g)
+    p.add_argument("name")
+    p.add_argument("--type", required=True, choices=sorted(DVT_OF))
+    p.add_argument("--direction", default="Variable", choices=["In", "Out", "Variable"])
+    p.add_argument("--caption")
+    p.add_argument("--default")
+    p.add_argument("--ref-schema", help="Lookup: the reference schema name")
+    p = c("rename", lambda proc, a: proc.rename_param(a.old, a.new), "rename a parameter (its captions follow)", True, g)
+    p.add_argument("old")
+    p.add_argument("new")
+    p = c("remove", lambda proc, a: proc.remove_param(a.name), "remove a parameter", True, g)
+    p.add_argument("name")
+
+    g = cli.group("element", "process elements")
+    p = c("add", element_add, "add an element; --after wires a flow, --before re-points the existing one", True, g)
+    p.add_argument("name")
+    p.add_argument("--kind", required=True, help=f"{', '.join(list(ELEMENT_KINDS) + list(TASK_ALIASES))} or userTask:<TaskSchema>")
+    p.add_argument("--caption")
+    p.add_argument("--after")
+    p.add_argument("--before")
+    p.add_argument("--entity", help="data elements and record-signal starts: entity schema name (resolved from the workspace) or its UId")
+    p.add_argument("--calls", help="sub-process: the process to call, by name or UId")
+    p.add_argument("--message", help="message / signal events: the message name")
+    p.add_argument("--set", nargs="*", default=[], metavar="Param=value")
+    p.add_argument("--expr", action="store_true", help="the --set values are expressions")
+    p = c("rename", lambda proc, a: proc.rename_element(a.old, a.new), "rename an element (mappings, labels, captions follow)", True, g)
+    p.add_argument("old")
+    p.add_argument("new")
+    p = c("remove", lambda proc, a: proc.remove_element(a.name), "remove an element with its flows and mappings", True, g)
+    p.add_argument("name")
+    p = c("set", element_set, "set element parameter values", True, g)
+    p.add_argument("name")
+    p.add_argument("values", nargs="+", metavar="Param=value")
+    p.add_argument("--expr", action="store_true")
+    p = c("formula", lambda proc, a: proc.set_formula(a.name, a.expression, a.result), "formula task: expression -> process parameter", True, g)
+    p.add_argument("name")
+    p.add_argument("expression")
+    p.add_argument("--result", required=True, help="the process parameter that receives the value")
+
+    g = cli.group("flow", "sequence and conditional flows")
+    p = c("add", lambda proc, a: proc.add_flow(a.src, a.dst, a.condition, a.name, a.caption), "add a flow", True, g)
+    p.add_argument("src")
+    p.add_argument("dst")
+    p.add_argument("--condition")
+    p.add_argument("--name")
+    p.add_argument("--caption")
+    p = c("remove", lambda proc, a: proc.remove_element(a.name), "remove a flow", True, g)
+    p.add_argument("name")
+    p = c("condition", lambda proc, a: proc.set_condition(a.name, a.condition), "set a condition (a plain flow becomes conditional)", True, g)
+    p.add_argument("name")
+    p.add_argument("condition")
+
+    g = cli.group("script", "script task bodies")
+    p = c("get", script_get, "print or save the C# body", under=g)
+    p.add_argument("element")
+    p.add_argument("--out")
+    p = c("set", lambda proc, a: proc.set_script(a.element, Path(a.file).read_text(encoding="utf-8")), "replace the C# body from a file", True, g)
+    p.add_argument("element")
+    p.add_argument("--file", required=True)
+    return cli
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["inspect", "new", "caption", "captions", "fill-captions", "param", "element", "flow", "script", "validate"])
-    ap.add_argument("package")
-    ap.add_argument("process")
-    ap.add_argument("rest", nargs="*")
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--caption")
-    ap.add_argument("--cultures", nargs="*")
-    ap.add_argument("--from", dest="source", default="en-US")
-    ap.add_argument("--missing", action="store_true")
-    ap.add_argument("--type")
-    ap.add_argument("--direction", default="Variable")
-    ap.add_argument("--default")
-    ap.add_argument("--ref-schema")
-    ap.add_argument("--kind")
-    ap.add_argument("--after")
-    ap.add_argument("--before")
-    ap.add_argument("--set", nargs="*", default=[])
-    ap.add_argument("--expr", action="store_true")
-    ap.add_argument("--condition")
-    ap.add_argument("--name")
-    ap.add_argument("--file")
-    ap.add_argument("--out")
-    ap.add_argument("--result")
-    ap.add_argument("--entity", help="data elements and record-signal starts: entity schema name (resolved from the workspace) or its UId")
-    ap.add_argument("--calls", help="sub-process: the process to call, by name or UId")
-    ap.add_argument("--message", help="message / signal events: the message name")
-    a = ap.parse_args(argv)
-    pkg = Path(a.package)
-
-    if a.command == "new":
-        if not a.caption:
-            raise SystemExit("--caption is required")
-        if a.dry_run:
-            print(f"would create {pkg / 'Schemas' / a.process}")
-            return 0
-        proc = create_process(pkg, a.process, a.caption, a.cultures)
-        print(proc.describe())
-        return 0
-
-    proc = Process(pkg, a.process)
-    sub = a.rest[0] if a.rest else ""
-    args = a.rest[1:]
-
-    if a.command == "inspect":
-        print(proc.describe())
-        return 0
-    if a.command == "validate":
-        problems = proc.validate()
-        print("\n".join(problems) if problems else "ok")
-        return 1 if problems else 0
-    if a.command == "captions":
-        if a.missing:
-            for culture, keys in proc.resources.missing(a.source).items():
-                if keys:
-                    print(f"{culture}: {len(keys)} missing")
-                    for k in keys:
-                        print(f"   {k} = {proc.resources.get(k, a.source)!r}")
-        else:
-            for k, v in sorted(proc.resources.cultures.get(a.source, {}).items()):
-                print(f"{k} = {v!r}")
-        return 0
-    if a.command == "fill-captions":
-        n = 0
-        for culture, keys in proc.resources.missing(a.source).items():
-            for k in keys:
-                proc.resources.set(k, proc.resources.get(k, a.source), [culture])
-                n += 1
-        print(f"copied {n} caption(s) from {a.source}")
-        finish(proc, a.dry_run)
-        return 0
-    if a.command == "caption":
-        values = parse_assignments(args)
-        if not values:
-            raise SystemExit("give culture=value pairs, e.g. en-US=\"Read contact\"")
-        for culture, value in values.items():
-            key = proc.set_caption(sub, value, [culture])
-            print(f"{culture}: {key} = {value!r}")
-        finish(proc, a.dry_run)
-        return 0
-    if a.command == "param":
-        if sub == "add":
-            if not a.type:
-                raise SystemExit(f"--type is required; one of {', '.join(sorted(DVT_OF))}")
-            proc.add_param(args[0], a.type, a.direction, a.caption or "", a.default, a.ref_schema)
-        elif sub == "rename":
-            proc.rename_param(args[0], args[1])
-        elif sub == "remove":
-            proc.remove_param(args[0])
-        else:
-            raise SystemExit("param add|rename|remove")
-        finish(proc, a.dry_run)
-        return 0
-    if a.command == "element":
-        if sub == "add":
-            if not a.kind:
-                raise SystemExit("--kind is required (readData, changeData, addData, deleteData, formula, script, exclusiveGateway, terminate, userTask:<Schema> ...)")
-            el = proc.add_element(a.kind, args[0], a.caption or "", a.after, a.before)
-            if a.entity:
-                proc.set_entity(el, a.entity)
-            if a.calls:
-                proc.set_calls(el, a.calls)
-            if a.message:
-                proc.set_message(el, a.message)
-            for k, v in parse_assignments(a.set).items():
-                proc.set_value(el, k, v, a.expr)
-        elif sub == "rename":
-            proc.rename_element(args[0], args[1])
-        elif sub == "remove":
-            proc.remove_element(args[0])
-        elif sub == "set":
-            el = proc.element(args[0])
-            for k, v in parse_assignments(args[1:]).items():
-                proc.set_value(el, k, v, a.expr)
-        elif sub == "formula":
-            if not a.result:
-                raise SystemExit("--result <ProcessParam> is required")
-            proc.set_formula(args[0], args[1], a.result)
-        else:
-            raise SystemExit("element add|rename|remove|set|formula")
-        finish(proc, a.dry_run)
-        return 0
-    if a.command == "flow":
-        if sub == "add":
-            proc.add_flow(args[0], args[1], a.condition, a.name, a.caption)
-        elif sub == "remove":
-            proc.remove_element(args[0])
-        elif sub == "condition":
-            proc.set_condition(args[0], args[1])
-        else:
-            raise SystemExit("flow add|remove|condition")
-        finish(proc, a.dry_run)
-        return 0
-    if a.command == "script":
-        if sub == "get":
-            body = proc.get_script(args[0])
-            if a.out:
-                Path(a.out).write_text(body, encoding="utf-8")
-                print(f"{len(body)} chars -> {a.out}")
-            else:
-                print(body)
-            return 0
-        if sub == "set":
-            if not a.file:
-                raise SystemExit("--file is required")
-            proc.set_script(args[0], Path(a.file).read_text(encoding="utf-8"))
-            finish(proc, a.dry_run)
-            return 0
-        raise SystemExit("script get|set")
-    return 0
+    return build().run(argv, lambda a: None if a.command == "new" else ProcessSchema(Path(a.package), a.process))
 
 
 if __name__ == "__main__":

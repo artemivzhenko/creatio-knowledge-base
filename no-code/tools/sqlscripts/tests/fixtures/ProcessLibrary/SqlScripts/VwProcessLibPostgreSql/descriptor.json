@@ -1,0 +1,24 @@
+﻿{
+  "SqlScript": {
+    "UId": "607df417-8d89-4782-8d7b-d6e6f118497e",
+    "Name": "VwProcessLibPostgreSql",
+    "DBEngineType": 2,
+    "InstallType": 1,
+    "ModifiedOnUtc": "\/Date(1665582976000)\/",
+    "BackwardCompatibilityConfirmed": true,
+    "DependsOn": [
+      {
+        "UId": "cf234830-1cfb-4d0e-9278-e8578253f3a7",
+        "Name": "VwSysSchemaInWorkspacePostgreSql"
+      },
+      {
+        "UId": "2ad4c300-b41e-0479-50e6-723ce71f2c1e",
+        "Name": "CreateVwProcessSchemaVersionPostgreSql"
+      },
+      {
+        "UId": "e9a428a2-2a95-42b6-8090-9141c13158f4",
+        "Name": "fn_GetIsProcessTracingPostgreSql"
+      }
+    ]
+  }
+}

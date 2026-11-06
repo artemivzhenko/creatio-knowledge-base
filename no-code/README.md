@@ -45,16 +45,35 @@ no-code tools silently store things an 8.x designer cannot show, and the skills 
 ## Process tools
 
 [tools/process/](tools/process/README.md) builds and refactors business processes as
-package files (`proc.py`, `refactor.py`, `pschema.py`), the route that works on Creatio 8.x
+package files (`proc.py`, `refactor.py`), the route that works on Creatio 8.x
 where clio's own process tools do not. It ships the decoded key map of the process
 metadata and the user-task definitions of 8.2.3.
 
 ## Business-rule tools
 
 [tools/rules/](tools/rules/README.md) creates and edits object and Freedom UI page business
-rules as package files (`rules.py`, `brules.py`) from a short JSON spec, including replacing
+rules as package files (`rules.py`) from a short JSON spec, including replacing
 addons of base objects and the generated rules of a lookup filter, and proves object rules
 through the platform's rule engine (`rules.py probe`).
+
+## Object tools
+
+[tools/objects/](tools/objects/README.md) creates objects and lookups and adds, changes and
+removes their columns and flags as package files (`objects.py`); `push-pkg` makes the platform
+update the table, and `objects.py probe` compares the metadata with the database.
+
+## SQL script tools
+
+[tools/sqlscripts/](tools/sqlscripts/README.md) creates and changes the package's SQL scripts
+(views, functions, triggers, data fixes) per database engine, with install type and run order
+(`sqlscripts.py`); `push-pkg` runs them, `sqlscripts.py probe` shows what the environment recorded.
+
+## The schema library
+
+The toolkits are command lines over [tools/creatio_schemas/](tools/creatio_schemas/README.md):
+one `Schema` base class (files, descriptor, resources, diff, save) with `ProcessSchema` and
+`RuleSchema` and `EntitySchema` on top, registries for process element kinds and rule actions, and the
+workspace lookups they share. New schema types and new element or action kinds go there.
 
 ## Regenerating the reference
 

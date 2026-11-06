@@ -1,0 +1,11 @@
+﻿{
+  "SqlScript": {
+    "UId": "463128db-876a-4b0f-87c6-e7027fe34b9b",
+    "Name": "iaFnShipmentLabelPostgreSql",
+    "DBEngineType": 2,
+    "InstallType": 1,
+    "ModifiedOnUtc": "\/Date(1793957930000)\/",
+    "BackwardCompatibilityConfirmed": false,
+    "DependsOn": []
+  }
+}

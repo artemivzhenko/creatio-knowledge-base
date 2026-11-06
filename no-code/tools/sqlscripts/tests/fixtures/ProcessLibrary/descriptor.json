@@ -1,0 +1,27 @@
+﻿{
+  "Descriptor": {
+    "UId": "5e8400f1-2850-4048-bcfe-d1ac195bbe9e",
+    "PackageVersion": "7.8.0",
+    "Name": "ProcessLibrary",
+    "ModifiedOnUtc": "\/Date(1732030536000)\/",
+    "Maintainer": "Creatio",
+    "DependsOn": [
+      {
+        "UId": "29996b0e-2b19-27a8-dab4-67fbc00db573",
+        "PackageVersion": "7.8.0",
+        "Name": "CrtProcessDesigner"
+      },
+      {
+        "UId": "3a71e376-9ac3-3049-c62b-9c43b9abe054",
+        "PackageVersion": "7.8.0",
+        "Name": "CrtCoreBase",
+        "Type": 1
+      },
+      {
+        "UId": "a17d52e6-97ab-6f7f-17aa-f0e197e488ea",
+        "PackageVersion": "7.8.0",
+        "Name": "CrtUIv2"
+      }
+    ]
+  }
+}

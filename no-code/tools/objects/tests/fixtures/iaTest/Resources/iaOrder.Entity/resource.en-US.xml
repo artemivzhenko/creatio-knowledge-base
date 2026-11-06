@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Order" />
+			<Item Name="Columns.iaAmount.Caption" Value="Amount" />
+			<Item Name="Columns.iaContact.Caption" Value="Contact" />
+			<Item Name="Columns.iaDueDate.Caption" Value="Due date" />
+			<Item Name="Columns.iaName.Caption" Value="Name" />
+			<Item Name="Columns.iaStatus.Caption" Value="Status" />
+		</Items>
+	</Group>
+</Resources>

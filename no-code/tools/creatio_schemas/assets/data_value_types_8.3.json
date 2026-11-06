@@ -1,0 +1,14 @@
+{
+  "60532cfd-8645-4a54-be81-bef507aa2339": "Float0",
+  "b039feb0-ee7c-4884-8aa6-d6d45d84316f": "ImageLookup",
+  "6cc9cbe3-a486-4ed3-bea6-5c96f36d77ff": "Money0",
+  "8842ed44-069a-4fae-b1a2-ee17384689eb": "Money1",
+  "85ff33ce-d57d-4197-9e9b-c2dcb1cfc35e": "Money3",
+  "a33c9252-d401-453e-949d-169157067ed9": "File",
+  "fa6e6e49-b996-475e-a77e-73904e4c5a88": "Image",
+  "ebd85d37-0abf-4bbf-bb32-97dc3dffcc8c": "Entity",
+  "84ed6865-9692-4c98-aaed-4d15b96a95c2": "CustomObject",
+  "4b51a8b5-1ee9-4437-9d58-f35e083cbcdf": "ObjectList",
+  "651ec16f-d140-46db-b9e2-825c985a8ac2": "CompositeObjectList",
+  "632e4371-0a7f-46cd-a284-a623b3933027": "CompositeObject"
+}

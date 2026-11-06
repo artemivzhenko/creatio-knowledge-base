@@ -94,6 +94,28 @@ Status legend: **works** - did what the contract says and the result was read ba
 | push over an addon saved by the designer / clio MCP | skipped | "modified locally" (`IsChanged`, `IsLocked`); pulled first, cleared the two flags, pushed |
 | round trip of real rule schemas | works | 134 schemas (8.2 / 8.3 / 10.0, own and replacing) metadata byte-identical |
 
+## Objects built as files (tools/objects)
+
+| What | Status | What happened |
+| --- | --- | --- |
+| object flags off (`virtual`, `db-view`) on a designer-changed `iaOrder` + `push-pkg` | works | before: the table kept none of the designer's changes; after: index on `iaAmount` / `iaContactId`, `SysiaOrderRight`, `RecordInactive` created |
+| add Integer (required, default), MediumText, Lookup to `Contact`; `iaContact` weak reference off | works | columns, index, foreign keys `NO ACTION` / `CASCADE` as the metadata says; `probe` 27 ok, 0 mismatches |
+| new lookup (`BaseLookup`) + new object with ShortText, Lookup, Lookup with cascade, Date, Float2, Boolean default | works | tables built on push, `probe` 21 + 13 ok; DataService reads `iaShippedOn` as Date (8), not DateTime |
+| pull after push | works | `iaOrder` files byte-identical to what the scripts wrote |
+| designer-made replacing `Account` (base columns changed) read against the fetched base | works | base merged from 5 packages with the platform's hierarchy function; every line resolves; `EG1.BK8` equals the events process of the copy merged last; decoded required, ShortText > LongText, caption - each confirmed by clio's column view |
+| new replacing `Contact`: base index on / off, text widened, base default, base caption, own column | works | push applied all: `varchar(250)`, index created / dropped, runtime default True, caption; `probe` 108 ok; pull identical except the descriptor date the install stamps |
+| round trip of real objects | works | 344 schemas (8.1-10.0, own and replacing) byte-identical; 292 resolve their parent |
+
+## SQL scripts built as files (tools/sqlscripts)
+
+| What | Status | What happened |
+| --- | --- | --- |
+| function + view depending on it (view sorts first by name) + `push-pkg` | works | install log: the function ran first, then the view; `"iaFnShipmentLabel"('42')` = `SHP-42`, the view exists |
+| MSSQL script in a PostgreSQL install | by design | skipped, recorded in `SysPackageSqlScript`, no error |
+| re-push unchanged / after a body change | works | unchanged: nothing ran; changed: only that script ran (run log `v1,v2`) |
+| `probe` | works | recorded engine, install type, no `LastError`, body MD5 equal to the file |
+| round trip | works | 39 scripts (own packages + ProcessLibrary) byte-identical, descriptor re-dump identical |
+
 ## CLI commands run on the same environment
 
 | Command | Status | What happened |
