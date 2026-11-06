@@ -308,8 +308,9 @@ class KnowledgeBase:
         rel = path.relative_to(self.root).as_posix()
         topic = path.parent.relative_to(base).as_posix()
         topic = "" if topic == "." else topic
-        if stem == "SKILL":
-            # A skill is its folder: id "no-code/clio-sql-and-data", found by that bare name.
+        if stem == "SKILL" or (stem == "README" and path.parent != base):
+            # A skill or a tool README is its folder: id "no-code/clio-sql-and-data" /
+            # "no-code/tools/objects", found by the bare folder name or "tools/objects".
             stem = path.parent.name
             rel = path.parent.relative_to(self.root).as_posix() + ".md"
             topic = ""

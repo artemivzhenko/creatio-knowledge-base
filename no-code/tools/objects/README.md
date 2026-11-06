@@ -2,7 +2,7 @@
 description: Creatio objects (entity schemas) of 8.x as package files - create objects, lookups and replacing objects of base objects (Contact, Account), change base (inherited) columns, add, change and remove columns (types, lookups, required, default, index, cascade, weak reference...), object flags (virtual, rights, change log, deactivation), captions in every culture; push applies the table; probe compares metadata with the database.
 ---
 
-# Object tools
+# Object and column tools
 
 Scripts that create and change Creatio **objects** (entity schemas) as **package files**, the
 route that avoids clio's object commands and their 8.2 traps (no date-only column, no

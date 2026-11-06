@@ -1,4 +1,8 @@
-# Business-process tools
+---
+description: Creatio business processes of 8.x as package files - create a process, add parameters, elements (read/add/modify/delete data, formula, script, gateways, sub-process, timers, signals, user tasks), flows and conditions, captions per culture; rename a schema across a workspace (refactor.py rename-schema); proven by running the process on an environment.
+---
+
+# Business-process tools and schema rename
 
 Scripts that change Creatio business processes as **package files**, so an agent can build
 and refactor processes without the designer and without clio's process tools (which need

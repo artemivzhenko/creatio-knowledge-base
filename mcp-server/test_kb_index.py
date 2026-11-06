@@ -55,6 +55,17 @@ def test_clio_area_skills_and_reference():
     assert top("upload file freedom ui").startswith("Backend/") or top("upload file freedom ui").startswith("Frontend/")
 
 
+def test_tool_readmes_are_their_folders():
+    assert KB.get("tools/objects").id == "no-code/tools/objects"
+    assert KB.get("sqlscripts").id == "no-code/tools/sqlscripts"
+    assert KB.get("creatio_schemas").title == "creatio_schemas"
+    assert KB.get("no-code/README") is not None  # the area's own README keeps its name
+    for q, want in (("add a column to an object as package files", "tools/objects"), ("rename a schema", "tools/process"),
+                    ("create a package sql script view", "tools/sqlscripts"), ("business rule required field page", "tools/rules")):
+        ids = [r.id for r, _ in KB.search(q, area="Clio", limit=3)]
+        assert any(i.endswith(want) for i in ids), (q, ids)
+
+
 def test_get_tolerates_ext_and_bare_name_but_not_ambiguity():
     assert KB.get("Backend/C#/HowToRunBackgroundTask.cs") is not None
     assert KB.get("HowToRunBackgroundTask") is not None

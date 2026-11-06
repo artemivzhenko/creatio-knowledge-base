@@ -10,6 +10,10 @@ Verified on clio 8.1.0.145, cliogate 2.0.0.43, Creatio 8.2.3 (PostgreSQL). Comma
 
 ## Running SQL
 
+`execute-sql-script` runs SQL **now**, on one environment. SQL that must ship with the package
+and run on every install (views, functions, triggers, data fixes) is a package SQL script:
+build it with [tools/sqlscripts](../tools/sqlscripts/README.md), `push-pkg` runs it.
+
 `execute-sql-script` sends SQL to the site through cliogate (needs gate 2.0.0.41+) and
 prints a table, or saves JSON / CSV / XLSX.
 

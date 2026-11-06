@@ -33,6 +33,14 @@ columns, editing Freedom UI pages, rights, builds - search with `area="Clio"`:
 `get_recipe("clio-sql-and-data")` is the block's workflow with verified traps, and
 `get_recipe("execute-sql-script")` the command's full syntax and options.
 
+For **no-code artifacts built as package files** - business processes, business rules
+of objects and Freedom UI pages, objects and their columns, package SQL scripts - use the
+toolkits under `no-code/tools/` instead of the designer or clio's write commands:
+`get_recipe("tools/process")`, `get_recipe("tools/rules")`, `get_recipe("tools/objects")`,
+`get_recipe("tools/sqlscripts")` (each README: the loop, the spec format, the verified
+traps; `tools/creatio_schemas` is the library behind them). The loop is the same for all:
+edit with `--dry-run`, write, `clio push-pkg`, then the tool's `probe` on the environment.
+
 For C# code, also read `get_code_style` (whole, or a section such as `"logging"` or
 `"review checklist"`): recipes show what to call, the style guide says how the code
 must look — tabs, `#region` layout, `[DefaultBinding]`, exception and logging rules.

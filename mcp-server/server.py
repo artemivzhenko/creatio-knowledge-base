@@ -95,7 +95,9 @@ def kb_overview() -> str:
         "FreedomUI (8.x pages), RemoteModule (Angular custom view elements), "
         "Mobile (Mobile SDK handler modules), Backend (C# server code), SQL, "
         "Clio (the clio CLI: one skill per functional block at the root, one "
-        "reference page per command under reference/). "
+        "reference page per command under reference/, and tools/<name> - the "
+        "file toolkits that build processes, business rules, objects and SQL "
+        "scripts as package files). "
         "RemoteModule and Mobile recipes each sit next to a copyable project "
         "folder named in the recipe header."
     )
@@ -154,8 +156,9 @@ def get_recipe(recipe_id: str) -> str:
     recipe_id: the id from search_recipes, for example
                "Frontend/ClassicUI/Fields/HowToFilterLookupField".
                A bare file name is accepted when it is unambiguous; for clio a
-               command name ("execute-sql-script") or a block skill name
-               ("clio-sql-and-data") works directly.
+               command name ("execute-sql-script"), a block skill name
+               ("clio-sql-and-data") or a file toolkit ("tools/objects",
+               "tools/process", "tools/rules", "tools/sqlscripts") works directly.
 
     The code is a template, not a drop-in: schema names, column names and the
     generated attribute suffixes (PDS_Name_a1b2c3d) must be replaced with the
