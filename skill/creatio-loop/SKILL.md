@@ -9,6 +9,11 @@ One task, two agents, one human. The human writes the spec and decides when the 
 the author builds; the tester proves. Neither agent sees the other's reasoning: they exchange
 files.
 
+Two MCP servers, one per side: `creatio-kb` (this knowledge base and its file toolkits - the
+author's) and `creatio-tests` (the UI test utility: `dsl`, `cases`, `page_config`,
+`process_config`, `validate`, `run`, `analyse`, `schemas`, `last_report` - read and run only,
+the tester's). The tester role is given `creatio-tests` and the read tools, nothing that writes.
+
 ## Files
 
 ```
