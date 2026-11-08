@@ -1,0 +1,12 @@
+{
+  "task": "012",
+  "schemas": [
+    "UsrShipment",
+    "UsrShipment_FormPage",
+    "UsrShipmentLabel_Process"
+  ],
+  "files": [
+    "Files/cs/ShipmentLabel.cs",
+    "Files/cs/UsrShipmentEventListener.cs"
+  ]
+}

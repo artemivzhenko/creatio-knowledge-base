@@ -1,59 +1,93 @@
 ---
 name: creatio-loop
-description: Run a Creatio task through the author/tester loop - acceptance criteria written by the human, an author agent that builds the package artifacts, a tester agent that proves them on the environment (probe, integration tests inside Creatio, processes as tests, UI cases), one report round per hand-over, three rounds at most. Use for "run the loop", "author", "tester", "acceptance criteria", "report round", "spec".
+description: The contract of the Creatio author/tester loop - a task folder whose files are the protocol (task.md, questions.md, plan.md, schemas.json, report-N.md, success-report.md, failed.md), project.json with the environment and the package, the schema lock between tasks, the evidence rules and the proof tiers (unit, probe, backend, process, ui). Read it with creatio-author or creatio-tester; use for "task folder", "report round", "acceptance criteria", "project.json", "schemas.json".
+version: 2
 ---
 
-# The author / tester loop
+# The author / tester loop: the contract
 
-One task, two agents, one human. The human writes the spec and decides when the loop stops;
-the author builds; the tester proves. Neither agent sees the other's reasoning: they exchange
-files.
+One task, one human, two agents that never share a chat: the **author** builds the package
+artifacts, the **tester** proves them. They communicate only through files in the task folder;
+the human carries the task from one to the other. This file is the contract both roles read
+first; [creatio-author](../creatio-author/SKILL.md) and [creatio-tester](../creatio-tester/SKILL.md)
+say what each role does with it.
 
-Two MCP servers, one per side: `creatio-kb` (this knowledge base and its file toolkits - the
-author's) and `creatio-tests` (the UI test utility: `dsl`, `cases`, `page_config`,
-`process_config`, `validate`, `run`, `analyse`, `schemas`, `last_report` - read and run only,
-the tester's). The tester role is given `creatio-tests` and the read tools, nothing that writes.
+## Never
 
-## Files
+- The author never edits `task.md`, `questions.md` after the human answered, or any report.
+- The tester never changes package files, `plan.md` or the acceptance criteria. It reports.
+- Nobody commits, branches or pushes to git: the human does.
+- Nobody runs a destructive command on the environment (drop, delete of system data, restore,
+  reinstall) or connects to an environment that is not the one in `project.json`.
+- While `failed.md` exists in the task folder, the tester does not test that task.
+- A `fail` without evidence is not a result. A free-text report is not a report.
 
-```
-tasks/runs/<task-id>/spec.md      written by the human; the author never edits it
-tasks/runs/<task-id>/report.md    append-only; one block per round, by whoever hands over
-```
+## project.json
 
-Templates: [templates/spec.md](templates/spec.md), [templates/report.md](templates/report.md).
-`tasks/` is `C:\Creatio\workspaces\agent_repos\tasks`.
+One file per project, outside git (it holds the password), path given to both agents by the
+human. Template: [templates/project.example.json](templates/project.example.json). It names the
+environment (clio name, url, login, password, platform version, whether it may be broken), the
+package (name, schema prefix, workspace path, dependencies), the paths (the task folders, this
+knowledge base, the test framework, the unit-test project), the read-only workspaces and the
+project's own rules. Every agent reads it before touching anything; values from it are never
+copied into a repository file.
 
-## The loop
+## The task folder
 
-1. The human writes `spec.md`: numbered criteria `AC-nn`, each with the tier that proves it.
-2. **Author** (round n): reads the spec and the previous tester block, builds the artifacts
-   with the file toolkits (`get_recipe("tools/objects")`, `tools/process`, `tools/rules`,
-   `tools/sqlscripts`; C# per `get_code_style("architecture")` 3.7), clears the
-   modified-locally flag (`update "SysSchema" set "IsChanged"=false`, see
-   `get_recipe("clio-packages")`), pushes with `clio push-pkg`, runs `probe`, appends its
-   block: files changed, what was checked, and `Returned to: tester`.
-3. **Tester** (round n): reads the spec and the author's file list - not the author's text -
-   runs the tier of every criterion, appends its block with one row per criterion and
-   evidence, and ends with `Returned to: author` (something failed) or `Returned to: human`
-   (all pass, or a criterion is wrong or impossible).
-4. Stop after round 3 whatever the state: `Returned to: human`.
+`<paths.tasks>/<NNN>-<slug>/`. Files are written in the language of `task.md`.
 
-## Tiers and the command that proves them
+| File | Written by | When | Meaning |
+|---|---|---|---|
+| `task.md` | human | start | the business task, free form, numbered by the folder |
+| `questions.md` | author, then human | before the plan | the author's questions, the human's answers under each; `No questions.` when none |
+| `plan.md` | author | after the answers | how it will be built, the artifacts, the acceptance criteria table |
+| `schemas.json` | author | with the plan, kept current | every schema the task creates or changes: the lock other tasks check |
+| `evidence/` | tester | each run | command output behind every `fail` row |
+| `report-1.md` … `report-3.md` | tester | a run with at least one `fail` or `blocked` | one row per criterion |
+| `success-report.md` | tester | a run where every criterion passes | the task is done |
+| `failed.md` | tester | the 4th failing run | where the result still diverges from the criteria; the human removes it |
 
-| Tier | Proves | Command |
+Templates for every file: [templates/](templates/).
+
+## Lifecycle
+
+1. The human writes `task.md`.
+2. The author reads `project.json`, `task.md`, the knowledge base; writes `questions.md`; stops
+   and says so in chat. The human answers in the same file.
+3. The author writes `plan.md` and `schemas.json`, checks the lock (below), builds, pushes,
+   probes, runs its unit tests, and says "done" in chat. No approval step: the plan is built
+   as written. Anything that turns out unplanned is a question in chat, not a silent change.
+4. The human opens the tester. The tester reads `task.md`, `questions.md`, `plan.md`,
+   `schemas.json` and the previous reports; writes and runs the tests of every criterion; writes
+   `success-report.md` or the next `report-N.md`. Three reports and still red: `failed.md`.
+5. The human brings the report to the author. The author reads it, answers in chat (what was
+   fixed, or what question the report raises), fixes, pushes, says "done". Back to 4.
+6. `success-report.md` closes the task. `failed.md` parks it until the human deletes it
+   (with the old reports, if a fresh count is wanted).
+
+## The schema lock
+
+A task is **active** while its folder has no `success-report.md`. Before creating or changing
+a schema, the author reads `schemas.json` of every other active folder under `paths.tasks`; a
+schema listed there belongs to that task - the author stops and asks the human instead of
+touching it. `schemas.json` is updated the moment the scope grows.
+
+## Acceptance criteria
+
+`plan.md` carries them as a table: `AC-nn`, the action, the expected result, the tier. The
+tester picks the tool; the tier says what kind of proof is enough.
+
+| Tier | Proves | Typical tool |
 |---|---|---|
+| unit | a class in `Files/cs` behaves, with no environment | `dotnet test tests/<Pkg>/` (get_recipe `clio-tests-and-devops`, "Unit tests without an instance") |
 | probe | the artifact landed on the environment as written | `objects.py probe`, `rules.py probe`, `sqlscripts.py probe`, `proc.py probe` |
-| integration | backend logic, data, rights | `tests.py run <pkg> --env dev` (the runner inside Creatio, see tasks/S03) |
-| process | a process started with parameters returns the expected results and leaves the expected records | a process case in `ProcessCases/` of the UI test utility: `start`, `check-result`, `check-record`; `proc.py test-config` writes the process file it validates against (`get_recipe("tools/process")`, "Testing a process") |
-| ui | the page behaves as a user sees it | `.act` cases: `creatio-tests --validate-only`, then a live run (`get_recipe("tools/uitests")`) |
+| backend | listeners, triggers, defaults - the effect of a CRUD operation | a backend case of the test framework: `insert` / `update` / `delete` over OData, `check-record`, `check-count` |
+| process | a process started with parameters returns the expected results and records | a process case: `start`, `check-result`, `check-record` |
+| ui | the page behaves as a user sees it | `.act` cases: validate, then a live run |
 
-## Rules that make the loop converge
+## Evidence
 
-- A `fail` row without evidence (command output, not opinion) is rejected: the author treats it
-  as `not tested`.
-- The author never changes the spec. A criterion it cannot meet is `blocked` with the reason,
-  and the round goes to the human.
-- The tester never fixes anything, not even a typo. It reports.
-- Rows carry the criterion id; a free-text report is not a report.
-- Round 3 red means the human looks. Do not start round 4.
+A `pass` row cites the command and its decisive line. A `fail` or `blocked` row cites a file in
+`evidence/` with the full output (`evidence/AC-03-report-2.txt`). `blocked` means the criterion
+cannot be tested or contradicts `task.md`; it is the human's decision, the tester states why.
+Results vocabulary, nothing else: `pass` | `fail` | `blocked` | `not tested`.

@@ -1,30 +1,22 @@
-# <task-id> report
+# 012 Report 2
 
-Append a block per hand-over. Never edit an earlier block.
-
-## Round 1 - author - 2026-11-06 14:10
-
-Files: `packages/UsrTest/Schemas/UsrShipment/metadata.json`, `Files/cs/ShipmentLabel.cs`, ...
+Tester, 2026-11-06 14:40. Plan read: `plan.md` as of 2026-11-06 12:05. One row per criterion;
+`fail` and `blocked` point to a file in `evidence/`.
 
 | AC | Result | Evidence |
 |---|---|---|
-| AC-01 | pass | `objects.py probe UsrTest UsrShipment`: 9 ok |
-| AC-02 | not tested | needs the runner (tester) |
-| AC-03 | not tested | |
-| AC-04 | not tested | |
+| AC-01 | pass | `objects.py probe UsrPkg UsrShipment`: `UsrLabel Text 250 ok` |
+| AC-02 | pass | `dotnet test tests/UsrPkg`: 6 passed |
+| AC-03 | fail | `evidence/AC-03-report-2.txt`: expected `PARCEL-0007`, actual `Parcel-7` |
+| AC-04 | not tested | depends on AC-03 |
+| AC-05 | fail | `evidence/AC-05-report-2.txt`: `Label` = `Parcel-7` |
+| AC-06 | pass | `creatio-tests run --filter 012-shipped-readonly`: PASS, 8.1 s |
 
-Returned to: tester. Reason: artifacts pushed and probed.
+## Tests written
 
-## Round 1 - tester - 2026-11-06 14:40
+- `ProcessCases/012-shipment-label.act` (AC-03, AC-04, AC-05) in the test framework
+- `Cases/012-shipped-readonly.act` (AC-06)
 
-| AC | Result | Evidence |
-|---|---|---|
-| AC-01 | pass | `objects.py probe UsrTest UsrShipment`: 9 ok |
-| AC-02 | fail | `tests.py run UsrTests --filter AC02`: expected `PARCEL-0007`, actual `Parcel-7` |
-| AC-03 | fail | `proc.py run UsrShipmentLabel_Process`: Label=`Parcel-7` |
-| AC-04 | pass | `creatio-tests --filter AC04`: PASS (8.1s) |
+## Notes for the author
 
-Returned to: author. Reason: AC-02, AC-03 - label format.
-
-Results: `pass` | `fail` (with evidence) | `blocked` (with the reason, goes to the human) |
-`not tested` (with what blocks it).
+The label is built with the type's caption as typed, not in capitals; the padding is missing too.

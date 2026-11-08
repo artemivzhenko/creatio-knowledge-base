@@ -1,0 +1,32 @@
+{
+  "project": "Usr orders",
+  "environment": {
+    "clioName": "dev",
+    "url": "https://dev.example.com",
+    "login": "Supervisor",
+    "password": "change-me",
+    "platformVersion": "8.2.3",
+    "database": "PostgreSQL",
+    "mayBreak": true
+  },
+  "package": {
+    "name": "UsrPkg",
+    "prefix": "Usr",
+    "workspace": "C:\\Creatio\\workspaces\\dev",
+    "dependsOn": ["CrtBase"]
+  },
+  "paths": {
+    "tasks": "C:\\Creatio\\workspaces\\dev\\tasks",
+    "knowledgeBase": "C:\\Creatio\\workspaces\\agent_repos\\creatio-knowledge-base",
+    "testFramework": "C:\\Creatio\\workspaces\\agent_repos\\automatic-creatio-tests",
+    "unitTests": "C:\\Creatio\\workspaces\\dev\\tests\\UsrPkg"
+  },
+  "readOnly": [
+    "C:\\Creatio\\workspaces\\client-prod-copy"
+  ],
+  "rules": [
+    "Before every clio push-pkg: update \"SysSchema\" set \"IsChanged\"=false",
+    "C# goes into Files/cs; a source code schema only for a BaseService API",
+    "Test data carries the prefix UsrTest_ in its name so cases can clean it up"
+  ]
+}
