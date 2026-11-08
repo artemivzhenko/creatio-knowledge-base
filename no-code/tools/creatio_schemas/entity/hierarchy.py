@@ -5,7 +5,7 @@ the merge of every copy of its parent in the packages the target package depends
 platform lists those copies with tsp_GetSysSchemaParentsInPackageHierarchyByPackage, ordered by
 (SchemaLevel, PackageLevel); it merges them from the farthest to the nearest, copies on the
 same level in the order the function returns them (verified: the designer's EG1.BK8 of a
-replacing Account in iaTest is the events process of the copy merged last).
+replacing Account in UsrTest is the events process of the copy merged last).
 
 The cache lives outside the packages (<workspace>/.creatio-bases/<package>/<Object>.json): it
 is valid until the platform or the packages below the target package change - fetch again then.

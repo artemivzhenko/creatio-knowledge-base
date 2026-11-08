@@ -13,7 +13,7 @@ the platform runs while it installs the package. Pure Python standard library.
 | [`../creatio_schemas/sqlscript.py`](../creatio_schemas/README.md) | the library (`SqlScript`) |
 | `tests/` | `python tests/test_sqlscripts_tools.py` |
 
-Verified on Creatio 8.2.3 (ti823, PostgreSQL): four scripts built only with these tools were
+Verified on Creatio 8.2.3 (the test environment, PostgreSQL): four scripts built only with these tools were
 installed by `clio push-pkg` - a function, a view that uses it (named so that it sorts first and
 still ran second, through its dependency), a run log and an MSSQL script the PostgreSQL install
 skipped. All 39 scripts found locally (your packages and the platform's ProcessLibrary)

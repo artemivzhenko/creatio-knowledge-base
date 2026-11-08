@@ -50,7 +50,7 @@ clio help                     # all commands
 - **Command names are kebab-case; many have hidden aliases** (`clio ping` =
   `ping-app`). The reference page lists the aliases where the docs do.
 - **Most read commands take named options, not positional values**:
-  `get-entity-schema-properties --schema-name iaTest`, `get-app-info --code X`,
+  `get-entity-schema-properties --schema-name UsrTest`, `get-app-info --code X`,
   `list-app-sections --application-code X`, `get-object-rights --entity-schema-name X`.
   A positional name fails with "`<option> is required`". Copy the synopsis from the
   reference page.

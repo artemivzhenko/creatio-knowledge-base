@@ -17,7 +17,7 @@ CrtProcessBuilder and do not work on Creatio 8.x). Pure Python standard library.
 | `../creatio_schemas/process/assets/user_tasks.json` | 18 designer user tasks of 8.2.3: parameters, types, defaults, captions in 28 cultures |
 | `tests/` | `python tests/test_process_tools.py` - round-trip and build checks on two real processes |
 
-Verified on Creatio 8.2.3 (ti823): processes built only with these scripts were pushed with
+Verified on Creatio 8.2.3 (the test environment): processes built only with these scripts were pushed with
 `clio push-pkg` and executed by the platform - a formula (`Counter + 41` → 42), a gateway
 branching on an input (`Counter=-100` → "small"), a Read data task counting a table (→ 1),
 and a schema rename that kept its UId. 235 designer-made processes (8.2.3 and 8.3.x)
@@ -69,7 +69,7 @@ preconfiguredPage approval changeAccessRights callWebService userQuestion`; or
 task or a record-signal start to an object, `--calls` names the process a sub-process
 calls, `--message` names the message of a message/signal event.
 
-Every kind was put into one process (`iaShowcase_Process`: 38 nodes, 37 flows, 18 user
+Every kind was put into one process (`UsrShowcase_Process`: 38 nodes, 37 flows, 18 user
 tasks, three alternative starts, a called sub-process, an event sub-process) and read back
 through the designer's own `ProcessSchemaRequest` service with every type recognised.
 

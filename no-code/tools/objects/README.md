@@ -14,7 +14,7 @@ Decimal0, captions in en-US only). Pure Python standard library.
 | [`../creatio_schemas/entity/`](../creatio_schemas/README.md) | the library (`EntitySchema`, flag catalog, parents and designer templates of 8.2.3, `database.check`) |
 | `tests/` | `python tests/test_objects_tools.py` - round trip and edit checks on a real 8.2.3 export |
 
-Verified on Creatio 8.2.3 (ti823): an object changed only with these scripts (virtual and DB-view
+Verified on Creatio 8.2.3 (the test environment): an object changed only with these scripts (virtual and DB-view
 flags off, three columns added, a foreign key switched from weak to cascade) and a new object
 plus a new lookup were pushed with `clio push-pkg`; the platform built the tables - columns,
 indexes, foreign keys with the right delete rule, the `Sys<Object>Right` table, `RecordInactive`

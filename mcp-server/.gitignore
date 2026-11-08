@@ -1,0 +1,6 @@
+
+# Cases and page/process files written against a private environment stay local
+Cases/ia-*.act
+ProcessCases/ia-*.act
+Configuration/pages/ia*.json
+Configuration/processes/ia*.json

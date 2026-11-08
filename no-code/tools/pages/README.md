@@ -13,8 +13,8 @@ object, add a grid of another object, remove an element. Pure Python standard li
 | [`../creatio_schemas/page/`](../creatio_schemas/README.md) | the library (`PageSchema`, `CONTROL_OF`) |
 | `tests/` | `python tests/test_pages_tools.py` - round trip and build checks on real 8.2.3 pages of both body forms |
 
-Verified on Creatio 8.2.3 (ti823): the 17 columns of `iaOrder` (every type below) and a grid
-were placed on `iaOrder_FormPage` with these scripts only, `clio push-pkg` installed the page,
+Verified on Creatio 8.2.3 (the test environment): the 17 columns of `UsrOrder` (every type below) and a grid
+were placed on `UsrOrder_FormPage` with these scripts only, `clio push-pkg` installed the page,
 and the UI test utility's `analyse` found all 18 controls with the expected element types
 (Text, Integer, Decimal, Boolean, Date, Time, DateTime, Lookup, RichText, Phone, Email, Link,
 DataGrid). Two pages read from the package render back byte-for-byte.

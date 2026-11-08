@@ -44,7 +44,7 @@ Templates: [templates/spec.md](templates/spec.md), [templates/report.md](templat
 | Tier | Proves | Command |
 |---|---|---|
 | probe | the artifact landed on the environment as written | `objects.py probe`, `rules.py probe`, `sqlscripts.py probe`, `proc.py probe` |
-| integration | backend logic, data, rights | `tests.py run <pkg> --env ti823` (the runner inside Creatio, see tasks/S03) |
+| integration | backend logic, data, rights | `tests.py run <pkg> --env dev` (the runner inside Creatio, see tasks/S03) |
 | process | a process started with parameters returns the expected results and leaves the expected records | a process case in `ProcessCases/` of the UI test utility: `start`, `check-result`, `check-record`; `proc.py test-config` writes the process file it validates against (`get_recipe("tools/process")`, "Testing a process") |
 | ui | the page behaves as a user sees it | `.act` cases: `creatio-tests --validate-only`, then a live run (`get_recipe("tools/uitests")`) |
 

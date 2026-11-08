@@ -915,11 +915,6 @@
 "WorkingTimeInterval": "3c971b13-45b1-49f4-af05-db8566668def",
 "XssProtectionMode": "717d6f06-2f31-4b9e-aea8-b2edb91a728b",
 "a1IntegrationLog": "48311574-f43f-4d73-98e9-68ed60d4925f",
-"a1LogLevel": "ed118e23-bc13-415d-9f16-8d76d3df1aad",
-"iaExportLog": "bb0b6a73-9099-47bb-a4d4-0f03cd720d6b",
-"iaOrder": "38025265-a7e1-4bf4-8ad2-c22ffe4f389f",
-"iaOrderStatus": "c59697c2-8fa8-4e15-8448-eb8ca4530cdd",
-"iaSQLConsole": "368340c2-dddc-46fe-ac7f-d3485b497f95",
-"iaTest": "8e9352c9-3362-4c77-8dc2-acbb079c1040"
+"a1LogLevel": "ed118e23-bc13-415d-9f16-8d76d3df1aad"
 }
 }

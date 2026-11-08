@@ -14,7 +14,7 @@ engine. Pure Python standard library.
 | [`../creatio_schemas/rules/`](../creatio_schemas/README.md) | the library behind it (`RuleSchema`, spec builder, action registry, both storage forms, `RuleEngine`); import it for anything the CLI does not cover |
 | `tests/` | `python tests/test_rules_tools.py` - round trip and build checks on a real 8.2.3 export |
 
-Verified on Creatio 8.2.3 (ti823): rules built only with these scripts were pushed with
+Verified on Creatio 8.2.3 (the test environment): rules built only with these scripts were pushed with
 `clio push-pkg`, loaded by the rule designer's own service, executed by the platform's rule
 engine with the expected actions, and pulled back byte-identical (only the descriptor date
 loses its milliseconds). The metadata of 134 rule schemas from real packages (8.2, 8.3, 10.0)
@@ -115,8 +115,8 @@ Object rules run on the server: `ServiceModel/BusinessRulesEngineService.svc/Exe
 every Freedom UI page calls, so `probe` sends a record state and prints the actions:
 
 ```
-BusinessRule_8c9965d: crt.SetValue iaComment = "filled by rule"
-BusinessRule_eb9103a: crt.SetReadonlyPropertyActionApplier iaDate = true  (reset)
+BusinessRule_8c9965d: crt.SetValue UsrComment = "filled by rule"
+BusinessRule_eb9103a: crt.SetReadonlyPropertyActionApplier UsrDate = true  (reset)
 ```
 
 `(reset)` means the condition is false and the property returns to default. Give
