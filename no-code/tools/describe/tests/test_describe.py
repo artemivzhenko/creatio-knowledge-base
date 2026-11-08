@@ -129,6 +129,52 @@ def test_index_follows_the_disk():
         shutil.rmtree(tmp.parent, ignore_errors=True)
 
 
+CS = HERE / "fixtures" / "UsrPkg"
+
+
+def test_csharp_by_signatures():
+    out = describe_package(CS)
+    assert "  source    UsrOrderService" in out and "DTO, web service; 3 methods" in out
+    assert "  csharp    Files/cs/UsrOrderEventListener.cs" in out and "entity event listener of UsrOrder; 3 methods" in out
+    assert len(describe_package(CS, "csharp").splitlines()) == 3
+    text = describe_schema(CS, "UsrOrderService")
+    assert "[ServiceContract] [AspNetCompatibilityRequirements] public class UsrOrderService : BaseService  - web service, 3 members" in text
+    assert "[OperationContract] [WebInvoke] public OrderLabelResponse GetLabel(string orderId)  (42)" in text
+    assert "operations: ESQ read, Update (raw SQL)" in text
+    # a plain file by path, by file name or by stem; nested types, enums, expression-bodied members, comments with braces
+    for name in ("Files/cs/UsrOrderLabel.cs", "UsrOrderLabel.cs", "UsrOrderLabel"):
+        label = describe_schema(CS, name)
+        assert "public static class UsrOrderLabel  - static helper, 6 members, lines 22-46" in label
+        assert "    private class Cache  - class, 2 members" in label and "values: Short, Padded" in label
+        assert "method      public static bool IsLabel(string text)  (34)" in label
+    assert describe_item(CS, "UsrOrderLabel", "member UsrOrderLabel.Build").startswith("public static string Build(string type, int seq) {")
+    assert describe_item(CS, "UsrOrderLabel", "member UsrOrderLabel.Build").rstrip().endswith("}")
+    assert describe_item(CS, "UsrOrderLabel", "member Build").count("Build(") == 2  # the interface's and the class's
+    members = describe_item(CS, "UsrOrderService", "members UsrOrderService kind=method visibility=public")
+    assert "GetLabel" in members and "RebuildAll" in members and "ReadOrder" not in members
+    assert describe_item(CS, "UsrOrderService", "operations").splitlines()[1].strip().startswith("59  Update (raw SQL)")
+    assert "entity event listener of UsrOrder" in describe_item(CS, "UsrOrderEventListener", "classes")
+    assert describe_item(CS, "UsrOrderLabel", "regions") == "(no regions)" and len(describe_item(CS, "UsrOrderService", "regions").splitlines()) == 4
+    assert "   25  private static readonly string Separator" in describe_item(CS, "UsrOrderLabel", "find Separator")
+    assert "Terrasoft.Core.Entities.Events" in describe_item(CS, "UsrOrderEventListener", "usings")
+    try:
+        describe_item(CS, "UsrOrderLabel", "member Nope")
+        raise AssertionError("expected QueryError")
+    except QueryError as exc:
+        assert "no member Nope" in str(exc) and "UsrOrderLabel.Build" in str(exc)
+    idx = PackageIndex(CS)
+    idx.refresh()
+    assert idx.schemas["UsrOrderService"]["kind"] == "source" and "web service" in idx.schemas["UsrOrderService"]["summary"]
+    # Files/cs files are index items of their own: one file, no descriptor, no resources; referred to by their types
+    label = idx.schemas["Files/cs/UsrOrderLabel.cs"]
+    assert label["kind"] == "csharp" and list(label["files"]) == ["Files/cs/UsrOrderLabel.cs"] and label["caption"] == "" and label["manager"] is None
+    assert "Files/cs/UsrOrderLabel.cs" in idx.schemas["UsrOrderService"]["refs"]  # the service calls UsrOrderLabel.Build
+    found = find_schema(CS, "UsrOrderLabel")
+    assert found.startswith("Files/cs/UsrOrderLabel.cs  csharp in UsrPkg") and "used by: UsrOrderService (source)" in found
+    assert find_schema(CS, "UsrOrderLabel.cs").splitlines()[0] == found.splitlines()[0]
+    assert "refers to: Files/cs/UsrOrderLabel.cs" in find_schema(CS, "UsrOrderService")
+
+
 def test_cli():
     out = io.StringIO()
     with contextlib.redirect_stdout(out):

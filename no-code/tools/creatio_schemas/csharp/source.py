@@ -1,0 +1,355 @@
+"""A C# file by signatures: namespaces, usings, regions, types with bases and attributes, members as one-line
+signatures, one member's body on request, the Creatio role of each type and the platform operations the code
+performs. Regex and brace matching over a comment/string-masked copy - not a compiler; roslyn-codelens is the
+tool for depth.
+
+Covers both places package C# lives: `Files/cs/**/*.cs` (plain files) and `Schemas/<Name>/<Name>.cs` (a
+source code schema or a user task's half).
+"""
+
+from __future__ import annotations
+
+import re
+import textwrap
+from pathlib import Path
+
+from ..files import read_text
+
+TYPE_RE = re.compile(
+    r"^(?P<indent>[ \t]*)(?P<mods>(?:(?:public|internal|private|protected|static|sealed|abstract|partial|unsafe|readonly|ref)\s+)*)"
+    r"(?P<kind>class|interface|struct|enum|record)\s+(?P<name>\w+)(?P<generic>\s*<[^>{]*>)?\s*(?::\s*(?P<bases>[^{]+?))?\s*(?:where\s[^{]*)?\{",
+    re.M)
+ATTR_RE = re.compile(r"\[\s*(\w+)")
+MODIFIERS = {"public", "internal", "private", "protected", "static", "sealed", "abstract", "partial", "virtual", "override",
+             "readonly", "const", "async", "extern", "unsafe", "new", "event", "volatile", "ref"}
+
+# Terrasoft roles by base type / attribute - what the class is for, in one phrase.
+ROLE_BY_BASE = {
+    "BaseService": "web service", "BaseEntityEventListener": "entity event listener", "ProcessUserTask": "user task",
+    "AppEventListenerBase": "app event listener", "IAppEventListener": "app event listener", "IJobExecutor": "scheduler job",
+    "IBackgroundTask": "background task", "Exception": "exception", "BaseProcessSchemaListener": "process listener",
+    "IEntityEventListener": "entity event listener", "BaseWebServiceHandler": "web service handler",
+}
+ROLE_BY_ATTR = {"ServiceContract": "web service", "DataContract": "DTO", "DefaultBinding": "DI binding",
+                "EntityEventListener": "entity event listener"}
+GENERATED_BASES = {"SourceCodeSchema", "ProcessModel", "ProcessSchema", "ProcessUserTaskSchema", "BaseEntity", "EntitySchema"}
+
+# What the code does against the platform: (regex, label).
+OPERATIONS = [
+    (r"\bnew\s+EntitySchemaQuery\b", "ESQ read"), (r"\bnew\s+Select\s*\(", "Select (raw SQL)"), (r"\bnew\s+Insert\s*\(", "Insert (raw SQL)"),
+    (r"\bnew\s+Update\s*\(", "Update (raw SQL)"), (r"\bnew\s+Delete\s*\(", "Delete (raw SQL)"), (r"\bCustomQuery\b|\bExecuteScalar\b|\bExecuteReader\b", "raw SQL"),
+    (r"\bCreateEntity\s*\(|\.Save\s*\(", "Entity save"), (r"\bSysSettings\.GetValue|\bGetSysSettingValue\b", "SysSettings read"),
+    (r"\bSysSettings\.SetValue|\bSetSysSettingValue\b", "SysSettings write"), (r"\bClassFactory\.Get", "ClassFactory"),
+    (r"\bMsgChannelUtilities\.PostMessage", "websocket message"), (r"\bProcessEngine\b|\bIProcessExecutor\b|\bFlowEngine\b|\bProcessSchemaManager\.GetInstanceByName", "process start"),
+    (r"\bAppScheduler\.", "scheduler"), (r"\bHttpClient\b|\bHttpWebRequest\b|\bWebRequest\.Create", "HTTP call"),
+    (r"\bGetIsFeatureEnabled\b|\bFeatureUtilities\b", "feature toggle"), (r"\bLogManager\.GetLogger|\b_log\.|\bLog\.(Error|Warn|Info|Debug)", "logging"),
+    (r"\bGetLocalizableString\b|\bLocalizableString\b", "localizable strings"), (r"\bthrow\s+new\s+\w+", "throws"),
+]
+
+
+def _mask(text: str) -> str:
+    """Comments and string/char literal contents replaced by spaces (offsets kept), so braces and quotes in them do not count."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        ch = text[i]
+        two = text[i:i + 2]
+        if two == "//":
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            out.append(" " * (j - i))
+            i = j
+        elif two == "/*":
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("".join("\n" if c == "\n" else " " for c in text[i:j]))
+            i = j
+        elif two in ('@"', '$"') or text[i:i + 3] in ('$@"', '@$"'):
+            start = i
+            i = text.find('"', i) + 1
+            while i < n:
+                if text[i] == '"':
+                    if text[i + 1:i + 2] == '"' and "@" in text[start:start + 3]:
+                        i += 2
+                        continue
+                    break
+                i += 1
+            i += 1
+            out.append('"' + "".join("\n" if c == "\n" else " " for c in text[start + 1:i - 1]) + '"')
+        elif ch in "\"'":
+            j = i + 1
+            while j < n and text[j] != ch:
+                j += 2 if text[j] == "\\" else 1
+            j = min(j + 1, n)
+            out.append(ch + " " * (j - i - 2) + ch if j - i >= 2 else text[i:j])
+            i = j
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _close(masked: str, open_at: int) -> int:
+    """Index of the brace closing the one at open_at (or len when unbalanced)."""
+    depth = 0
+    for i in range(open_at, len(masked)):
+        if masked[i] == "{":
+            depth += 1
+        elif masked[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(masked)
+
+
+def _attrs_before(text: str, pos: int) -> list[str]:
+    """Attribute names on the lines right above a declaration at pos."""
+    names = []
+    head = text[:pos]
+    while True:
+        m = re.search(r"\[\s*(\w+)[^\[\]]*(?:\([^)]*\))?[^\[\]]*\]\s*$", head, re.S)
+        if not m or "\n\n" in head[m.start():].strip("\n") and head[m.start():].count("\n") > 3:
+            break
+        names.insert(0, m.group(1))
+        head = head[:m.start()]
+    return names
+
+
+class CSharpSource:
+    """One .cs file. `name` and `descriptor` are set when the file is a source code schema's."""
+
+    def __init__(self, package: Path | str, path: Path | str, name: str | None = None, descriptor: dict | None = None):
+        self.package = Path(package)
+        self.path = Path(path)
+        self.name = name or self.path.relative_to(self.package).as_posix()
+        self.descriptor = descriptor
+        self.text = read_text(self.path)[0]
+        self.masked = _mask(self.text)
+        self.generated = "Autogenerated" in self.path.parts
+        self.types = self._types()
+
+    # -- the whole file -------------------------------------------------------- #
+
+    def files(self) -> list[Path]:
+        if self.descriptor is not None:
+            return sorted(p for p in self.path.parent.rglob("*") if p.is_file())
+        return [self.path]
+
+    @property
+    def usings(self) -> list[str]:
+        return re.findall(r"^\s*using\s+(?:static\s+)?([\w.]+)\s*;", self.masked, re.M)
+
+    @property
+    def namespaces(self) -> list[str]:
+        return re.findall(r"^\s*namespace\s+([\w.]+)", self.masked, re.M)
+
+    @property
+    def regions(self) -> list[tuple[int, str]]:
+        return [(self.text.count("\n", 0, m.start()) + 1, m.group(1).strip()) for m in re.finditer(r"^[ \t]*#region[ \t]*(.*)$", self.text, re.M)]
+
+    def line_of(self, pos: int) -> int:
+        return self.text.count("\n", 0, pos) + 1
+
+    # -- types ------------------------------------------------------------------ #
+
+    def _types(self) -> list[dict]:
+        out = []
+        for m in TYPE_RE.finditer(self.masked):
+            open_at = m.end() - 1
+            end = _close(self.masked, open_at)
+            bases = [b.strip() for b in (m.group("bases") or "").split(",") if b.strip()]
+            attrs = _attrs_before(self.masked, m.start())
+            attr_text = self.text[max(0, m.start() - 600):m.start()]
+            t = {"name": m.group("name"), "kind": m.group("kind"), "modifiers": m.group("mods").split(), "bases": bases, "attributes": attrs,
+                 "line": self.line_of(m.start()), "end": self.line_of(end), "start": open_at, "stop": end, "depth": 0}
+            t["generated"] = self.generated or any(b.split(".")[-1].split("<")[0] in GENERATED_BASES for b in bases)
+            t["role"] = self._role(t, attr_text)
+            out.append(t)
+        for t in out:  # nesting: a type whose span lies inside another's
+            t["depth"] = sum(1 for o in out if o is not t and o["start"] < t["start"] and o["stop"] > t["stop"])
+        for t in out:
+            t["members"] = self._members(t, out)
+        return out
+
+    def _role(self, t: dict, attr_text: str) -> str:
+        if t["generated"]:
+            return "generated"
+        if "EntityEventListener" in t["attributes"]:  # the attribute names the schema, the base type does not
+            m = re.search(r'EntityEventListener\s*\(\s*SchemaName\s*=\s*"([^"]+)"', attr_text)
+            return f"entity event listener of {m.group(1)}" if m else "entity event listener"
+        for b in t["bases"]:
+            short = b.split(".")[-1].split("<")[0]
+            if short in ROLE_BY_BASE:
+                return ROLE_BY_BASE[short]
+        for a in t["attributes"]:
+            if a in ROLE_BY_ATTR:
+                return ROLE_BY_ATTR[a]
+        if t["kind"] == "interface":
+            return "interface"
+        if t["kind"] == "enum":
+            return "enum"
+        if "static" in t["modifiers"]:
+            return "static helper"
+        return "class"
+
+    def type(self, name: str) -> dict:
+        for t in self.types:
+            if t["name"].lower() == name.lower():
+                return t
+        raise KeyError(f"no type {name}; types: {', '.join(t['name'] for t in self.types)}")
+
+    # -- members ---------------------------------------------------------------- #
+
+    def _members(self, t: dict, all_types: list[dict]) -> list[dict]:
+        body_start, body_stop = t["start"] + 1, t["stop"]
+        nested = [(o["start"], o["stop"]) for o in all_types if o is not t and body_start <= o["start"] < body_stop and o["depth"] == t["depth"] + 1]
+        if t["kind"] == "enum":
+            values = [v.split("=")[0].strip() for v in self.masked[body_start:body_stop].split(",")]
+            return [{"kind": "value", "name": v, "signature": v, "modifiers": [], "attributes": [], "line": t["line"], "end": t["line"]}
+                    for v in values if re.fullmatch(r"\w+", v)]
+        members, i, head_at = [], body_start, body_start
+        while i < body_stop:
+            skip = next(((s, e) for s, e in nested if s <= i <= e), None)
+            if skip:  # a nested type: its declaration header is not a member, its body is not ours
+                i = skip[1] + 1
+                head_at = i
+                continue
+            ch = self.masked[i]
+            if ch == "{" or ch == ";" or self.masked.startswith("=>", i):
+                header = self.masked[head_at:i]
+                # the nested-type header already starts earlier than its brace; drop headers that are nested declarations
+                if any(head_at <= s < i for s, _ in nested):
+                    head_at = i + 1
+                    i += 1
+                    continue
+                end = i
+                if ch == "{":
+                    end = _close(self.masked, i)
+                elif self.masked.startswith("=>", i):
+                    end = self.masked.find(";", i)
+                    end = body_stop if end < 0 else end
+                m = self._member(header, head_at, end, t["name"])
+                if m:
+                    members.append(m)
+                i = end + 1
+                head_at = i
+                continue
+            i += 1
+        return members
+
+    def _member(self, header: str, start: int, end: int, type_name: str) -> dict | None:
+        # `header` is masked text: comments are blank, string contents are blank, attribute and member names stay.
+        raw = header
+        lines = [ln for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+        attrs, decl = [], []
+        for ln in lines:
+            s = ln.strip()
+            if s.startswith("[") and s.endswith("]") and not decl:
+                attrs += ATTR_RE.findall(s)
+            else:
+                decl.append(s)
+        text = " ".join(" ".join(decl).split())
+        if not text or text.startswith("=") or text.startswith(":"):  # a property initialiser's tail, a ctor's base call
+            return None
+        initialised = "=" in text and "(" not in text.split("=")[0]
+        if initialised:  # `= new X(...)` would otherwise feed modifiers and parentheses into the signature
+            text = text.split("=")[0].strip()
+        words = text.split()
+        mods = [w for w in words if w in MODIFIERS]
+        rest = " ".join(w for w in words if w not in MODIFIERS)
+        if initialised:
+            kind = "const" if "const" in mods else "field"
+            name = rest.split()[-1] if rest.split() else ""
+        elif "(" in rest:
+            name = rest.split("(")[0].split()[-1]
+            kind = "constructor" if name == type_name else "method"
+            rest = re.sub(r"\s+where\s.*$", "", rest)
+        else:
+            parts = rest.split()
+            if not parts:
+                return None
+            name = parts[-1]
+            kind = "event" if "event" in mods else ("const" if "const" in mods else ("property" if end > start + len(header) and self.masked[start + len(header)] == "{" or "=>" in self.masked[start + len(header):start + len(header) + 2] else "field"))
+            if kind == "field" and len(parts) < 2:
+                return None
+        name = name.rstrip("]").split("<")[0]
+        if not re.fullmatch(r"[\w.]+", name):
+            return None
+        return {"kind": kind, "name": name, "signature": (" ".join(mods) + " " + rest).strip(), "modifiers": mods, "attributes": attrs,
+                "line": self.line_of(start + len(raw) - len(raw.lstrip())), "end": self.line_of(end), "start": start, "stop": end}
+
+    def members(self, type_name: str | None = None) -> list[dict]:
+        types = [self.type(type_name)] if type_name else self.types
+        out = []
+        for t in types:
+            for m in t["members"]:
+                out.append({**m, "type": t["name"]})
+        return out
+
+    def member(self, name: str) -> str:
+        """Source of one member: `Name` or `Type.Name`; several of the same name come back together."""
+        type_name, _, member_name = name.rpartition(".")
+        hits = [m for m in self.members(type_name or None) if m["name"].lower() == member_name.lower()]
+        if not hits:
+            names = sorted({f"{m['type']}.{m['name']}" for m in self.members()})
+            raise KeyError(f"no member {name}; members: {', '.join(names)}")
+        return "\n\n".join(textwrap.dedent(self.text[m["start"]:m["stop"] + 1].strip("\r\n")).strip() for m in hits)
+
+    # -- what the code does ---------------------------------------------------- #
+
+    def operations(self) -> list[tuple[int, str, str]]:
+        """(line, label, the line's text) for every platform operation the code performs."""
+        out = []
+        for rx, label in OPERATIONS:
+            for m in re.finditer(rx, self.masked):
+                line = self.line_of(m.start())
+                out.append((line, label, self.text.splitlines()[line - 1].strip()))
+        return sorted(set(out))
+
+    def find(self, needle: str) -> list[tuple[int, str]]:
+        return [(i + 1, ln.strip()) for i, ln in enumerate(self.text.splitlines()) if needle.lower() in ln.lower()]
+
+    # -- text ------------------------------------------------------------------- #
+
+    def type_line(self, t: dict) -> str:
+        attrs = "".join(f"[{a}] " for a in t["attributes"])
+        bases = f" : {', '.join(t['bases'])}" if t["bases"] else ""
+        mods = " ".join(t["modifiers"])
+        n = len(t["members"])
+        return f"{'  ' * t['depth']}{attrs}{mods + ' ' if mods else ''}{t['kind']} {t['name']}{bases}  - {t['role']}, {n} members, lines {t['line']}-{t['end']}"
+
+    def summary(self) -> str:
+        if not self.text.strip():
+            return "empty file"
+        roles = {}
+        for t in self.types:
+            roles[t["role"]] = roles.get(t["role"], 0) + 1
+        methods = sum(1 for m in self.members() if m["kind"] in ("method", "constructor"))
+        parts = [f"{n} {r}" if n > 1 else r for r, n in roles.items()]
+        return f"{', '.join(parts) or 'no types'}; {methods} methods, {self.text.count(chr(10)) + 1} lines"
+
+    def describe(self) -> str:
+        head = f"{self.name}: " + (f"{self.descriptor.get('Caption', '')!r}  source code schema" if self.descriptor is not None else "C# file") + f", {self.summary()}"
+        lines = [head, f"  namespace {', '.join(self.namespaces) or '(none)'}; usings: {len(self.usings)}" + (f"; regions: {len(self.regions)}" if self.regions else "")]
+        for t in self.types:
+            lines.append("  " + self.type_line(t))
+            for m in t["members"]:
+                if t["kind"] == "enum":
+                    continue
+                attrs = "".join(f"[{a}] " for a in m["attributes"])
+                lines.append(f"      {m['kind']:<11} {attrs}{m['signature']}  ({m['line']})")
+            if t["kind"] == "enum":
+                lines.append("      values: " + ", ".join(m["name"] for m in t["members"]))
+        ops = self.operations()
+        if ops:
+            labels = sorted({label for _, label, _ in ops})
+            lines.append("  operations: " + ", ".join(labels) + "  (ask 'operations' for lines)")
+        return "\n".join(lines)
+
+
+def csharp_files(package: Path | str) -> list[Path]:
+    """The plain C# files of a package: Files/cs and anything else under Files that is not build output."""
+    package = Path(package)
+    files = package / "Files"
+    if not files.is_dir():
+        return []
+    return sorted(p for p in files.rglob("*.cs") if not any(part.lower() in ("bin", "obj") for part in p.relative_to(files).parts))

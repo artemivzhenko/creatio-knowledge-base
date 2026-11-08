@@ -232,6 +232,15 @@ class PageSchema(Schema):
                     i += 1
                 elif ch == quote:
                     in_str = False
+            elif text.startswith("//", i):  # a comment may hold an apostrophe or a brace; skip it whole
+                i = text.find("\n", i)
+                if i < 0:
+                    break
+            elif text.startswith("/*", i):
+                i = text.find("*/", i + 2)
+                if i < 0:
+                    break
+                i += 1
             elif ch in "\"'`":
                 in_str, quote = True, ch
             elif ch == "{":

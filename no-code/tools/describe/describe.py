@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What a package holds, what a schema is, one part of it - without reading the files (library: ../creatio_schemas/describe).
 
-    python describe.py package <package> [--kind object|process|rules|page|sql|client|addon|source]
+    python describe.py package <package> [--kind object|process|rules|page|sql|client|addon|source|csharp|dcm|user-task]
     python describe.py schema  <package> <Schema>
     python describe.py item    <package> <Schema> "<topic> [<name>] [key=value ...]"
     python describe.py item    <package> <Schema> topics                 # what this schema can answer
@@ -15,6 +15,9 @@ Topics: every schema - files, resources [culture=], resource <key>;
   sql     - body, deps
   dcm     - stages, stage <name>, steps [stage=], step <name>, moves [from= to=], filter [raw=true]
   user-task - params [direction=], param <name>, methods, method <name>, source
+  C# (a source code schema, or Files/cs/X.cs by path, file name or stem) - classes [role=] [kind=] [generated=true],
+            members [<Type>] [kind=method|property|field|const] [visibility=public], member <Type.Name>, usings, regions,
+            operations [kind=], find <text>
   page    - sections, elements [type= parent=], element <name>, attributes [bound=true], attribute <name>,
             data-sources, handlers, handler <request>, validators, converters, containers, find <text>
 The same calls are MCP tools of the creatio-kb server (describe_package, describe_schema, describe_item, index_workspace, find_schema).

@@ -12,6 +12,7 @@ import json
 import shlex
 from pathlib import Path
 
+from ..csharp import CSharpSource, csharp_files
 from ..dcm import DcmSchema
 from ..entity import EntitySchema
 from ..files import read_text
@@ -81,16 +82,32 @@ def _is_freedom_page(package: Path, name: str) -> bool:
     return "/**SCHEMA_VIEW_CONFIG_DIFF*/" in text or (text.lstrip().startswith("{") and '"viewConfigDiff"' in text[:2000])
 
 
+def _csharp_file(package: Path, name: str) -> Path | None:
+    """A plain C# file named by its path (`Files/cs/X.cs`) or its file name (`X.cs`, `X`) anywhere under Files."""
+    direct = package / name
+    if direct.suffix.lower() == ".cs" and direct.is_file():
+        return direct
+    stem = Path(name).name
+    stem = stem if stem.lower().endswith(".cs") else stem + ".cs"
+    hits = [p for p in csharp_files(package) if p.name.lower() == stem.lower()]
+    return hits[0] if len(hits) == 1 else None
+
+
 def open_item(package: Path | str, name: str):
-    """The toolkit object for a schema or SQL script, or a GenericItem when no toolkit knows the kind."""
+    """The toolkit object for a schema, SQL script or C# file, or a GenericItem when no toolkit knows the kind."""
     package = Path(package)
     if (package / "SqlScripts" / name / "descriptor.json").is_file():
         return SqlScript(package, name)
     desc_path = package / "Schemas" / name / "descriptor.json"
     if not desc_path.is_file():
-        raise FileNotFoundError(f"{package} has no schema or SQL script named {name}")
+        cs = _csharp_file(package, name)
+        if cs is not None:
+            return CSharpSource(package, cs)
+        raise FileNotFoundError(f"{package} has no schema, SQL script or C# file named {name}")
     d = json.loads(read_text(desc_path)[0])["Descriptor"]
     manager = d.get("ManagerName")
+    if manager == "SourceCodeSchemaManager" and (package / "Schemas" / name / f"{name}.cs").is_file():
+        return CSharpSource(package, package / "Schemas" / name / f"{name}.cs", name, d)
     if manager == "EntitySchemaManager":
         return EntitySchema(package, name)
     if manager == "ProcessSchemaManager":
@@ -109,6 +126,8 @@ def open_item(package: Path | str, name: str):
 def kind_of(item) -> str:
     if isinstance(item, PageSchema) and getattr(item, "mobile", False):
         return "mobile"
+    if isinstance(item, CSharpSource):
+        return "source" if item.descriptor is not None else "csharp"
     return {EntitySchema: "object", ProcessSchema: "process", RuleSchema: "rules", PageSchema: "page", SqlScript: "sql", DcmSchema: "dcm",
             UserTaskSchema: "user-task"}.get(type(item)) or item.kind
 
@@ -133,6 +152,8 @@ def summary(item) -> str:
         return f"{len(item.stages)} stages, {len(item.elements())} steps, case of {item.entity}" + ("" if item.enabled else " (disabled)")
     if isinstance(item, UserTaskSchema):
         return f"{len(item.params)} params, {len(item.methods())} methods" + (", interactive" if item.interactive else "")
+    if isinstance(item, CSharpSource):
+        return item.summary()
     files = item.files()
     return f"{len(files)} files, {sum(p.stat().st_size for p in files)} bytes"
 
@@ -152,7 +173,7 @@ def describe_package(package: Path | str, kind: str = "") -> str:
     lines = [f"{d.get('package')} {d.get('version') or ''}  {len(idx.schemas)} items" + (f"  depends on {', '.join(d['depends_on'])}" if d.get("depends_on") else "")]
     body = idx.lines(kind)
     if kind and not body:
-        body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, user-task)"]
+        body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task)"]
     return "\n".join(lines + body)
 
 

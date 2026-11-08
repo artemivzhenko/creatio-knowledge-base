@@ -17,11 +17,13 @@ import re
 import time
 from pathlib import Path
 
+from ..csharp import csharp_files
 from ..files import read_text
 from ..workspace import Workspace
 from .core import _caption, kind_of, open_item, summary
 
 INDEX_DIR = ".creatio-index"
+TYPE_NAME_RE = re.compile(r"\b(?:class|interface|struct|enum|record)\s+(\w+)")
 # Identifiers and GUIDs: the two ways a file names another schema.
 TOKEN_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z_][A-Za-z0-9_]{2,}")  # GUID first: one may start with a letter
 SCAN_SUFFIXES = {".json", ".cs", ".js", ".sql", ".less", ".css"}  # resource XML is captions, not references
@@ -68,16 +70,21 @@ class PackageIndex:
     # -- disk -------------------------------------------------------------- #
 
     def _items_on_disk(self) -> dict[str, str]:
-        """{name: "Schemas" | "SqlScripts"} for every item folder with a descriptor."""
+        """{name: "Schemas" | "SqlScripts" | "Files"} - every item folder with a descriptor, plus every plain C# file under
+        Files (named by its package-relative path: it has no descriptor, no resources, nothing but the one file)."""
         found = {}
         for folder in ("Schemas", "SqlScripts"):
             if (self.package / folder).is_dir():
                 for d in (self.package / folder).iterdir():
                     if (d / "descriptor.json").is_file():
                         found[d.name] = folder
+        for cs in csharp_files(self.package):
+            found[cs.relative_to(self.package).as_posix()] = "Files"
         return found
 
     def _item_files(self, name: str, folder: str) -> dict[str, list[int]]:
+        if folder == "Files":
+            return {name: _stat(self.package / name)}
         files = {}
         dirs = [self.package / folder / name] + list((self.package / "Resources").glob(f"{name}.*")) if (self.package / "Resources").is_dir() else [self.package / folder / name]
         for d in dirs:
@@ -106,6 +113,14 @@ class PackageIndex:
                 for d in (pkg / "SqlScripts").iterdir():
                     if (d / "descriptor.json").is_file():
                         self._names[d.name.lower()] = d.name
+            for cs in csharp_files(pkg):  # a plain C# file is referred to by the types it declares
+                item = cs.relative_to(pkg).as_posix()
+                try:
+                    text = read_text(cs)[0]
+                except (OSError, UnicodeDecodeError):
+                    continue
+                for type_name in TYPE_NAME_RE.findall(text):
+                    self._names.setdefault(type_name.lower(), item)
 
     def _refs(self, files: dict[str, list[int]], own: str) -> list[str]:
         """Schemas of the workspace named (by identifier or UId) in the item's text files, itself excluded."""
@@ -276,7 +291,8 @@ def find_schema(path: Path | str, name: str) -> str:
     out = []
     for idx in indexes:
         for n, e in idx.schemas.items():
-            if n.lower() != key:
+            # a plain C# file answers to its path, its file name or its stem
+            if n.lower() != key and not (e["kind"] == "csharp" and key in (Path(n).name.lower(), Path(n).stem.lower())):
                 continue
             out.append(f"{n}  {e['kind']} in {idx.data.get('package', idx.package.name)}  ({idx.package})")
             parent = e.get("parent")

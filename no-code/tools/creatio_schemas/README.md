@@ -25,6 +25,7 @@ creatio_schemas/
                   storage (own JSON / replacing diff), engine (the platform rule services)
   dcm/            DcmSchema: stages (lookup records, colours, alternatives), steps (sub-processes, conditions), moves, filter
   usertask/       UserTaskSchema: parameters (shared new_param with processes) and the partial C# class
+  csharp/         CSharpSource: a .cs file by signatures - types, roles, members, one member body, platform operations
   entity/         EntitySchema, catalog (column and object flags, BaseEntity/BaseLookup, designer templates,
                   stock object UIds), hierarchy (the merged base of a replacing object, fetched and cached),
                   database (metadata vs the table)

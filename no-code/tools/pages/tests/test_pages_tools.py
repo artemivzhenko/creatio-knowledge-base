@@ -124,6 +124,27 @@ def test_cli_dry_run_writes_nothing():
     assert "page of iaTest" in out.getvalue()
 
 
+def test_handlers_survive_comments_with_apostrophes_and_braces():
+    import re
+    page = PageSchema(FIXTURES, "iaOrder_FormPage")
+    snippet = """[
+            {
+                request: "crt.HandleViewModelInitRequest",
+                handler: async (request, next) => {
+                    // the user's id isn't known yet { and this brace is text
+                    /* a block comment with an apostrophe ' and a } brace */
+                    await next?.handle(request);
+                }
+            },
+            {
+                request: "usr.SecondRequest",
+                handler: async (request, next) => next?.handle(request)
+            }
+        ]"""
+    page.body = re.sub(r"/\*\*SCHEMA_HANDLERS\*/.*?/\*\*SCHEMA_HANDLERS\*/", lambda m: f"/**SCHEMA_HANDLERS*/{snippet}/**SCHEMA_HANDLERS*/", page.body, flags=re.S)
+    assert [name for name, _ in page.handlers()] == ["crt.HandleViewModelInitRequest", "usr.SecondRequest"]
+
+
 if __name__ == "__main__":
     for fn in [v for k, v in list(globals().items()) if k.startswith("test_")]:
         fn()

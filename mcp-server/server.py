@@ -284,7 +284,8 @@ def describe_package(package: str, kind: str = "") -> str:
     replaced base. Call this BEFORE reading any file of a package.
 
     package: the package folder, e.g. C:/work/packages/UsrPkg (a clio workspace package).
-    kind:    optional filter - object, process, rules, page, sql, client, addon, source.
+    kind:    optional filter - object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task.
+             C# files under Files/cs are listed as `csharp` by signatures (roles, method count); source code schemas as `source`.
     """
     _tools_path()
     from creatio_schemas.describe import describe_package as _dp
@@ -320,6 +321,9 @@ def describe_item(package: str, schema: str, query: str = "topics") -> str:
       rules  : "rules", "rule <name>"
       dcm    : "stages", "stage Stage1", "steps stage=Stage1", "step DcmElement1", "moves from=Stage1", "filter"
       user task: "params", "param RecordId", "methods", "method InternalExecute", "source"
+      C#     : (schema name, or "Files/cs/X.cs" / "X.cs" / "X") "classes", "members UsrService kind=method visibility=public",
+               "member UsrService.GetLabel" (one body), "usings", "regions", "operations" (ESQ, raw SQL, SysSettings,
+               process start, HTTP ... with line numbers), "find GetTypedColumnValue"
       page   : "sections", "elements parent=SideAreaProfileContainer", "element UsrName",
                "attributes bound=true", "data-sources", "handlers", "handler crt.SaveRecordRequest",
                "validators", "converters", "containers", "find <text>"

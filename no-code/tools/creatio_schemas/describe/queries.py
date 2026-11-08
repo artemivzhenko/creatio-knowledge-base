@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from ..csharp import CSharpSource
 from ..dcm import DcmSchema
 from ..entity import EntitySchema
 from ..entity.catalog import column_flags
@@ -354,8 +355,51 @@ def q_u_source(u: UserTaskSchema, name, f):
 
 USERTASK = {"params": q_u_params, "param": q_u_param, "methods": q_u_methods, "method": q_u_method, "source": q_u_source}
 
+# -- C# ------------------------------------------------------------------------ #
 
-TOPICS = {EntitySchema: OBJECT, ProcessSchema: PROCESS, RuleSchema: RULES, SqlScript: SQL, PageSchema: PAGE, DcmSchema: DCM, UserTaskSchema: USERTASK, GenericItem: {}}
+
+def q_c_classes(c: CSharpSource, name, f):
+    types = [t for t in c.types if _match(t["role"], f.get("role")) and _match(t["kind"], f.get("kind")) and (f.get("generated", "").lower() == "true" or not t["generated"])]
+    return "\n".join(c.type_line(t) for t in types) or "(no types" + ("" if f.get("generated") else "; generated ones hidden, add generated=true") + ")"
+
+
+def q_c_members(c: CSharpSource, name, f):
+    rows = [m for m in c.members(name) if _match(m["kind"], f.get("kind"))
+            and (not f.get("visibility") or f["visibility"].lower() in m["modifiers"] or (f["visibility"].lower() == "private" and not {"public", "protected", "internal"} & set(m["modifiers"])))]
+    return "\n".join(f"{m['type']}.{m['name']:<30} {m['kind']:<11} {m['signature']}  ({m['line']}-{m['end']})" for m in rows) or "(no members)"
+
+
+def q_c_member(c: CSharpSource, name, f):
+    try:
+        return c.member(_need(name, "member"))
+    except KeyError as exc:
+        raise QueryError(str(exc)) from None
+
+
+def q_c_usings(c: CSharpSource, name, f):
+    return "\n".join(c.usings) or "(no usings)"
+
+
+def q_c_regions(c: CSharpSource, name, f):
+    return "\n".join(f"{line:>5}  {title}" for line, title in c.regions) or "(no regions)"
+
+
+def q_c_operations(c: CSharpSource, name, f):
+    rows = [(line, label, text) for line, label, text in c.operations() if _match(label, f.get("kind"))]
+    return "\n".join(f"{line:>5}  {label:<20} {text}" for line, label, text in rows) or "(no platform operations found)"
+
+
+def q_c_find(c: CSharpSource, name, f):
+    hits = c.find(_need(name, "find"))
+    return "\n".join(f"{line:>5}  {text}" for line, text in hits[:50]) + (f"\n  ... {len(hits) - 50} more" if len(hits) > 50 else "") if hits else f"no line contains {name!r}"
+
+
+CSHARP = {"classes": q_c_classes, "members": q_c_members, "member": q_c_member, "method": q_c_member, "usings": q_c_usings,
+          "regions": q_c_regions, "operations": q_c_operations, "find": q_c_find}
+
+
+TOPICS = {EntitySchema: OBJECT, ProcessSchema: PROCESS, RuleSchema: RULES, SqlScript: SQL, PageSchema: PAGE, DcmSchema: DCM, UserTaskSchema: USERTASK,
+          CSharpSource: CSHARP, GenericItem: {}}
 
 
 def topics_of(item) -> dict:
