@@ -81,6 +81,12 @@ Status legend: **works** - did what the contract says and the result was read ba
 | clio `run-process` on a schema with activities | fails (clio) | "FromJson - Error deserializing process schema" from clio's reader; the platform runs it |
 | round-trip of designer-made processes | works | 235 processes (8.2.3 + 8.3.x), 1338 files byte-identical |
 
+Testing a process (2026-11-07): `ProcessCases/ia-processes.act` of the UI test utility started
+`iaScriptBuilt_Process` with and without `Counter`, `iaDemoE`, and checked records over OData -
+PASS x3 in about a second, no browser; `proc.py test-config` wrote the process files it was
+validated against. `iaShowcase_Process` (user tasks) is refused with "Publish the process
+before starting it" until it is published.
+
 ## Business rules built as files (tools/rules)
 
 | What | Status | What happened |
@@ -105,6 +111,15 @@ Status legend: **works** - did what the contract says and the result was read ba
 | designer-made replacing `Account` (base columns changed) read against the fetched base | works | base merged from 5 packages with the platform's hierarchy function; every line resolves; `EG1.BK8` equals the events process of the copy merged last; decoded required, ShortText > LongText, caption - each confirmed by clio's column view |
 | new replacing `Contact`: base index on / off, text widened, base default, base caption, own column | works | push applied all: `varchar(250)`, index created / dropped, runtime default True, caption; `probe` 108 ok; pull identical except the descriptor date the install stamps |
 | round trip of real objects | works | 344 schemas (8.1-10.0, own and replacing) byte-identical; 292 resolve their parent |
+
+## Freedom UI pages built as files (tools/pages)
+
+| What | Status | What happened |
+| --- | --- | --- |
+| 17 fields of every column type + a grid on `iaOrder_FormPage` (clio-created, `*Diff` form) | works | `pages.py add-field` x17, `add-grid` x1, `push-pkg`; the UI utility's `analyse` found all 18 with the expected element types (Text, Integer, Decimal, Boolean, Date, Time, DateTime, Lookup, RichText, Phone, Email, Link, DataGrid) |
+| a grid on `iaTests_FormPage` (designer-saved, `viewModelConfig` form) | works | first by hand (S11-T01), then reproduced by `add-grid` in the tests |
+| round trip of real pages | works | both forms byte-identical; a read never re-renders a section |
+| push of a designer-saved page | trap | skipped as "modified locally" until `SysSchema.IsChanged` / `IsLocked` were cleared |
 
 ## SQL scripts built as files (tools/sqlscripts)
 

@@ -17,6 +17,11 @@ renames a schema everywhere, `clio push-pkg` installs, and
 runs it. Verified end to end on 8.2.3: formulas, gateways with conditions, a Read data
 task, captions in several cultures, a rename that kept the schema UId.
 
+To **test** a process - start it with parameters, assert its results and the records it
+touched, in a report next to the UI cases - write a process case for the UI test utility
+(`start`, `check-result`, `check-record`; no browser) and describe the process with
+`proc.py test-config`. See [tools/process](../tools/process/README.md), "Testing a process".
+
 ```bash
 python no-code/tools/process/proc.py inspect  packages/UsrPkg UsrOrder_Process
 python no-code/tools/process/proc.py element  packages/UsrPkg UsrOrder_Process add CountOrders --kind readData --after StartEvent1 --before TerminateEvent1 --entity UsrOrder --set ResultType=1 FunctionType=0

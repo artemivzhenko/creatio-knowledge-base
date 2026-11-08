@@ -62,6 +62,13 @@ through the platform's rule engine (`rules.py probe`).
 removes their columns and flags as package files (`objects.py`); `push-pkg` makes the platform
 update the table, and `objects.py probe` compares the metadata with the database.
 
+## Page tools
+
+[tools/pages/](tools/pages/README.md) puts the fields of a page's object (every column type)
+and grids of other objects on a Freedom UI form page by editing the page body's JSON sections
+(`pages.py`); `push-pkg` installs the page, and the UI test utility's `analyse` shows what
+rendered.
+
 ## SQL script tools
 
 [tools/sqlscripts/](tools/sqlscripts/README.md) creates and changes the package's SQL scripts

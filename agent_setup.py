@@ -103,6 +103,19 @@ def main() -> None:
     run("creatio-kb: pip install -e", [str(venv_py), "-m", "pip", "install", "-q", "-e", str(KB_ROOT / "mcp-server")])
     register_mcp(claude, "creatio-kb", ["creatio-kb", "--", str(venv_py), str(KB_ROOT / "mcp-server" / "server.py")])
 
+    # 7. The UI test utility's server, when the repository sits next to this one.
+    tests = KB_ROOT.parent / "automatic-creatio-tests"
+    tests_server = tests / "mcp-server" / "server.py"
+    if tests_server.exists():
+        tests_venv = tests / "mcp-server" / ".venv"
+        tests_py = tests_venv / ("Scripts/python.exe" if WIN else "bin/python")
+        if not tests_py.exists():
+            run("creatio-tests: venv", [sys.executable, "-m", "venv", str(tests_venv)])
+        run("creatio-tests: pip install mcp", [str(tests_py), "-m", "pip", "install", "-q", "mcp>=2.0"])
+        register_mcp(claude, "creatio-tests", ["creatio-tests", "--", str(tests_py), str(tests_server)])
+    else:
+        print(f"\ncreatio-tests skipped: {tests_server} not found (clone automatic-creatio-tests next to this repository).")
+
     print("\nDone. Restart Claude Code; check with: claude mcp list / claude plugin list")
 
 

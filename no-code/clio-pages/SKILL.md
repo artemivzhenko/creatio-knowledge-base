@@ -12,6 +12,11 @@ The page tools are at their best through clio's MCP server
 
 ## Editing a page
 
+For fields and grids prefer the file route: [tools/pages](../tools/pages/README.md)
+(`pages.py add-field <pkg> <Page> <Column>`, `add-grid`, then `push-pkg`) - the control
+follows the column type, both body forms are handled, the diff is shown before anything is
+written, and the page stays in git. The steps below are the environment route.
+
 1. `list-pages --package-name <pkg>` - the schema names and their templates.
 2. `get-page --schema-name <Page>` - writes `body.js` (own body, editable), `bundle.json`
    (merged hierarchy, read-only) and `meta.json` to `.clio-pages/<Page>/`. Read

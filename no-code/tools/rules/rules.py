@@ -141,8 +141,24 @@ def build() -> CommandLine:
     return cli
 
 
+def open_schema(a):
+    if a.command == "new":
+        return None
+    name = RuleSchema.name_for(a.package, a.target)
+    try:
+        return RuleSchema(Path(a.package), name)
+    except FileNotFoundError:
+        if a.command != "add":
+            raise
+        # The first rule of a target creates its addon, as the designer does; a dry run must not.
+        if a.dry_run:
+            raise FileNotFoundError(f"no {name} in {a.package} yet; run `rules.py new {a.package} {a.target}` first, or add without --dry-run")
+        print(f"no {name} yet: creating an own addon for {a.target}")
+        return RuleSchema.create(Path(a.package), a.target)
+
+
 def main(argv: list[str]) -> int:
-    return build().run(argv, lambda a: None if a.command == "new" else RuleSchema(Path(a.package), RuleSchema.name_for(a.package, a.target)))
+    return build().run(argv, open_schema)
 
 
 if __name__ == "__main__":

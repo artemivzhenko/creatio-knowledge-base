@@ -24,6 +24,20 @@ The package folder is the unit of exchange: `descriptor.json`, `Schemas/`, `Reso
 `Data/`, `Files/`, `Assemblies/`. `push-pkg` installs and (for packages with C#) compiles;
 read `clio last-compilation-log -e dev` when it fails.
 
+**Before every `push-pkg`, clear the "modified locally" flag** (rule of 2026-11-06). A schema
+saved by the designer or by a no-code tool gets `SysSchema.IsChanged = true`, and `push-pkg`
+then *skips it with a warning* and installs the rest - the push looks successful and the
+schema on the environment stays old (verified on 8.2.3: a page edit was skipped this way).
+
+```bash
+clio execute-sql-script -e dev -s 'update "SysSchema" set "IsChanged"=false'
+clio push-pkg UsrMyPackage -e dev
+```
+
+The files are the source of truth, so a designer change that was not pulled first is
+overwritten - pull and diff before the push when someone worked in the designer. If a schema
+is still skipped, it is also `IsLocked`: clear that column the same way.
+
 ## Keeping the environment and the files in sync
 
 No-code tools (schemas, pages, business rules - see the other skills) write straight into
