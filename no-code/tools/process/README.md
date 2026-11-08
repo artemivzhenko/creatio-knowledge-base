@@ -1,5 +1,5 @@
 ---
-description: Creatio business processes of 8.x as package files - create a process, add parameters, elements (read/add/modify/delete data, formula, script, gateways, sub-process, timers, signals, user tasks), flows and conditions, captions per culture; rename a schema across a workspace (refactor.py rename-schema); proven by running the process on an environment.
+description: Creatio business processes of 8.x as package files - create a process, add parameters, elements (read/add/modify/delete data, formula, script, gateways, sub-process, timers, signals, user tasks), flows and conditions, captions per culture; rename a schema across a workspace (refactor.py rename-schema); test a process - start it with parameters, assert its result parameters and the records it left (process cases of the UI test utility, proc.py test-config).
 ---
 
 # Business-process tools and schema rename
@@ -10,7 +10,7 @@ CrtProcessBuilder and do not work on Creatio 8.x). Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `proc.py` | CLI: inspect, create, captions, parameters, elements, flows, formulas, scripts, validate |
+| `proc.py` | CLI: inspect, create, captions, parameters, elements, flows, formulas, scripts, validate, test-config |
 | `refactor.py` | `rename-schema`: rename any schema across a workspace and fix every reference |
 | [`../creatio_schemas/process/`](../creatio_schemas/README.md) | the library behind both (`ProcessSchema`, element kinds, expression codec); import it for anything the CLI does not cover |
 | `../creatio_schemas/process/assets/keymap.json` | the 569 obfuscated metadata keys (`BK4` = FlowElements, `CI2` = TargetRefUId ...) |
@@ -83,6 +83,42 @@ through. `inspect` shows the stored meta paths in the same notation.
 `rename-schema <workspace-or-package> <Old> <New> [--apply]` moves the schema and resource
 folders, rewrites the name in descriptor and metadata, and replaces whole-word occurrences
 in every text file under the root (page JS, C#, data). Dry run by default.
+
+## Testing a process
+
+A process is tested by the **process cases** of the UI test utility
+(`automatic-creatio-tests`, `ProcessCases/*.act`): the backend tier, kept apart from the page
+cases, with the same DSL, validation and report, and no browser. Three commands:
+
+```
+use Supervisor
+start UsrOrder_Process with Amount=500;Contact=0c48c818-08f0-4f70-9b58-be512227f3bf
+check-result Verdict eq "big"                      # an output or variable parameter
+check-result Total ge "5"                          # numbers compare as numbers
+check-record UsrOrder UsrName=Order 1 exists       # a side effect, read over OData
+check-record UsrOrderLog UsrOrder=<guid> not exists
+```
+
+`start` and `check-result` are validated against a description of the process - its
+parameters, their types and directions - which this toolkit writes from the package:
+
+```bash
+python proc.py test-config packages/UsrPkg UsrOrder_Process --out <tests>/Configuration/processes/UsrOrder_Process.json
+```
+
+So a process built as files describes itself for its tests, and a wrong parameter, an output
+passed in or a value of the wrong type fails before anything is started.
+
+**Process as a test**: when a backend rule is easiest to prove from inside the platform, build a
+process whose input parameters are the case and whose result parameters are the verdict (a
+formula or a script task sets them), and assert them with `check-result`. The engine runs the
+process synchronously and returns the result parameters in the same call
+(`ProcessEngineService.svc/RunProcess`, verified on 8.2.3: a formula, a gateway and a Read data
+task; a variable parameter can be passed in and read back).
+
+Trap: a process with user tasks (add / modify data) pushed as files answered "Publish the
+process before starting it" - it needs compiling and publishing beyond the schema install; the
+formula, gateway and read-data processes ran straight after `push-pkg`.
 
 ## Keep the schema UId
 

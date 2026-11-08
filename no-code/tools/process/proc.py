@@ -24,12 +24,14 @@ UId meta paths; the rest of the text is passed through.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from creatio_schemas import DVT_OF, ProcessSchema  # noqa: E402
+from creatio_schemas import DATA_VALUE_TYPES, DVT_OF, ProcessSchema  # noqa: E402
 from creatio_schemas.cli import CommandLine, parse_assignments  # noqa: E402
+from creatio_schemas.process.catalog import DIRECTION  # noqa: E402
 from creatio_schemas.process import ELEMENT_KINDS, TASK_ALIASES  # noqa: E402
 
 
@@ -37,6 +39,19 @@ from creatio_schemas.process import ELEMENT_KINDS, TASK_ALIASES  # noqa: E402
 
 def new(_, a):
     print(ProcessSchema.create(Path(a.package), a.process, a.caption, a.cultures).describe())
+
+
+def test_config(proc, a):
+    """The parameter list a process case validates against (name, type, in | out | variable)."""
+    data = {"name": proc.name, "parameters": [
+        {"code": p["A2"], "type": DATA_VALUE_TYPES.get(p.get("L1"), p.get("L1")), "direction": DIRECTION.get(p.get("L12", 0), "Variable").lower()}
+        for p in proc.params if DIRECTION.get(p.get("L12", 0)) != "Internal"]}
+    text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if a.out:
+        Path(a.out).write_text(text, encoding="utf-8")
+        print(f"wrote {a.out}: {len(data['parameters'])} parameter(s)")
+    else:
+        print(text, end="")
 
 
 def inspect(proc, a):
@@ -119,6 +134,8 @@ def build() -> CommandLine:
     p.add_argument("--cultures", nargs="*")
     c("inspect", inspect, "elements, parameters, flows and problems, with decoded names")
     c("validate", validate, "problems only; exit code 1 when there are any")
+    p = c("test-config", test_config, "write the process's parameters as a Configuration/processes file of the UI test utility")
+    p.add_argument("--out", help="file to write (default: print)")
 
     p = c("caption", caption, "set a caption: Process | Element | Element.Param | Parameter:Name | a raw key", writes=True)
     p.add_argument("target")
