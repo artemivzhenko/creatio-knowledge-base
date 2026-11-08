@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Order" />
+			<Item Name="Columns.iaAmount.Caption" Value="Amount" />
+			<Item Name="Columns.iaContact.Caption" Value="Contact" />
+			<Item Name="Columns.iaDescription.Caption" Value="Description" />
+			<Item Name="Columns.iaDueDate.Caption" Value="Due date" />
+			<Item Name="Columns.iaEmail.Caption" Value="Email" />
+			<Item Name="Columns.iaIsUrgent.Caption" Value="Urgent" />
+			<Item Name="Columns.iaManager.Caption" Value="Manager" />
+			<Item Name="Columns.iaName.Caption" Value="Name" />
+			<Item Name="Columns.iaNotes.Caption" Value="Notes" />
+			<Item Name="Columns.iaPhone.Caption" Value="Phone" />
+			<Item Name="Columns.iaPickupTime.Caption" Value="Pickup time" />
+			<Item Name="Columns.iaQuantity.Caption" Value="Quantity" />
+			<Item Name="Columns.iaRichNotes.Caption" Value="Rich notes" />
+			<Item Name="Columns.iaShipDate.Caption" Value="Ship date" />
+			<Item Name="Columns.iaStatus.Caption" Value="Status" />
+			<Item Name="Columns.iaWebsite.Caption" Value="Website" />
+			<Item Name="Columns.iaWeight.Caption" Value="Weight" />
+		</Items>
+	</Group>
+</Resources>

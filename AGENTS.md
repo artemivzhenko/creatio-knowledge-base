@@ -164,8 +164,8 @@ you.
   pattern to extend.) Markdown is the format of `no-code/` only.
 - **`no-code/tools/` is code with tests.** The library is `no-code/tools/creatio_schemas/`
   (its README says where a new schema type, process element kind or rule action goes);
-  `tools/process/`, `tools/rules/`, `tools/objects/` and `tools/sqlscripts/` are its command lines. After any
-  change run the four `python no-code/tools/<process|rules|objects|sqlscripts>/tests/test_*_tools.py`; the fixtures are real 8.2.3 exports
+  `tools/process/`, `tools/rules/`, `tools/objects/`, `tools/pages/` and `tools/sqlscripts/` are its command lines. After any
+  change run the five `python no-code/tools/<process|rules|objects|pages|sqlscripts>/tests/test_*_tools.py`; the fixtures are real 8.2.3 exports
   and must round-trip byte-identical. The files under `creatio_schemas/**/assets/` are
   generated from a Creatio site and the platform assemblies - do not hand-edit them,
   re-export them (`tools/process/README.md` says from where).

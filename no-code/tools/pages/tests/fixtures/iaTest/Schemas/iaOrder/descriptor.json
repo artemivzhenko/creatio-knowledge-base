@@ -1,0 +1,14 @@
+﻿{
+  "Descriptor": {
+    "UId": "38025265-a7e1-4bf4-8ad2-c22ffe4f389f",
+    "Name": "iaOrder",
+    "ModifiedOnUtc": "\/Date(1793999635000)\/",
+    "Parent": {
+      "UId": "1bab9dcf-17d5-49f8-9536-8e0064f1dce0",
+      "Name": "BaseEntity"
+    },
+    "ManagerName": "EntitySchemaManager",
+    "Caption": "Order",
+    "DependsOn": []
+  }
+}

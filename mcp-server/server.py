@@ -158,7 +158,8 @@ def get_recipe(recipe_id: str) -> str:
                A bare file name is accepted when it is unambiguous; for clio a
                command name ("execute-sql-script"), a block skill name
                ("clio-sql-and-data") or a file toolkit ("tools/objects",
-               "tools/process", "tools/rules", "tools/sqlscripts") works directly.
+               "tools/pages", "tools/process", "tools/rules", "tools/sqlscripts")
+               works directly.
 
     The code is a template, not a drop-in: schema names, column names and the
     generated attribute suffixes (PDS_Name_a1b2c3d) must be replaced with the

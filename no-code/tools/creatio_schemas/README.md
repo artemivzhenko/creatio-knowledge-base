@@ -103,6 +103,7 @@ write the line the platform would.
 python no-code/tools/process/tests/test_process_tools.py
 python no-code/tools/rules/tests/test_rules_tools.py
 python no-code/tools/objects/tests/test_objects_tools.py
+python no-code/tools/pages/tests/test_pages_tools.py
 python no-code/tools/sqlscripts/tests/test_sqlscripts_tools.py
 ```
 
