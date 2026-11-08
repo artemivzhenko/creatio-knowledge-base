@@ -25,6 +25,11 @@ from ..schema import WARNING, Schema
 JSON_SECTIONS = ("SCHEMA_VIEW_CONFIG_DIFF", "SCHEMA_VIEW_MODEL_CONFIG", "SCHEMA_VIEW_MODEL_CONFIG_DIFF",
                  "SCHEMA_MODEL_CONFIG", "SCHEMA_MODEL_CONFIG_DIFF")
 
+# keys of a mobile page body (plain JSON) -> the section they correspond to
+MOBILE_KEYS = {"viewConfigDiff": "SCHEMA_VIEW_CONFIG_DIFF", "viewModelConfig": "SCHEMA_VIEW_MODEL_CONFIG",
+               "viewModelConfigDiff": "SCHEMA_VIEW_MODEL_CONFIG_DIFF", "modelConfig": "SCHEMA_MODEL_CONFIG",
+               "modelConfigDiff": "SCHEMA_MODEL_CONFIG_DIFF"}
+
 # column type -> (component type, extra values), what the 8.2.3 designer emits for a bound field
 CONTROL_OF = {
     "ShortText": ("crt.Input", {}), "MediumText": ("crt.Input", {}), "LongText": ("crt.Input", {}),
@@ -53,7 +58,8 @@ class _Section:
     def __init__(self, name: str, inner: str):
         self.name = name
         self.inner = inner
-        self.value = json.loads(inner)
+        # JavaScript tolerates a trailing comma in an array or object; json.loads does not
+        self.value = json.loads(re.sub(r",(\s*[\]}])", r"\1", inner))
         self.original = copy.deepcopy(self.value)
 
     @property
@@ -88,6 +94,14 @@ class PageSchema(Schema):
             m = re.search(rf"/\*\*{sec}\*/(.*?)/\*\*{sec}\*/", self.body, re.S)
             if m:
                 self.sections[sec] = _Section(sec, m.group(1))
+        # A mobile page body is one JSON object with the same keys and no define() wrapper: readable
+        # through the same sections, but not written back (its formatting is not reproduced).
+        self.mobile = not self.sections and self.body.lstrip().startswith("{")
+        if self.mobile:
+            data = json.loads(self.body)
+            for key, sec in MOBILE_KEYS.items():
+                if key in data:
+                    self.sections[sec] = _Section(sec, json.dumps(data[key], indent="\t", ensure_ascii=False))
 
     # metadata.json is kept as it is: the body is where a page lives
     def load_metadata(self, text: str) -> None:
@@ -118,12 +132,43 @@ class PageSchema(Schema):
         ops.append(op)
         return op["values"]
 
+    @staticmethod
+    def _merged_tree(ops: list, key: str) -> dict:
+        """Read view of a *Diff array: every merge op whose path starts at `key`, folded into one dict.
+
+        The designer writes `path: ["dataSources"]`, `["dataSources", "PDS", "config"]` or
+        `["attributes", "X"]` as it pleases; a reader wants the resulting tree.
+        """
+        tree: dict = {}
+        for op in ops:
+            if op.get("operation") != "merge":
+                continue
+            path = op.get("path") or []
+            values = op.get("values") or {}
+            if not path:
+                # a root merge may carry the whole subtree: {"dataSources": {...}}
+                values = values.get(key) if isinstance(values.get(key), dict) else None
+                if values is None:
+                    continue
+            elif path[0] != key:
+                continue
+            node = tree
+            for seg in path[1:]:
+                node = node.setdefault(seg, {})
+            for k, v in values.items():
+                if isinstance(v, dict) and isinstance(node.get(k), dict):
+                    node[k] = {**node[k], **v}
+                else:
+                    node[k] = v
+        return tree
+
     def _part(self, key: str, obj_section: str, diff_section: str, create: bool) -> dict:
         """attributes / dataSources in whichever form the body has; reading never creates anything."""
         if obj_section in self.sections:
             value = self.sections[obj_section].value
             return value.setdefault(key, {}) if create else value.get(key, {})
-        return self._merge_values(self.section(diff_section).value, [key], create)
+        ops = self.section(diff_section).value
+        return self._merge_values(ops, [key], True) if create else self._merged_tree(ops, key)
 
     @property
     def attributes(self) -> dict:
@@ -141,11 +186,69 @@ class PageSchema(Schema):
         return self._part("dataSources", "SCHEMA_MODEL_CONFIG", "SCHEMA_MODEL_CONFIG_DIFF", True)
 
     @property
+    def primary(self) -> str:
+        """Name of the primary data source: `primaryDataSourceName` where the body states it, else PDS,
+        else the one data source of page scope (designer-made pages name it after the object)."""
+        if "SCHEMA_MODEL_CONFIG" in self.sections:
+            named = self.sections["SCHEMA_MODEL_CONFIG"].value.get("primaryDataSourceName")
+        else:
+            named = next((op.get("values", {}).get("primaryDataSourceName") for op in self.section("SCHEMA_MODEL_CONFIG_DIFF").value
+                          if op.get("operation") == "merge" and not op.get("path") and "primaryDataSourceName" in (op.get("values") or {})), None)
+        if named:
+            return named
+        sources = self.data_sources
+        if "PDS" in sources:
+            return "PDS"
+        return next((k for k, v in sources.items() if v.get("scope") == "page"), "PDS")
+
+    @property
     def entity(self) -> str | None:
-        """The object of the page's primary data source (PDS)."""
-        return ((self.data_sources.get("PDS") or {}).get("config") or {}).get("entitySchemaName")
+        """The object of the page's primary data source."""
+        return ((self.data_sources.get(self.primary) or {}).get("config") or {}).get("entitySchemaName")
 
     # -- reading ---------------------------------------------------------------- #
+
+    RAW_SECTIONS = ("SCHEMA_DEPS", "SCHEMA_ARGS", "SCHEMA_VIEW_CONFIG_DIFF", "SCHEMA_VIEW_MODEL_CONFIG",
+                    "SCHEMA_VIEW_MODEL_CONFIG_DIFF", "SCHEMA_MODEL_CONFIG", "SCHEMA_MODEL_CONFIG_DIFF",
+                    "SCHEMA_HANDLERS", "SCHEMA_CONVERTERS", "SCHEMA_VALIDATORS")
+
+    def raw_sections(self) -> dict[str, str]:
+        """Every marker section's text, JSON or JavaScript alike, in the order the body has them."""
+        out = {}
+        for sec in self.RAW_SECTIONS:
+            m = re.search(rf"/\*\*{sec}\*/(.*?)/\*\*{sec}\*/", self.body, re.S)
+            if m:
+                out[sec] = m.group(1)
+        return out
+
+    def handlers(self) -> list[tuple[str, str]]:
+        """(request name, source) of each handler: the top-level objects of the handlers array, split by brace matching."""
+        text = self.raw_sections().get("SCHEMA_HANDLERS", "")
+        items, depth, start, in_str, quote, i = [], 0, None, False, "", 0
+        while i < len(text):
+            ch = text[i]
+            if in_str:
+                if ch == "\\":
+                    i += 1
+                elif ch == quote:
+                    in_str = False
+            elif ch in "\"'`":
+                in_str, quote = True, ch
+            elif ch == "{":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and start is not None:
+                    items.append(text[start:i + 1])
+                    start = None
+            i += 1
+        out = []
+        for src in items:
+            m = re.search(r"request\s*:\s*[\"']([^\"']+)[\"']", src)
+            out.append((m.group(1) if m else f"handler#{len(out) + 1}", src.strip()))
+        return out
 
     def elements(self) -> list[dict]:
         return [op for op in self.view_config_diff if op.get("name")]
@@ -202,7 +305,7 @@ class PageSchema(Schema):
             "index": len(self._siblings(parent)),
         }
         self.view_config_diff.append(op)
-        self.attributes_w()[column] = {"modelConfig": {"path": f"PDS.{column}"}}
+        self.attributes_w()[column] = {"modelConfig": {"path": f"{self.primary}.{column}"}}
         return op
 
     def add_grid(self, name: str, entity: str, columns: list[str], parent: str = DEFAULT_GRID_PARENT,
@@ -277,9 +380,10 @@ class PageSchema(Schema):
             control = (op.get("values") or {}).get("control", "")
             if control.startswith("$") and control[1:] not in self.attributes:
                 problems.append(f"{op['name']} is bound to {control} but the page has no such attribute")
+        prefix = self.primary + "."
         for name, attr in self.attributes.items():
             path = (attr.get("modelConfig") or {}).get("path", "")
-            if path.startswith("PDS.") and columns and path[4:] not in columns:
+            if path.startswith(prefix) and columns and path[len(prefix):] not in columns:
                 problems.append(f"{WARNING}attribute {name} reads {path}, which {self.entity} does not have")
         return problems
 
@@ -299,6 +403,10 @@ class PageSchema(Schema):
         return "\n".join(lines)
 
     def render_body(self) -> str:
+        if getattr(self, "mobile", False):
+            if any(s.changed for s in self.sections.values()):
+                raise NotImplementedError(f"{self.name} is a mobile page: readable here, but its body is not written back")
+            return self.body
         text = self.body
         fallback = next((s.style() for s in self.sections.values() if s.style()), ("\t\t", "\t"))
         for sec in self.sections.values():

@@ -38,7 +38,7 @@ of objects and Freedom UI pages, objects and their columns, fields and grids on 
 pages, package SQL scripts - use the toolkits under `no-code/tools/` instead of the designer
 or clio's write commands: `get_recipe("tools/process")`, `get_recipe("tools/rules")`,
 `get_recipe("tools/objects")`, `get_recipe("tools/pages")`,
-`get_recipe("tools/sqlscripts")` (each README: the loop, the spec format, the verified
+`get_recipe("tools/sqlscripts")`, `get_recipe("tools/dcm")`, `get_recipe("tools/usertask")` (each README: the loop, the spec format, the verified
 traps; `tools/creatio_schemas` is the library behind them). The loop is the same for all:
 edit with `--dry-run`, write, `clio push-pkg`, then the tool's `probe` on the environment.
 

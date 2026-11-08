@@ -7,3 +7,7 @@ __pycache__/
 venv/
 *.egg-info/
 articles/*
+# Written by the tools next to the packages they work on, never part of the knowledge base:
+# the package index (describe.py index / find_schema) and the base-object cache (objects.py).
+.creatio-index/
+.creatio-bases/

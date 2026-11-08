@@ -1,5 +1,5 @@
 ---
-description: Python library behind the process, business-rule and object tools - Schema base class over package files (descriptor, metadata, resources, diff, save), ProcessSchema, RuleSchema, EntitySchema, the parent-diff engine, element-kind and rule-action registries, workspace lookups; how to add a schema type, a process element or a rule action.
+description: Python library behind the process, business-rule and object tools - Schema base class over package files (descriptor, metadata, resources, diff, save), ProcessSchema, RuleSchema, EntitySchema, PageSchema, DcmSchema, UserTaskSchema, the parent-diff engine, element-kind and rule-action registries, workspace lookups; how to add a schema type, a process element or a rule action.
 ---
 
 # creatio_schemas
@@ -23,6 +23,8 @@ creatio_schemas/
   process/        ProcessSchema, catalog (ElementKind per designer element, user tasks), expressions
   rules/          RuleSchema, model (keys and enums), actions (ActionType registry), builder (spec -> rule),
                   storage (own JSON / replacing diff), engine (the platform rule services)
+  dcm/            DcmSchema: stages (lookup records, colours, alternatives), steps (sub-processes, conditions), moves, filter
+  usertask/       UserTaskSchema: parameters (shared new_param with processes) and the partial C# class
   entity/         EntitySchema, catalog (column and object flags, BaseEntity/BaseLookup, designer templates,
                   stock object UIds), hierarchy (the merged base of a replacing object, fetched and cached),
                   database (metadata vs the table)
@@ -105,6 +107,8 @@ python no-code/tools/rules/tests/test_rules_tools.py
 python no-code/tools/objects/tests/test_objects_tools.py
 python no-code/tools/pages/tests/test_pages_tools.py
 python no-code/tools/sqlscripts/tests/test_sqlscripts_tools.py
+python no-code/tools/dcm/tests/test_dcm_tools.py
+python no-code/tools/usertask/tests/test_usertask_tools.py
 ```
 
 The fixtures are real 8.2.3 exports; the round trip must stay byte-identical, and reading

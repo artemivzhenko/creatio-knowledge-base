@@ -269,6 +269,106 @@ def get_code_style(section: str = "") -> str:
     return text
 
 
+def _tools_path() -> None:
+    import sys
+    tools = str(_ROOT / "no-code" / "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+
+
+@mcp.tool()
+def describe_package(package: str, kind: str = "") -> str:
+    """
+    What a Creatio package holds, one line per schema and SQL script: kind, name,
+    caption, counts (columns, elements, rules, page elements) and the parent or the
+    replaced base. Call this BEFORE reading any file of a package.
+
+    package: the package folder, e.g. C:/work/packages/UsrPkg (a clio workspace package).
+    kind:    optional filter - object, process, rules, page, sql, client, addon, source.
+    """
+    _tools_path()
+    from creatio_schemas.describe import describe_package as _dp
+    try:
+        return _dp(package, kind)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def describe_schema(package: str, schema: str) -> str:
+    """
+    The summary of one schema - columns and flags of an object, elements, parameters
+    and flows of a process, rules of a rule addon, elements and data sources of a
+    Freedom UI page, engine and dependencies of a SQL script. 6x-40x fewer tokens than
+    the schema's files; use describe_item for one part of it.
+    """
+    _tools_path()
+    from creatio_schemas.describe import describe_schema as _ds
+    try:
+        return _ds(package, schema)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def describe_item(package: str, schema: str, query: str = "topics") -> str:
+    """
+    One part of a schema, chosen by a query "<topic> [<name>] [key=value ...]";
+    "topics" lists what the schema can answer. Examples:
+      object : "columns type=Lookup", "column UsrAmount", "flags", "base"
+      process: "elements kind=FormulaTask", "element ReadOrders", "params", "flows from=Start", "script Calc"
+      rules  : "rules", "rule <name>"
+      dcm    : "stages", "stage Stage1", "steps stage=Stage1", "step DcmElement1", "moves from=Stage1", "filter"
+      user task: "params", "param RecordId", "methods", "method InternalExecute", "source"
+      page   : "sections", "elements parent=SideAreaProfileContainer", "element UsrName",
+               "attributes bound=true", "data-sources", "handlers", "handler crt.SaveRecordRequest",
+               "validators", "converters", "containers", "find <text>"
+      any    : "files", "resources culture=uk-UA", "resource Caption"
+    Nothing is returned that was not asked for: a page is a database, this is the query.
+    """
+    _tools_path()
+    from creatio_schemas.describe import QueryError, describe_item as _di
+    try:
+        return _di(package, schema, query)
+    except (FileNotFoundError, KeyError, ValueError, QueryError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+
+
+
+@mcp.tool()
+def index_workspace(path: str, rebuild: bool = False) -> str:
+    """
+    Build or refresh the package index - the project's knowledge-base file
+    (<workspace>/.creatio-index/<Package>.json): for every schema its kind, caption,
+    summary, files and the schemas it refers to. `path` is a clio workspace root, a
+    packages folder or one package. The index checks itself against the disk on every
+    describe_* / find_schema call, so run this only after a `clio pull-pkg` to see what
+    changed, or with rebuild=True to start over.
+    """
+    _tools_path()
+    from creatio_schemas.describe import index_workspace as _iw
+    try:
+        return _iw(path, rebuild)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def find_schema(path: str, schema: str) -> str:
+    """
+    Where a schema lives and what touches it, without searching: the package, kind,
+    summary, every file with its absolute path, the schemas it refers to and the schemas
+    and data bindings that refer to it (across the workspace). Call this before reading
+    or changing a schema: it gives the files to open and the impact of the change.
+    `path` is a clio workspace root, a packages folder or one package.
+    """
+    _tools_path()
+    from creatio_schemas.describe import find_schema as _fs
+    try:
+        return _fs(path, schema)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
 def main() -> None:
     """Console entry point: serve over stdio."""
     global _ROOT

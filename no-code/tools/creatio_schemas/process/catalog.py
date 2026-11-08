@@ -36,6 +36,24 @@ def short_type(item: dict) -> str:
     return item.get("BL1", "").rsplit(".", 1)[-1]
 
 
+def new_param(schema_uid: str, package_uid: str, name: str, type_name: str, direction: str = "In", default=None, ref_schema: str | None = None) -> dict:
+    """A ProcessSchemaParameter as the designer writes it (shared by processes and user tasks)."""
+    from ..files import DVT_OF, new_uid
+    if type_name not in DVT_OF:
+        raise ValueError(f"unknown type {type_name}; one of {sorted(DVT_OF)}")
+    if direction not in DIRECTION_OF:
+        raise ValueError(f"unknown direction {direction}; one of {sorted(DIRECTION_OF)}")
+    p = {"BL1": NS + "ProcessSchemaParameter", "UId": new_uid(), "A2": name, "A3": schema_uid, "A4": schema_uid,
+         "A5": package_uid, "IL2": schema_uid, "L1": DVT_OF[type_name], "L8": {}}
+    if default is not None:
+        p["L8"] = {"GS1": 1, "GS2": str(default), "GS5": schema_uid}
+    if type_name == "Lookup" and ref_schema:
+        p["L16"] = ref_schema
+    if direction != "In":
+        p["L12"] = DIRECTION_OF[direction]
+    return p
+
+
 def event_parameter(proc, el: dict, name: str, type_name: str, value: dict) -> dict:
     """A parameter the designer puts on an event (FC1), e.g. RecordId of a record signal."""
     p = {"BL1": NS + "ProcessSchemaParameter", "UId": new_uid(), "A2": name, "A3": proc.uid, "A4": proc.uid,

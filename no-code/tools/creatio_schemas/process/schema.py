@@ -15,7 +15,7 @@ from ..resources import Resources
 from ..schema import Descriptor, Schema
 from ..workspace import Package
 from .catalog import (CONDITIONAL_FLOW_MANAGER, DIRECTION, DIRECTION_OF, FLOW_CLASSES, FLOW_MANAGER, KEYMAP, KIND_BY_CLASS,
-                      LANE_MANAGER, LANESET_MANAGER, NS, USER_TASK_BY_UID, VALUE_SOURCE, element_kind, short_type)
+                      LANE_MANAGER, LANESET_MANAGER, NS, USER_TASK_BY_UID, VALUE_SOURCE, element_kind, new_param, short_type)
 from .expressions import ExpressionCodec
 
 DEFAULT_VERSION = "8.2.3.1351"
@@ -136,16 +136,7 @@ class ProcessSchema(Schema):
     def add_param(self, name: str, type_name: str, direction: str = "Variable", caption: str = "", default=None, ref_schema: str | None = None) -> dict:
         if any(p["A2"] == name for p in self.params):
             raise ValueError(f"parameter {name} exists")
-        if type_name not in DVT_OF:
-            raise ValueError(f"unknown type {type_name}; one of {sorted(DVT_OF)}")
-        p = {"BL1": NS + "ProcessSchemaParameter", "UId": new_uid(), "A2": name, "A3": self.uid, "A4": self.uid,
-             "A5": self.package_uid, "IL2": self.uid, "L1": DVT_OF[type_name], "L8": {}}
-        if default is not None:
-            p["L8"] = {"GS1": 1, "GS2": str(default), "GS5": self.uid}
-        if type_name == "Lookup" and ref_schema:
-            p["L16"] = ref_schema
-        if direction != "In":
-            p["L12"] = DIRECTION_OF[direction]
+        p = new_param(self.uid, self.package_uid, name, type_name, direction, default, ref_schema)
         self.own_list("FJ1").append(p)
         self.resources.set(f"Parameters.{name}.Caption", caption or name)
         return p

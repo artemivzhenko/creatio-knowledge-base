@@ -1,0 +1,10 @@
+﻿{
+  "Descriptor": {
+    "UId": "27a4002a-2317-481c-baa6-9997beecd3d5",
+    "Name": "iaRunCase_UserTask",
+    "ModifiedOnUtc": "\/Date(1783764650000)\/",
+    "ManagerName": "ProcessUserTaskSchemaManager",
+    "Caption": "Run case for record",
+    "DependsOn": []
+  }
+}

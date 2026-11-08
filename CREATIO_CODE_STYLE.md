@@ -266,6 +266,10 @@ Better: hide the boilerplate behind an executor: `_executor.Execute(client => cl
 - **The exception is an API on the Creatio side** - a configuration web service the platform exposes as `ServiceModel/<Name>.svc/...` (`[ServiceContract]`, a class deriving from `BaseService`). Create it as a **source code schema** (`Schemas/<Name>/`, `SourceCodeSchemaManager`, caption `[API] ...`). Keep it thin: read the request, call the classes from `Files/cs`, map the result.
 - Database objects (views, functions, triggers, data fixes) are not C#: they are package SQL scripts (`SqlScripts/<Name>/`, see `no-code/tools/sqlscripts`), one per database engine you support.
 
+### 3.8 Unit tests live next to the package
+
+Every class in `Files/cs` with a branch gets a test in `tests/<Package>/` (the project `clio new-test-project --package <Package>` scaffolds), run with `dotnet test` and no Creatio instance. The fixture is Creatio's `BaseConfigurationTestFixture`: a fake `UserConnection`, schemas declared with `MockEntitySchemaWithColumns`, ESQ rows served by `SetUpTestData`. Call the code the way the platform does (`listener.OnInserting(entity, new EntityBeforeEventArgs())`); do not test the platform (`Entity.Save`, DB queries) - those are proved over OData from outside. Recipe: `Backend/C#/Tests/HowToUnitTestAnEntityEventListenerWithoutAnInstance`; setup traps: `no-code/clio-tests-and-devops/SKILL.md`.
+
 ---
 
 ## 4. Error handling
@@ -420,6 +424,7 @@ In configuration packages, use schema resources (`GetLocalizableString(...)` or 
 - [ ] `#region Class:` wrapper; member regions `Kind: Visibility` in the canonical order; private → public.
 - [ ] `_camelCase` private fields, `PascalCase` constants, unit suffixes (`Ms`, `Sec`) on numeric time values.
 - [ ] Code in `Files/cs/` of an assembly package; a source code schema only for a Creatio-side API (`BaseService`), kept thin.
+- [ ] A unit test in `tests/<Package>/` for every class with a branch; `IsColumnValueLoaded` before reading a column the caller may not have set.
 - [ ] Interface for every service; implementation `internal` unless it is an extension point.
 - [ ] Constructor injection only; dependencies `private readonly`; guard clauses with `CheckArgumentNull(nameof(...))`.
 - [ ] Convenience constructors only delegate to the full one via `: this(...)`.

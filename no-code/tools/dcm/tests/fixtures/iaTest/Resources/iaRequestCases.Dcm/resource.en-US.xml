@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Request cases" />
+			<Item Name="NotificationCaption.Caption" Value="Process instance caption" />
+			<Item Name="NotificationCaption.DisplayValue" Value="[#Process name#]" />
+			<Item Name="Stages.Stage1.Caption" Value="New" />
+			<Item Name="Stages.Stage1.Elements.DcmElement2.Caption" Value="New stage logic" />
+			<Item Name="Stages.Stage1.Elements.DcmElement2.ProcessFlowElement.Parameters.Request.Caption" Value="Request" />
+			<Item Name="Stages.Stage1.Elements.DcmElement2.ProcessFlowElement.Parameters.Request.DisplayValue" Value="[#Main record.Id#]" />
+			<Item Name="Stages.Stage1.Elements.DcmElement4.Caption" Value="Generate document for request" />
+			<Item Name="Stages.Stage1.Elements.DcmElement4.ProcessFlowElement.Parameters.Request.Caption" Value="Request" />
+			<Item Name="Stages.Stage1.Elements.DcmElement4.ProcessFlowElement.Parameters.Request.DisplayValue" Value="[#Main record.Id#]" />
+			<Item Name="Stages.Stage2.Caption" Value="Reopened" />
+			<Item Name="Stages.Stage3.Caption" Value="Approval" />
+			<Item Name="Stages.Stage3.Elements.DcmElement3.Caption" Value="Approval" />
+			<Item Name="Stages.Stage3.Elements.DcmElement3.ProcessFlowElement.Parameters.NextStage.Caption" Value="Next stage" />
+			<Item Name="Stages.Stage3.Elements.DcmElement3.ProcessFlowElement.Parameters.Request.Caption" Value="Request" />
+			<Item Name="Stages.Stage3.Elements.DcmElement3.ProcessFlowElement.Parameters.Request.DisplayValue" Value="[#Main record.Id#]" />
+			<Item Name="Stages.Stage4.Caption" Value="In progress" />
+			<Item Name="Stages.Stage4.Elements.DcmElement1.Caption" Value="Create subrequest" />
+			<Item Name="Stages.Stage4.Elements.DcmElement1.ProcessFlowElement.Parameters.Request.Caption" Value="Request" />
+			<Item Name="Stages.Stage4.Elements.DcmElement1.ProcessFlowElement.Parameters.Request.DisplayValue" Value="[#Main record.Id#]" />
+			<Item Name="Stages.Stage5.Caption" Value="Completed" />
+			<Item Name="Stages.Stage6.Caption" Value="Canceled" />
+		</Items>
+	</Group>
+</Resources>

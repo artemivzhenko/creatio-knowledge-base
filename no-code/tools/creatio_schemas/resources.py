@@ -8,7 +8,8 @@ from xml.sax.saxutils import escape, unescape
 
 from .files import CRLF, newline_of, read_text
 
-_ITEM_RE = re.compile(r'<Item Name="([^"]*)" Value="([^"]*)" />')
+# Name, then any other attributes (images carry Type, ContentType, FileExtension), then Value.
+_ITEM_RE = re.compile(r'<Item Name="([^"]*)"((?: [A-Za-z]+="[^"]*")*?) Value="([^"]*)" />')
 # the platform's XmlWriter: quotes as &quot;, line breaks and tabs inside a value as character references
 _XML_ESCAPE = {'"': "&quot;", "\n": "&#xA;", "\r": "&#xD;", "\t": "&#x9;"}
 _XML_UNESCAPE = {"&quot;": '"', "&apos;": "'", "&#xA;": "\n", "&#xD;": "\r", "&#x9;": "\t"}
@@ -21,12 +22,15 @@ class Resources:
         self.folder = Path(folder)
         self.cultures: dict[str, dict[str, str]] = {}
         self.extra: dict[str, str] = {}
+        self.attrs: dict[str, dict[str, str]] = {}  # {culture: {key: ' Type="Image" ...'}} for items that are not plain strings
         self._read_order: dict[str, list[str]] = {}
         self._newline: dict[str, str] = {}
         for path in sorted(self.folder.glob("resource.*.xml")):
             culture = path.name[len("resource."):-len(".xml")]
             text = read_text(path)[0]
-            self.cultures[culture] = {k: unescape(v, _XML_UNESCAPE) for k, v in _ITEM_RE.findall(text)}
+            found = _ITEM_RE.findall(text)
+            self.cultures[culture] = {k: unescape(v, _XML_UNESCAPE) for k, mid, v in found}
+            self.attrs[culture] = {k: mid for k, mid, v in found if mid}
             self._read_order[culture] = list(self.cultures[culture])
             self._newline[culture] = newline_of(text)  # a git checkout may have made them LF
             rest = re.sub(r'<Group Type="String">.*?</Group>\r?\n?', "", text, count=1, flags=re.S)
@@ -59,9 +63,10 @@ class Resources:
 
     def remove(self, predicate) -> int:
         n = 0
-        for items in self.cultures.values():
+        for culture, items in self.cultures.items():
             for k in [k for k in items if predicate(k)]:
                 del items[k]
+                self.attrs.get(culture, {}).pop(k, None)
                 n += 1
         return n
 
@@ -71,9 +76,11 @@ class Resources:
 
     def rename_prefix(self, old: str, new: str) -> int:
         n = 0
-        for items in self.cultures.values():
+        for culture, items in self.cultures.items():
             for k in [k for k in items if k == old or k.startswith(old + ".")]:
                 items[new + k[len(old):]] = items.pop(k)
+                if k in self.attrs.get(culture, {}):
+                    self.attrs[culture][new + k[len(old):]] = self.attrs[culture].pop(k)
                 n += 1
         return n
 
@@ -93,7 +100,8 @@ class Resources:
         """The file text without its BOM (the files always carry one)."""
         lines = ['<?xml version="1.0" encoding="utf-8"?>', f'<Resources Culture="{culture}">', '\t<Group Type="String">', "\t\t<Items>"]
         for k in self.ordered_keys(culture):
-            lines.append(f'\t\t\t<Item Name="{escape(k, _XML_ESCAPE)}" Value="{escape(self.cultures[culture][k], _XML_ESCAPE)}" />')
+            mid = self.attrs.get(culture, {}).get(k, "")
+            lines.append(f'\t\t\t<Item Name="{escape(k, _XML_ESCAPE)}"{mid} Value="{escape(self.cultures[culture][k], _XML_ESCAPE)}" />')
         lines += ["\t\t</Items>", "\t</Group>"]
         if self.extra.get(culture):
             lines.append("\t" + self.extra[culture])

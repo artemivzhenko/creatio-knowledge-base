@@ -1,0 +1,10 @@
+﻿{
+  "Descriptor": {
+    "UId": "ed1074f7-4d4c-457a-add4-fbca8a85bf72",
+    "Name": "iaRequestCases",
+    "ModifiedOnUtc": "\/Date(1793785582000)\/",
+    "ManagerName": "DcmSchemaManager",
+    "Caption": "Request cases",
+    "DependsOn": []
+  }
+}

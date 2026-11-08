@@ -81,7 +81,7 @@ Frontend/ClassicUI/       57   Creatio 7.x — diff, methods, Terrasoft.*
 Frontend/FreedomUI/       44   Creatio 8.x — viewConfigDiff, handlers, crt.*, @creatio-devkit
 Frontend/RemoteModule/     2   Freedom UI remote module: view element, request handlers — recipes + template/
 Frontend/Mobile/           1   Creatio Mobile SDK handler module — recipe + template/
-Backend/C#/               62   ESQ, Select/Insert/Update, event listeners, web services, processes, files
+Backend/C#/               63   ESQ, Select/Insert/Update, event listeners, web services, processes, files, unit tests
 Backend/SQL/               4   PostgreSQL diagnostic queries
 no-code/                       clio CLI for agents: clio-*/SKILL.md per block, reference/<command>.md, tools/sync_clio_docs.py
 mcp-server/                    search server exposing the recipes over MCP

@@ -69,6 +69,19 @@ and grids of other objects on a Freedom UI form page by editing the page body's 
 (`pages.py`); `push-pkg` installs the page, and the UI test utility's `analyse` shows what
 rendered.
 
+## DCM case tools
+
+[tools/dcm/](tools/dcm/README.md) reads a case (object, stage column, filter, stages with their
+lookup records, steps that start sub-processes, result conditions, allowed moves), creates a case
+on an object's lookup column, adds or removes stages and connects them (`dcm.py`); steps are
+described, not written.
+
+## User-task tools
+
+[tools/usertask/](tools/usertask/README.md) reads a user task (parameters, the C# methods, one
+method's body), creates one with a compilable skeleton, adds, renames or removes parameters and
+replaces the C# half (`usertask.py`); icons in the resources are kept.
+
 ## SQL script tools
 
 [tools/sqlscripts/](tools/sqlscripts/README.md) creates and changes the package's SQL scripts

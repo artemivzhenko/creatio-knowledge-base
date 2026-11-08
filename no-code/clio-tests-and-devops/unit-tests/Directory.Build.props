@@ -1,0 +1,12 @@
+<Project>
+	<!--
+		Put this file in <workspace>/tests/ when the workspace core is older than 8.3.2.4166.
+		The unit-test kit clio ships (tests/<Pkg>/Libs/UnitTest.dll) is built against Terrasoft.Core 8.3.2.4166,
+		so the test projects compile against a local 8.3.2+ installation instead of the workspace's core-bin.
+		The package projects still build against the workspace core; each test project's App.config redirects
+		every Terrasoft.* assembly to the installation's version at run time (the SDK's automatic redirects miss them).
+	-->
+	<PropertyGroup>
+		<TestCoreLibPath>C:\Creatio\<8.3.2 installation>\Terrasoft.WebApp\bin</TestCoreLibPath>
+	</PropertyGroup>
+</Project>

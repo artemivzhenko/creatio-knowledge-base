@@ -30,7 +30,7 @@ then *skips it with a warning* and installs the rest - the push looks successful
 schema on the environment stays old (verified on 8.2.3: a page edit was skipped this way).
 
 ```bash
-clio execute-sql-script -e dev -s 'update "SysSchema" set "IsChanged"=false'
+clio execute-sql-script 'update "SysSchema" set "IsChanged"=false' -e dev   # the script is the positional argument; -s is not an option
 clio push-pkg UsrMyPackage -e dev
 ```
 
