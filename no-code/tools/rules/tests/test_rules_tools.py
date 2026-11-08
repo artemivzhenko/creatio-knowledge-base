@@ -169,6 +169,15 @@ def test_command_line():
         with contextlib.redirect_stderr(io.StringIO()):
             assert rules.main(["remove-base", str(pkg), "iaTest", "34a9fedf-e4d8-f6e1-cb04-2e74816d4502"]) == 2  # own addon: refused
         assert RuleSchema(pkg, "iaTestBusinessRule").rule("Comment required when active")["BR4"] is False
+        # the first rule of a target creates its addon, as the designer does - except under --dry-run
+        shutil.rmtree(pkg / "Schemas" / "iaTestBusinessRule")
+        shutil.rmtree(pkg / "Resources" / "iaTestBusinessRule.Addon")
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert rules.main(["add", str(pkg), "iaTest", "--spec", str(spec), "--dry-run"]) == 2
+        assert not (pkg / "Schemas" / "iaTestBusinessRule").exists()
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert rules.main(["add", str(pkg), "iaTest", "--spec", str(spec)]) == 0
+        assert RuleSchema(pkg, "iaTestBusinessRule").rule("Comment required when active").get("BR4", True) is True
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
