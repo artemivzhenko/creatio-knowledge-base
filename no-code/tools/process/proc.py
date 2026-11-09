@@ -12,6 +12,8 @@ Inspect and change business processes stored in a package (library: ../creatio_s
     python proc.py element   <package> <Process> add <Name> --kind readData --after X [--before Y] [--caption ..] [--entity UsrOrder] [--set Param=value ..]
     python proc.py element   <package> <Process> rename <Old> <New> | remove <Name> | set <Name> Param=value .. [--expr]
     python proc.py element   <package> <Process> formula <Name> "<expression>" --result <ProcessParam>
+    python proc.py element   <package> <Process> values <Name> Column=value .. [--expr]     Add / Modify data: the columns it writes
+    python proc.py element   <package> <Process> map <Name> Param=value .. [--expr]        sub-process: the called process's parameters
     python proc.py flow      <package> <Process> add <Src> <Dst> [--condition "{Parameter:X} > 0"] [--name ..] [--caption ..]
     python proc.py flow      <package> <Process> remove <Name> | condition <Name> "<expr>"
     python proc.py script    <package> <Process> get <Element> [--out file] | set <Element> --file body.cs
@@ -31,8 +33,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from creatio_schemas import DATA_VALUE_TYPES, DVT_OF, ProcessSchema  # noqa: E402
 from creatio_schemas.cli import CommandLine, parse_assignments  # noqa: E402
-from creatio_schemas.process.catalog import DIRECTION  # noqa: E402
+from creatio_schemas.process.catalog import DIRECTION, short_type  # noqa: E402
 from creatio_schemas.process import ELEMENT_KINDS, TASK_ALIASES  # noqa: E402
+from creatio_schemas.process.schema import SIGNAL_KEYS  # noqa: E402
 
 
 # -- whole process ------------------------------------------------------------ #
@@ -97,9 +100,16 @@ def fill_captions(proc, a):
 
 # -- elements -------------------------------------------------------------------- #
 
+def element_signal(proc, a, el=None):
+    el = el or proc.element(a.name)
+    proc.set_signal(el, a.entity, a.on, a.columns.split(",") if a.columns else None, a.filter)
+
+
 def element_add(proc, a):
     el = proc.add_element(a.kind, a.name, a.caption or "", a.after, a.before)
-    if a.entity:
+    if short_type(el) in SIGNAL_KEYS and (a.entity or a.on or a.columns or a.filter):
+        element_signal(proc, a, el)
+    elif a.entity:
         proc.set_entity(el, a.entity)
     if a.calls:
         proc.set_calls(el, a.calls)
@@ -169,9 +179,18 @@ def build() -> CommandLine:
     p.add_argument("--before")
     p.add_argument("--entity", help="data elements and record-signal starts: entity schema name (resolved from the workspace) or its UId")
     p.add_argument("--calls", help="sub-process: the process to call, by name or UId")
-    p.add_argument("--message", help="message / signal events: the message name")
+    p.add_argument("--message", help="message / signal events: the message name (a start or catch signal then waits for that named signal)")
+    p.add_argument("--on", help="record signals: added, modified, deleted - several joined by a comma")
+    p.add_argument("--columns", help="record signals, modified: the columns whose change fires it, joined by a comma")
+    p.add_argument("--filter", help='record signals: conditions the record must meet, e.g. "UsrAmount > 100; UsrStatus is not null"')
     p.add_argument("--set", nargs="*", default=[], metavar="Param=value")
     p.add_argument("--expr", action="store_true", help="the --set values are expressions")
+    p = c("signal", element_signal, "record signal of a start or catch signal: entity, what fires it, columns, conditions", True, g)
+    p.add_argument("name")
+    p.add_argument("--entity")
+    p.add_argument("--on")
+    p.add_argument("--columns")
+    p.add_argument("--filter")
     p = c("rename", lambda proc, a: proc.rename_element(a.old, a.new), "rename an element (mappings, labels, captions follow)", True, g)
     p.add_argument("old")
     p.add_argument("new")
@@ -181,6 +200,16 @@ def build() -> CommandLine:
     p.add_argument("name")
     p.add_argument("values", nargs="+", metavar="Param=value")
     p.add_argument("--expr", action="store_true")
+    p = c("values", lambda proc, a: proc.set_record_values(proc.element(a.name), parse_assignments(a.values), a.expr),
+          "Add / Modify data: column values (constants typed by the column, or {Parameter:X} expressions)", True, g)
+    p.add_argument("name")
+    p.add_argument("values", nargs="+", metavar="Column=value")
+    p.add_argument("--expr", action="store_true", help="every value is an expression")
+    p = c("map", lambda proc, a: proc.map_params(proc.element(a.name), parse_assignments(a.values), a.expr),
+          "sub-process: values for the called process's parameters", True, g)
+    p.add_argument("name")
+    p.add_argument("values", nargs="+", metavar="Param=value")
+    p.add_argument("--expr", action="store_true", help="every value is an expression")
     p = c("formula", lambda proc, a: proc.set_formula(a.name, a.expression, a.result), "formula task: expression -> process parameter", True, g)
     p.add_argument("name")
     p.add_argument("expression")

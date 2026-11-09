@@ -36,3 +36,7 @@ class Clio:
                 raise RuntimeError(f"clio execute-sql-script wrote no result (environment {self.env!r}?): {run.stdout[-500:]}{run.stderr[-500:]}")
             text = out.read_text(encoding="utf-8-sig").strip()
             return json.loads(text) if text else []
+
+    def execute_sql(self, sql: str) -> None:
+        """Execute a SQL script (no output expected)."""
+        self.sql(sql)

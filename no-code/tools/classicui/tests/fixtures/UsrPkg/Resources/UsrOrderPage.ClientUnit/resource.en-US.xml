@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Order edit page" />
+			<Item Name="LocalizableStrings.UsrInfoTabCaption.Value" Value="Order info" />
+			<Item Name="LocalizableStrings.PrintButtonCaption.Value" Value="Print" />
+			<Item Name="LocalizableStrings.CloseButtonCaption.Value" Value="Close" />
+			<Item Name="LocalizableStrings.NumberFormatMessage.Value" Value="Use the format ORD-0001" />
+		</Items>
+	</Group>
+</Resources>

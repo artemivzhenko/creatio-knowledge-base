@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from ..csharp import CSharpSource
+from ..data import DataBinding
 from ..dcm import DcmSchema
 from ..entity import EntitySchema
 from ..entity.catalog import column_flags
@@ -125,6 +126,8 @@ def q_p_element(p: ProcessSchema, name, f):
             lines.append(f"    flow {fl['A2']}: {by_uid.get(fl.get('CI1'), '?')} -> {by_uid.get(fl.get('CI2'), '?')}{cond}")
     if short_type(e) == "ProcessSchemaScriptTask":
         lines.append(f"    script: {len(e.get('CH1', ''))} chars (ask 'script {e['A2']}')")
+    if p.describe_signal(e):
+        lines.append(f"    {p.describe_signal(e)}")
     return "\n".join(lines)
 
 
@@ -398,12 +401,90 @@ CSHARP = {"classes": q_c_classes, "members": q_c_members, "member": q_c_member, 
           "regions": q_c_regions, "operations": q_c_operations, "find": q_c_find}
 
 
-TOPICS = {EntitySchema: OBJECT, ProcessSchema: PROCESS, RuleSchema: RULES, SqlScript: SQL, PageSchema: PAGE, DcmSchema: DCM, UserTaskSchema: USERTASK,
-          CSharpSource: CSHARP, GenericItem: {}}
+# -- data bindings --------------------------------------------------------------- #
+
+
+def q_b_columns(b: DataBinding, name, f):
+    return "\n".join(f"{n:<28} uid={c['uid']}  {'key ' if c.get('key') else ''}{'force ' if c.get('force_update') else ''}"
+                     f"{ALL_DATA_VALUE_TYPES.get(c.get('type'), c.get('type'))}{' (loc)' if n in b.localized else ''}"
+                     for n, c in b.columns.items()) or "(no columns)"
+
+
+def q_b_rows(b: DataBinding, name, f):
+    rows = b.rows(f.get("culture"))
+    limit = int(f.get("limit", 0) or 0)
+    shown = rows[:limit] if limit else rows
+    out = [f"{b.key_of(r)}  " + "  ".join(f"{k}={json.dumps(v, ensure_ascii=False)}" for k, v in r.items() if k not in b.key_columns) for r in shown]
+    if limit and len(rows) > limit:
+        out.append(f"  ... {len(rows) - limit} more")
+    return "\n".join(out) or "(no rows)"
+
+
+def q_b_row(b: DataBinding, name, f):
+    key = _need(name, "row")
+    try:
+        row, display = b.row(key), b.display_values(key)
+    except KeyError as exc:
+        raise QueryError(str(exc)) from None
+    return "\n".join(f"{k} = {json.dumps(v, ensure_ascii=False)}" + (f"  {display[k]!r}" if display.get(k) else "") for k, v in row.items())
+
+
+DATA = {"columns": q_b_columns, "rows": q_b_rows, "row": q_b_row}
+
+# -- Classic UI client schemas --------------------------------------------------- #
+
+
+def _op_line(op: dict) -> str:
+    where = f" in {op['parentName']}.{op['propertyName']}" if op["parentName"] else ""
+    index = f"[{op['index']}]" if op["index"] is not None else ""
+    return f"{op['operation'] or '?':<7} {op['name'] or '(no name)'}{where}{index}  line {op['line']}  values: {', '.join(op['values']) or '-'}"
+
+
+def _entries(table: dict) -> str:
+    def fmt(v):
+        return "{...}" if isinstance(v, dict) else "[...]" if isinstance(v, list) else str(v)
+    return "\n".join(f"{k}  " + (" ".join(f"{pk}={fmt(pv)}" for pk, pv in v.items()) if isinstance(v, dict) else fmt(v)) for k, v in table.items()) or "(none)"
+
+
+def q_c_diff(c, name, f):
+    ops = [op for op in c.diff_operations() if _match(op["operation"], f.get("op")) and _match(op["parentName"], f.get("parent"))]
+    return "\n".join(_op_line(op) for op in ops) or "(no matching operation)"
+
+
+def q_c_element(c, name, f):
+    try:
+        ops = c.element(_need(name, "element"))
+    except KeyError as exc:
+        raise QueryError(str(exc)) from None
+    return "\n\n".join(_op_line(op) + "\n" + op["source"] for op in ops)
+
+
+def q_c_methods_js(c, name, f):
+    return "\n".join(f"{m['name']:<40} line {m['line']:<6} {m['size']} lines" for m in c.methods()) or "(no methods)"
+
+
+def q_c_method_js(c, name, f):
+    try:
+        return c.method(_need(name, "method"))
+    except KeyError as exc:
+        raise QueryError(str(exc)) from None
+
+
+def q_c_find_js(c, name, f):
+    hits = c.find(_need(name, "find"))
+    return "\n".join(f"{line:>5}  {where:<30} {text}" for line, where, text in hits[:50]) + (f"\n  ... {len(hits) - 50} more" if len(hits) > 50 else "") if hits else f"no line contains {name!r}"
+
+
+CLASSIC = {"diff": q_c_diff, "element": q_c_element, "methods": q_c_methods_js, "method": q_c_method_js, "find": q_c_find_js,
+           "messages": lambda c, n, f: _entries(c.messages()), "attributes": lambda c, n, f: _entries(c.attributes()),
+           "details": lambda c, n, f: _entries(c.details()), "mixins": lambda c, n, f: _entries(c.mixins())}
 
 
 def topics_of(item) -> dict:
-    return {**TOPICS.get(type(item), {}), **COMMON}
+    """The topics of an item's kind (registry.KINDS) plus the ones every item answers."""
+    from .registry import kind_for
+
+    return {**kind_for(item).topics, **COMMON}
 
 
 def answer(item, topic: str, name: str | None, filters: dict[str, str]) -> str:

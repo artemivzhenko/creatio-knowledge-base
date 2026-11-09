@@ -54,6 +54,8 @@ param         <pkg> <Process> rename <Old> <New> | remove <Name>
 element       <pkg> <Process> add <Name> --kind <kind> [--after X] [--before Y] [--caption ..] [--entity UsrOrder] [--set P=v ..]
 element       <pkg> <Process> rename <Old> <New> | remove <Name> | set <Name> P=v .. [--expr]
 element       <pkg> <Process> formula <Name> "<expression>" --result <ProcessParam>
+element       <pkg> <Process> values <Name> Column=value .. [--expr]     Add / Modify data: the columns it writes
+element       <pkg> <Process> map <Name> Param=value .. [--expr]         sub-process: the called process's parameters
 flow          <pkg> <Process> add <Src> <Dst> [--condition ".."] [--name ..] [--caption ..]
 flow          <pkg> <Process> remove <Name> | condition <Name> ".."    (a plain flow is promoted to a conditional one)
 script        <pkg> <Process> get <Element> [--out f] | set <Element> --file body.cs
@@ -83,6 +85,80 @@ through. `inspect` shows the stored meta paths in the same notation.
 `rename-schema <workspace-or-package> <Old> <New> [--apply]` moves the schema and resource
 folders, rewrites the name in descriptor and metadata, and replaces whole-word occurrences
 in every text file under the root (page JS, C#, data). Dry run by default.
+
+## Signals
+
+Two kinds of signal share the start and catch elements; the keys below are what `metadata.json`
+stores (`assets/keymap.json` names them).
+
+- **Record signal** - the process starts (or a catch element resumes) when a record of an
+  object is added, modified or deleted. `FC2` (`CA6` on a catch) the entity UId; `DZ5` (`CA5`)
+  `EntitySignal`, a bit mask: added 1, modified 2, deleted 4; `DZ12` (`CA11`)
+  `EntityChangedColumns`, a JSON list of column UIds that must change for `modified`, with
+  `DZ11` (`CA7`) `HasEntityColumnChange`; `DZ13` (`CA13`) `EntityFilters`, the conditions the
+  record must meet, with `DZ8` (`CA8`) `HasEntityFilters`; `DZ3` (`CA3`) `WaitingEntitySignal`
+  true. The event carries one parameter, `RecordId`, read in a script as
+  `Get<Guid>("<Element>.RecordId")`.
+- **Named signal** - `DZ1` (`CA1`) the name, `DZ2` (`CA2`) `WaitingRandomSignal` true, `DZ3`
+  (`CA3`) false. Thrown by a `throwSignal` element (`CC1` the name) or by C#
+  (`ProcessEngine.ThrowSignal`), so one process can wake another.
+
+The filter is one object holding two serialisations of the same `Terrasoft.FilterGroup`: the
+designer's (`serializedFilterEditData`, class names and captions on every node) and the
+runtime's (`dataSourceFilters`, the bare tree). `creatio_schemas/filters.py` builds both from
+`Column op value` conditions (`=`, `!=`, `>`, `>=`, `<`, `<=`, `starts with`, `contains`,
+`ends with`, `is null`, `is not null`; `;` between conditions means AND; values are typed by
+the column: Boolean, Integer, Money/Float, a lookup takes the record id) and summarises either
+back into one line (`iaOrder where iaAmount > 100`), the same line DCM cases use.
+
+```bash
+python proc.py element UsrPkg UsrOrder_Process add OnBigAmount --kind startSignal --entity UsrOrder \
+    --on modified --columns UsrAmount --filter "UsrAmount > 100; UsrStatus is not null"
+python proc.py element UsrPkg UsrOrder_Process signal OnBigAmount --on added,modified     # change later
+python proc.py element UsrPkg UsrOrder_Process add WaitClosed --kind catchSignal --message OrderClosed --after X
+```
+
+Verified on 8.2.3: a process with a `modified` signal on an order object (one column, one
+condition) and a script that writes a mark into the record was pushed, published with
+`clio compile-configuration` (see the trap below) and fired by an OData update above the
+threshold: one run in `SysProcessLog`, no error, the mark written. An update below the
+threshold started nothing, and the script's own save did not re-fire the signal because the
+watched column did not change.
+
+## Values and mappings
+
+**Add data / Modify data** write the columns of one record. The list is one parameter,
+`RecordDefValues` (Add) or `RecordColumnValues` (Modify), of type `EntityColumnMappingCollection`;
+its `GS2` is a compact JSON `LocalizableParameterValuesList`:
+`{"$type": ..., "$values": [{ItemUId, columnMetaPath {value: column UId}, schemaUId {value: object UId},
+value {value}, displayValue {value}, parameterValue {value: a JSON ProcessSchemaParameterValue}}]}`.
+The designer writes almost every value as a formula (`parameterValue.Source` 3): a number as is,
+a string as a quoted literal, `[#BooleanValue.True#]`, a lookup constant as
+`[#Lookup.<lookup object UId>.<record id>#]`, `[#SysVariable.CurrentUserContact#]`, or meta paths.
+`element values` writes the same; the object must be set first (`--entity`), its columns come from
+the workspace (inherited BaseEntity / BaseLookup columns included). A date constant and a
+localizable text constant (the designer keeps those in the resources) are not written - pass an
+expression.
+
+**Sub-process** (`CK4` the called process): the element carries a copy of each parameter of the
+called process (`A3` = the called UId) and one mapping per copy (`GT5` the called parameter,
+`GT4` the called process); the value sits in the copy's `L8`. `element map` adds the copies the
+element lacks, as the designer does on choosing the process, and sets the values. A sub-process
+that runs once per record of a collection (`InputRecordCollection`, with the called parameters
+nested in its `L18`; 68 of the 87 calls seen) is refused.
+
+```bash
+python proc.py element UsrPkg UsrOrder_Process add AddTask --kind addData --entity UsrTask --after StartEvent1
+python proc.py element UsrPkg UsrOrder_Process values AddTask UsrTitle="Call back" UsrPriority=3 UsrOrder={Parameter:OrderId}
+python proc.py element UsrPkg UsrOrder_Process add CallChild --kind subProcess --calls UsrChild_Process --after AddTask
+python proc.py element UsrPkg UsrOrder_Process map CallChild RecordId={Parameter:OrderId}
+```
+
+`inspect` prints them as `values: UsrTitle = "Call back", UsrPriority = 3, UsrOrder = {Parameter:OrderId}`
+and `calls UsrChild_Process with RecordId = {Parameter:OrderId}`; `validate` flags a value for a
+column the object no longer has (when the workspace holds the whole object). Read from 259 real
+processes: 434 Add / Modify elements with 1065 values, 87 sub-process calls; every value list
+re-serialises byte for byte. Not yet run on an environment.
 
 ## Testing a process
 
@@ -116,9 +192,11 @@ process synchronously and returns the result parameters in the same call
 (`ProcessEngineService.svc/RunProcess`, verified on 8.2.3: a formula, a gateway and a Read data
 task; a variable parameter can be passed in and read back).
 
-Trap: a process with user tasks (add / modify data) pushed as files answered "Publish the
-process before starting it" - it needs compiling and publishing beyond the schema install; the
-formula, gateway and read-data processes ran straight after `push-pkg`.
+Trap: a process with user tasks (add / modify data) or a script task pushed as files answers
+"Publish the process before starting it" (`SysProcessLog.ErrorDescription`) although the push
+compiled with 0 errors: such a process has a compiled model, and the push's build does not
+publish it. `clio compile-configuration -e <env>` (3-4 minutes on 8.2.3) does - the next start
+ran clean. Formula, gateway and read-data processes run straight after `push-pkg`.
 
 ## Keep the schema UId
 
@@ -152,8 +230,9 @@ survive every push.
 
 ## Not covered yet
 
-Column values of Add/Modify data (`RecordColumnValues`, a nested serialised list), signal
-start filters, sub-process parameter wiring, script tasks on an environment whose
+Date and localizable-text constants in Add/Modify data values, sub-processes that run per
+record of a collection, OR groups and nested groups in signal filters (only ANDed conditions
+are built; any filter is read), script tasks on an environment whose
 configuration does not compile, lanes beyond the first, diagram layout (positions are a
 plain left-to-right row; the designer re-arranges on save). Each is a `set` with a raw
 value today.

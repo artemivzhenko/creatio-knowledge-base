@@ -158,7 +158,8 @@ def get_recipe(recipe_id: str) -> str:
                A bare file name is accepted when it is unambiguous; for clio a
                command name ("execute-sql-script"), a block skill name
                ("clio-sql-and-data") or a file toolkit ("tools/objects",
-               "tools/pages", "tools/process", "tools/rules", "tools/sqlscripts")
+               "tools/pages", "tools/process", "tools/rules", "tools/sqlscripts",
+               "tools/dcm", "tools/usertask", "tools/data", "tools/describe", "tools/push")
                works directly.
 
     The code is a template, not a drop-in: schema names, column names and the
@@ -284,7 +285,8 @@ def describe_package(package: str, kind: str = "") -> str:
     replaced base. Call this BEFORE reading any file of a package.
 
     package: the package folder, e.g. C:/work/packages/UsrPkg (a clio workspace package).
-    kind:    optional filter - object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task.
+    kind:    optional filter - object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task,
+             data (the Data/<Name> bindings with the table they seed and their row counts; listed only when asked).
              C# files under Files/cs are listed as `csharp` by signatures (roles, method count); source code schemas as `source`.
     """
     _tools_path()
@@ -296,17 +298,19 @@ def describe_package(package: str, kind: str = "") -> str:
 
 
 @mcp.tool()
-def describe_schema(package: str, schema: str) -> str:
+def describe_schema(package: str, schema: str, limit: int = 40) -> str:
     """
     The summary of one schema - columns and flags of an object, elements, parameters
     and flows of a process, rules of a rule addon, elements and data sources of a
     Freedom UI page, engine and dependencies of a SQL script. 6x-40x fewer tokens than
-    the schema's files; use describe_item for one part of it.
+    the schema's files. At most `limit` lines (0 = all); when cut, the last line says
+    how many more there are - ask describe_item for the one part you need instead of
+    raising the limit.
     """
     _tools_path()
     from creatio_schemas.describe import describe_schema as _ds
     try:
-        return _ds(package, schema)
+        return _ds(package, schema, limit)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 
@@ -321,6 +325,9 @@ def describe_item(package: str, schema: str, query: str = "topics") -> str:
       rules  : "rules", "rule <name>"
       dcm    : "stages", "stage Stage1", "steps stage=Stage1", "step DcmElement1", "moves from=Stage1", "filter"
       user task: "params", "param RecordId", "methods", "method InternalExecute", "source"
+      data   : (a Data/<Name> binding) "columns", "rows limit=20 culture=en-US", "row <key>"
+      classic: (a 7.x client schema) "diff op=insert", "element UsrTotal", "methods", "method onSaved", "messages",
+               "attributes", "details", "find UsrTotal"
       C#     : (schema name, or "Files/cs/X.cs" / "X.cs" / "X") "classes", "members UsrService kind=method visibility=public",
                "member UsrService.GetLabel" (one body), "usings", "regions", "operations" (ESQ, raw SQL, SysSettings,
                process start, HTTP ... with line numbers), "find GetTypedColumnValue"
@@ -353,6 +360,25 @@ def index_workspace(path: str, rebuild: bool = False) -> str:
     from creatio_schemas.describe import index_workspace as _iw
     try:
         return _iw(path, rebuild)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def list_lookups(path: str) -> str:
+    """
+    Every lookup object of a workspace or package - an object whose parent chain reaches
+    BaseLookup, through the workspace's own objects or the stock ones - one line each:
+    package, caption, parent chain, own columns, data bindings with the rows they bind,
+    how many schemas refer to it. The starting list for de-duplication, binding-value
+    checks and lookup clean-ups. `path` is a clio workspace root, a packages folder or one
+    package. Objects whose parent is outside both the workspace and the stock list are
+    reported separately as not decided.
+    """
+    _tools_path()
+    from creatio_schemas.describe import lookups as _lk
+    try:
+        return _lk(path)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 

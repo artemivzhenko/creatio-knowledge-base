@@ -42,6 +42,22 @@ or clio's write commands: `get_recipe("tools/process")`, `get_recipe("tools/rule
 traps; `tools/creatio_schemas` is the library behind them). The loop is the same for all:
 edit with `--dry-run`, write, `clio push-pkg`, then the tool's `probe` on the environment.
 
+## Before reading a schema file
+
+A schema file costs 6x-40x the tokens its summary does. Never open `metadata.json`, a page
+body or a process body first. The order is:
+
+1. `describe_package(path[, kind])` - what the package holds, one line per item.
+2. `describe_schema(path, Name)` - the summary: header, counts, problems, at most 40 lines.
+3. `describe_item(path, Name, "<topic> [<name>] [k=v]")` - the one part you need: a column,
+   an element, a handler's code, a method's body, a stage, a parameter. `topics` lists what
+   the schema answers; `limit=N` cuts a list, `limit=0` shows all.
+4. `find_schema(path, Name)` - the files of a schema with absolute paths, what it refers to and
+   what refers to it. Open a file only for what no topic returns, and only at the path this gives.
+
+A tail line `... N more` means the answer was cut: ask for the part, do not raise the limit
+to read everything.
+
 For C# code, also read `get_code_style` (whole, or a section such as `"logging"` or
 `"review checklist"`): recipes show what to call, the style guide says how the code
 must look — tabs, `#region` layout, `[DefaultBinding]`, exception and logging rules.

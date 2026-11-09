@@ -8,17 +8,37 @@ Readers never change the metadata, so an inspected schema saves to the bytes it 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from ..files import DVT_OF, DATA_VALUE_TYPES, dump_json, is_uid, new_uid, write_text
+from .. import filters
+from ..files import ALL_DATA_VALUE_TYPES, DVT_OF, DATA_VALUE_TYPES, EMPTY_GUID, dump_json, is_uid, new_uid, write_text
 from ..resources import Resources
 from ..schema import Descriptor, Schema
 from ..workspace import Package
 from .catalog import (CONDITIONAL_FLOW_MANAGER, DIRECTION, DIRECTION_OF, FLOW_CLASSES, FLOW_MANAGER, KEYMAP, KIND_BY_CLASS,
                       LANE_MANAGER, LANESET_MANAGER, NS, USER_TASK_BY_UID, VALUE_SOURCE, element_kind, new_param, short_type)
-from .expressions import ExpressionCodec
+from .expressions import SUGAR_RE, ExpressionCodec
+
+SIGNAL_MODES = {"added": 1, "modified": 2, "deleted": 4}  # EntitySignal is a bit mask
+# Record-signal properties of a start signal (DZ*) and an intermediate catch signal (CA*), by meaning (assets/keymap.json).
+SIGNAL_KEYS = {
+    "ProcessSchemaStartSignalEvent": {"message": "DZ1", "random": "DZ2", "record": "DZ3", "mode": "DZ5", "has_filter": "DZ8", "has_columns": "DZ11",
+                                      "columns": "DZ12", "filter": "DZ13", "entity": "FC2"},
+    "ProcessSchemaIntermediateCatchSignalEvent": {"message": "CA1", "random": "CA2", "record": "CA3", "mode": "CA5", "entity": "CA6", "has_columns": "CA7",
+                                                  "has_filter": "CA8", "columns": "CA11", "filter": "CA13"},
+}
 
 DEFAULT_VERSION = "8.2.3.1351"
+
+# Add data / Modify data: the parameter that holds the column values and the one that names the entity, by task UId.
+RECORD_VALUES = {"db6abed1-0c5f-455b-8053-2665378cdb71": ("RecordDefValues", "EntitySchemaId"),
+                 "d3021ca7-7450-4678-a117-060171eb2976": ("RecordColumnValues", "EntitySchemaUId")}
+VALUES_TYPE = "Terrasoft.Core.Process.LocalizableParameterValuesList, Terrasoft.Core"
+PARAMETER_VALUE_TYPE = "Terrasoft.Core.Process.ProcessSchemaParameterValue, Terrasoft.Core"
+_COMPACT = {"separators": (",", ":"), "ensure_ascii": False}  # how the designer serialises the list (re-dumps 432 of 432 real ones)
+_LOOKUP_CONST_RE = re.compile(r"\[#Lookup\.[^.#]+\.([^.#]+)#\]")
+_BOOL_CONST_RE = re.compile(r"\[#BooleanValue\.(True|False)#\]")
 
 
 class ProcessSchema(Schema):
@@ -230,6 +250,9 @@ class ProcessSchema(Schema):
             src = {"GS1": 3, "GS2": self.expressions.encode(str(value)), "GS5": self.uid, "GS8": "false"}
         else:
             src = {"GS1": 1, "GS2": "true" if value is True else "false" if value is False else str(value), "GS5": self.uid}
+        self._set_source(p, src)
+
+    def _set_source(self, p: dict, src: dict) -> None:
         p["L8"] = src
         for m in self.mappings:
             if m.get("GT3") == p["UId"]:
@@ -238,10 +261,7 @@ class ProcessSchema(Schema):
     @staticmethod
     def empty_filter(root_schema: str) -> str:
         """The designer's serialised empty filter group of a data element (compact JSON, or the platform picks the legacy reader)."""
-        compact = {"separators": (",", ":")}
-        edit = json.dumps({"className": "Terrasoft.FilterGroup", "items": {}, "logicalOperation": 0, "isEnabled": True, "filterType": 6, "rootSchemaName": root_schema, "key": ""}, **compact)
-        run = json.dumps({"items": {}, "logicalOperation": 0, "isEnabled": True, "filterType": 6, "rootSchemaName": root_schema}, **compact)
-        return json.dumps({"className": "Terrasoft.FilterGroup", "serializedFilterEditData": edit, "dataSourceFilters": run}, **compact)
+        return filters.build(root_schema, [], {})
 
     def set_entity(self, element: dict, entity: str) -> None:
         """Point a data element (read/add/modify/delete) or a record-signal start at an entity (name from the workspace, or UId)."""
@@ -269,12 +289,208 @@ class ProcessSchema(Schema):
         self._require(element, "ProcessSchemaSubProcess", "a sub-process")
         element["CK4"] = self.workspace.uid_of(process, "ProcessSchemaManager")
 
+    # -- column values of Add / Modify data ----------------------------------- #
+
+    def _record_target(self, element: dict) -> tuple[dict, str, dict[str, dict]]:
+        """(the values parameter, the entity's name or UId, its columns by name) of an Add or Modify data element."""
+        from ..data.binding import object_columns  # local: the data toolkit reads entity columns with their parents
+        spec = RECORD_VALUES.get(element.get("J6")) if short_type(element) == "ProcessSchemaUserTask" else None
+        if not spec:
+            raise ValueError(f"{element['A2']} is not an Add data or Modify data element")
+        entity_uid = (self.element_param(element, spec[1]).get("L8") or {}).get("GS2")
+        if not is_uid(entity_uid):
+            raise ValueError(f"{element['A2']} has no entity yet: set it first (--entity)")
+        entity = self.workspace.name_of(entity_uid) or entity_uid
+        return self.element_param(element, spec[0]), entity, object_columns(self.workspace, entity) if entity != entity_uid else {}
+
+    def record_values(self, element: dict) -> list[tuple[str, str]]:
+        """(column, value) of each column an Add / Modify data element writes; expressions in the {Parameter:X} notation."""
+        param, _, columns = self._record_target(element)
+        names = {c["UId"].lower(): n for n, c in columns.items()}
+        raw = (param.get("L8") or {}).get("GS2")
+        out = []
+        for item in json.loads(raw)["$values"] if raw else []:
+            col = item["columnMetaPath"]["value"]
+            v = item["value"]
+            if v.get("isLczValue"):
+                text = "(localizable text)"
+            else:
+                text = v.get("value", "")
+                m = _LOOKUP_CONST_RE.fullmatch(text) or _BOOL_CONST_RE.fullmatch(text)
+                text = m.group(1) if m else self.expressions.decode(text)
+            out.append((names.get(col.lower(), col), text))
+        return out
+
+    def describe_record_values(self, element: dict) -> str:
+        """`UsrAmount = 100, UsrStatus = {Parameter:StatusId}`."""
+        return ", ".join(f"{c} = {v}" for c, v in self.record_values(element)) or "(no values)"
+
+    def _constant(self, column: str, col: dict, value) -> tuple[str, str]:
+        """(value, display) of a constant as the designer writes it: a formula literal of the column's type."""
+        kind = ALL_DATA_VALUE_TYPES.get(col.get("S2", ""), "")
+        text = "true" if value is True else "false" if value is False else str(value)
+        if text == "null":
+            return text, text
+        if kind == "Boolean":
+            word = "True" if text.lower() in ("true", "1", "yes") else "False"
+            return f"[#BooleanValue.{word}#]", f"[#Boolean value.{word}#]"
+        if kind == "Integer" or kind.startswith(("Float", "Money")):
+            float(text)  # ValueError on anything else
+            return text, text
+        if kind in ("Lookup", "ImageLookup"):
+            if not is_uid(text):
+                raise ValueError(f"{column} is a lookup: give the record's UId or an expression, not {text!r}")
+            ref = (col.get("S4") or EMPTY_GUID).lower()
+            return f"[#Lookup.{ref}.{text}#]", f"[#Lookup.{self.workspace.name_of(ref) or ref}.{text}.{text}#]"
+        if kind in ("Date", "DateTime", "Time"):
+            raise ValueError(f"{column} is a {kind}: give it as an expression (--expr), e.g. a parameter")
+        literal = json.dumps(text, ensure_ascii=False)
+        return literal, literal
+
+    def set_record_values(self, element: dict, values: dict, expression: bool = False) -> None:
+        """The columns an Add / Modify data element writes: {column: constant or {Parameter:X} expression}; other columns are kept."""
+        param, entity, columns = self._record_target(element)
+        if not columns:
+            raise KeyError(f"{element['A2']}: object {entity} is not in the workspace; its columns are unknown")
+        missing = [c for c in values if c not in columns]
+        if missing:
+            raise KeyError(f"{entity} has no column {', '.join(missing)}; columns: {', '.join(sorted(columns))}")
+        raw = (param.get("L8") or {}).get("GS2")
+        data = json.loads(raw) if raw else {"$type": VALUES_TYPE, "$values": []}
+        entity_uid = self.workspace.uid_of(entity, "EntitySchemaManager")
+        for column, value in values.items():
+            col = columns[column]
+            if expression or self.expressions.has_names(value):
+                text = str(value)
+                v, display = self.expressions.encode(text), SUGAR_RE.sub(lambda m: "[#" + ".".join(x for x in m.groups()[1:] if x) + "#]", text)
+            else:
+                v, display = self._constant(column, col, value)
+            pv = {"$type": PARAMETER_VALUE_TYPE, "Source": 3, "DisplayValue": "", "Value": "", "MetaPath": None, "MetaDataValue": None,
+                  "ModifiedInSchemaUId": EMPTY_GUID, "SchemaUId": EMPTY_GUID, "SchemaManagerName": "", "DataValueTypeUId": col["S2"],
+                  "ReferenceSchemaUId": (col.get("S4") or EMPTY_GUID).lower(), "ResourceItemName": None}
+            old = next((i for i in data["$values"] if i["columnMetaPath"]["value"].lower() == col["UId"].lower()), None)
+            item = {"ItemUId": old["ItemUId"] if old else new_uid(), "columnMetaPath": {"value": col["UId"]}, "schemaUId": {"value": entity_uid},
+                    "value": {"value": v}, "displayValue": {"value": display}, "parameterValue": {"value": json.dumps(pv, **_COMPACT)}}
+            if old:
+                data["$values"][data["$values"].index(old)] = item
+            else:
+                data["$values"].append(item)
+        self._set_source(param, {"GS1": 1, "GS2": json.dumps(data, **_COMPACT), "GS5": self.uid})
+
+    # -- parameters of a sub-process --------------------------------------------- #
+
+    def called_process(self, element: dict) -> "ProcessSchema":
+        """The process a sub-process element calls, read from the workspace."""
+        self._require(element, "ProcessSchemaSubProcess", "a sub-process")
+        uid = element.get("CK4")
+        hits = self.workspace.find(uid, "ProcessSchemaManager") if uid else []
+        if not hits:
+            raise KeyError(f"{element['A2']} calls {uid or 'nothing'}, which is not in the workspace" + ("" if uid else "; set it first (--calls)"))
+        return ProcessSchema(hits[0]["dir"].parent.parent, hits[0]["name"])
+
+    def map_params(self, element: dict, values: dict, expression: bool = False) -> None:
+        """Values for the called process's parameters: {parameter: constant or {Parameter:X} expression}. The element gets a
+        copy of every parameter of the called process it lacks, with its mapping, as the designer does on choosing the process."""
+        called = self.called_process(element)
+        params = element.setdefault("BP2", [])
+        if any(p["A2"] == "InputRecordCollection" for p in params):
+            raise ValueError(f"{element['A2']} runs once per record of a collection; its per-record parameters are not mapped by this tool")
+        unknown = [n for n in values if n not in {p["A2"] for p in called.params}]
+        if unknown:
+            raise KeyError(f"{called.name} has no parameter {', '.join(unknown)}; parameters: {', '.join(p['A2'] for p in called.params) or '(none)'}")
+        have = {p["A2"] for p in params}
+        for cp in called.params:
+            if cp["A2"] in have:
+                continue
+            p = {"BL1": cp["BL1"], "UId": new_uid(), "A2": cp["A2"], "A3": called.uid, "A4": called.uid, "IL2": element["UId"], "L1": cp["L1"],
+                 "L8": {"GS5": called.uid}}
+            p.update({k: cp[k] for k in ("L9", "L12") if k in cp})
+            params.append(p)
+            self.own_list("BK15").append({"BL1": NS + "ProcessSchemaMapping", "UId": new_uid(), "A2": element["A2"], "A3": self.uid, "A4": self.uid,
+                                          "GT2": f"[Element:{{{element['UId']}}}].[Parameter:{{{p['UId']}}}]", "GT3": p["UId"], "GT5": cp["UId"],
+                                          "GT4": called.uid, "GT1": {"GS5": called.uid}})
+        for name, value in values.items():
+            self.set_value(element, name, value, expression)
+
+    def describe_call(self, element: dict) -> str:
+        """`calls UsrChild_Process with RecordId = {Parameter:RecordId}`."""
+        uid = element.get("CK4")
+        given = [f"{p['A2']} = {self.expressions.decode(p['L8']['GS2'])}" for p in element.get("BP2", []) if (p.get("L8") or {}).get("GS2") not in (None, "")]
+        return f"calls {self.workspace.name_of(uid) or uid}" + (" with " + ", ".join(given) if given else "")
+
     def set_message(self, element: dict, message: str) -> None:
-        """Message / signal name of a message or signal event."""
+        """Message / signal name of a message or signal event. A start or catch signal given a name waits for that named
+        signal (a `throwSignal` element or `ProcessEngine.ThrowSignal` in C#) instead of a record change."""
         kind = KIND_BY_CLASS.get(short_type(element))
         if not kind or not kind.message_key:
             raise ValueError(f"{element['A2']} carries no message")
         element[kind.message_key] = message
+        keys = SIGNAL_KEYS.get(short_type(element))
+        if keys:
+            element[keys["random"]] = True
+            element[keys["record"]] = False
+
+    def set_signal(self, element: dict, entity: str | None = None, on: str | list[str] | None = None, columns: list[str] | None = None,
+                   condition: str | None = None) -> None:
+        """A record signal on a start or catch signal element: the entity (name from the workspace, or UId), what fires it
+        (`added`, `modified`, `deleted`, several joined by a comma), which columns must change (`modified` only) and the
+        conditions the record must meet (`"UsrAmount > 100; UsrStatus is not null"`, ANDed). What is not given is kept."""
+        cls = short_type(element)
+        keys = SIGNAL_KEYS.get(cls)
+        if not keys:
+            raise ValueError(f"{element['A2']} is a {cls.replace('ProcessSchema', '')}, not a start or catch signal")
+        if entity is None:
+            current = element.get(keys["entity"])
+            entity = self.workspace.name_of(current) or (current if current and current != EMPTY_GUID else None)
+            if not entity:
+                raise ValueError(f"{element['A2']} has no entity yet: give --entity")
+        uid = self.workspace.uid_of(entity, "EntitySchemaManager")
+        name = self.workspace.name_of(uid) or ("" if is_uid(entity) else entity)
+        element[keys["entity"]] = uid
+        element[keys["record"]] = True
+        element[keys["random"]] = False
+        element[keys["message"]] = "null"
+        if on is not None:
+            modes = [m.strip().lower() for m in (on.split(",") if isinstance(on, str) else on) if m.strip()]
+            unknown = [m for m in modes if m not in SIGNAL_MODES]
+            if unknown or not modes:
+                raise ValueError(f"signal mode {', '.join(unknown) or '(none)'}: one or more of {', '.join(SIGNAL_MODES)}")
+            element[keys["mode"]] = sum(SIGNAL_MODES[m] for m in dict.fromkeys(modes))
+        if columns is not None:
+            uids = self.workspace.column_uids(name) if name else {}
+            missing = [c for c in columns if c not in uids]
+            if missing:
+                raise KeyError(f"{name or uid} has no column {', '.join(missing)}" + (f"; columns: {', '.join(sorted(uids))}" if uids else " (entity metadata not in the workspace)"))
+            element[keys["columns"]] = json.dumps([uids[c] for c in columns], separators=(",", ":"))
+            element[keys["has_columns"]] = bool(columns)
+        if condition is not None:
+            element[keys["filter"]] = filters.build(name, filters.parse_conditions(condition), self.workspace.columns(name)) if condition.strip() else self.empty_filter(name)
+            element[keys["has_filter"]] = bool(condition.strip())
+        elif keys["filter"] not in element:
+            element[keys["filter"]] = self.empty_filter(name)
+
+    def describe_signal(self, element: dict) -> str:
+        """`record signal: UsrOrder modified (columns: UsrAmount); when UsrOrder where UsrAmount > 100`, or `signal 'Name'`."""
+        keys = SIGNAL_KEYS.get(short_type(element))
+        if not keys:
+            return ""
+        if not element.get(keys["record"]):
+            return f"signal {element.get(keys['message'])!r}"
+        uid = element.get(keys["entity"])
+        entity = self.workspace.name_of(uid) or uid
+        mode = element.get(keys["mode"]) or 0
+        text = f"record signal: {entity} " + (" or ".join(n for n, b in SIGNAL_MODES.items() if mode & b) or "?")
+        try:
+            col_uids = json.loads(element.get(keys["columns"]) or "[]")
+        except ValueError:
+            col_uids = []
+        if col_uids:
+            names = {u: n for n, u in self.workspace.column_uids(entity).items()} if entity and not is_uid(entity) else {}
+            text += " (columns: " + ", ".join(names.get(u.lower(), u) for u in col_uids) + ")"
+        f = filters.load(element.get(keys["filter"]))
+        if f and f.get("items"):
+            text += "; when " + filters.summarize(f, entity)
+        return text
 
     def set_formula(self, name: str, expression: str, result_param: str) -> None:
         """Formula task: compute `expression` into the process parameter `result_param`."""
@@ -355,6 +571,15 @@ class ProcessSchema(Schema):
         for p in self.params:
             if not self.resources.get(f"Parameters.{p['A2']}.Caption"):
                 problems.append(f"parameter {p['A2']} has no en-US caption")
+        for e in self.nodes():
+            if e.get("J6") in RECORD_VALUES and short_type(e) == "ProcessSchemaUserTask":
+                try:
+                    _, entity, columns = self._record_target(e)
+                    # only an object the workspace holds whole: a replacing copy does not list the base object's columns
+                    values = self.record_values(e) if columns and self.workspace.is_complete(entity, "EntitySchemaManager") else []
+                except (ValueError, KeyError):
+                    continue  # no entity yet, or a value list this reader does not know: nothing to check against
+                problems += [f"element {e['A2']}: column {c} is not a column of {entity}" for c, _ in values if c not in columns]
         if not self.resources.get("Caption"):
             problems.append("process has no en-US caption")
         return problems
@@ -384,16 +609,23 @@ class ProcessSchema(Schema):
             if t == "UserTask":
                 t = USER_TASK_BY_UID.get(e.get("J6"), e.get("J6", "?"))
             lines.append(f"    {e['A2']} [{t}] caption={r.get(f'BaseElements.{e['A2']}.Caption')!r} at {e.get('BL3')}")
-            for p in self.element_params(e):
+            cls = short_type(e)
+            values_param = (RECORD_VALUES.get(e.get("J6")) or ("",))[0]
+            for p in self.element_params(e) if cls != "ProcessSchemaSubProcess" else []:
+                if p["A2"] == values_param and (p.get("L8") or {}).get("GS2"):
+                    try:
+                        lines.append(f"        values: {self.describe_record_values(e)}")
+                        continue
+                    except ValueError:
+                        pass
                 if p.get("L8"):
                     lines.append(f"        {p['A2']} = {self.describe_value(p['L8'])}")
-            cls = short_type(e)
             if cls == "ProcessSchemaScriptTask":
                 lines.append(f"        script: {len(e.get('CH1', ''))} chars")
             if cls == "ProcessSchemaSubProcess":
-                lines.append(f"        calls schema uid {e.get('CK4')}")
-            if cls == "ProcessSchemaStartSignalEvent":
-                lines.append(f"        entity uid {e.get('FC2')} signal={e.get('DZ5')} changed columns={e.get('DZ12')}")
+                lines.append(f"        {self.describe_call(e)}")
+            if cls in SIGNAL_KEYS:
+                lines.append(f"        {self.describe_signal(e)}")
             if cls == "ProcessSchemaStartTimerEvent":
                 lines.append(f"        cron {e.get('PS1')!r} tz={e.get('PS6')}")
         lines.append("  flows:")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -12,6 +13,23 @@ from .files import DATA_VALUE_TYPES, is_uid, read_text
 BASE_COLUMNS = {"Id": ("Guid", None), "CreatedOn": ("DateTime", None), "CreatedBy": ("Lookup", "Contact"), "ModifiedOn": ("DateTime", None),
                 "ModifiedBy": ("Lookup", "Contact"), "ProcessListeners": ("Integer", None)}
 DIFF_LINE_RE = re.compile(r"^([=+\-~]) (MetaData\.Schema\S*)(?: (.*))?$")
+
+_CACHE: dict[Path, tuple[tuple, list[dict]]] = {}
+
+
+def _fingerprint(root: Path) -> tuple:
+    """Fingerprint of root folder and every */Schemas folder under it (based on directory mtimes)."""
+    root = root.resolve()
+    try:
+        fp = [os.stat(root).st_mtime_ns]
+    except (OSError, AttributeError):
+        return None
+    for schemas_dir in sorted(root.glob("*/Schemas")):
+        try:
+            fp.append(os.stat(schemas_dir).st_mtime_ns)
+        except (OSError, AttributeError):
+            return None
+    return tuple(fp)
 
 
 def parse_diff(text: str) -> list[tuple[str, str, str]]:
@@ -53,18 +71,41 @@ class Package:
 class Workspace:
     """Every schema descriptor in the packages folder that holds a package (the clio workspace layout)."""
 
+    scans: int = 0
+
     def __init__(self, package: Path):
         self.root = Path(package).parent
-        self.schemas: list[dict] = []
-        for desc in sorted(self.root.glob("*/Schemas/*/descriptor.json")):
-            try:
-                d = json.loads(read_text(desc)[0])["Descriptor"]
-            except (ValueError, KeyError):
-                continue
-            uid = d["UId"].lower()
-            self.schemas.append({"name": d["Name"], "uid": uid, "manager": d.get("ManagerName"), "dir": desc.parent,
-                                 "base": (d.get("Parent") or {}).get("UId", uid).lower() if d.get("ExtendParent") else uid,
-                                 "caption": d.get("Caption", d["Name"])})
+        fp = _fingerprint(self.root)
+        
+        if fp and fp in _CACHE:
+            cached_schemas, _ = _CACHE[fp]
+            self.schemas = list(cached_schemas)
+        else:
+            self.schemas: list[dict] = []
+            for desc in sorted(self.root.glob("*/Schemas/*/descriptor.json")):
+                try:
+                    d = json.loads(read_text(desc)[0])["Descriptor"]
+                except (ValueError, KeyError):
+                    continue
+                uid = d["UId"].lower()
+                self.schemas.append({"name": d["Name"], "uid": uid, "manager": d.get("ManagerName"), "dir": desc.parent,
+                                     "base": (d.get("Parent") or {}).get("UId", uid).lower() if d.get("ExtendParent") else uid,
+                                     "caption": d.get("Caption", d["Name"])})
+            Workspace.scans += 1
+            if fp:
+                _CACHE[fp] = (self.schemas, fp)
+
+    @staticmethod
+    def forget(root: Path | None = None) -> None:
+        """Clear the cache (all roots when root is None)."""
+        global _CACHE
+        if root is None:
+            _CACHE.clear()
+        else:
+            root = Path(root).resolve()
+            fp = _fingerprint(root)
+            if fp and fp in _CACHE:
+                del _CACHE[fp]
 
     # -- schemas ------------------------------------------------------------- #
 
@@ -105,6 +146,20 @@ class Workspace:
                 cols = [json.loads(v) for op, path, v in parse_diff(text) if op in "+=" and path == "MetaData.Schema.D2" and v.startswith("{")]
             for c in cols:
                 out[c["A2"]] = (DATA_VALUE_TYPES.get(c.get("S2", ""), c.get("S2")), self.name_of(c.get("S4")))
+        return out
+
+    def column_uids(self, entity: str) -> dict[str, str]:
+        """name -> column UId, over every copy of the entity (what a signal's changed-column list stores)."""
+        out = {}
+        for s in self.find(entity, "EntitySchemaManager"):
+            text = read_text(s["dir"] / "metadata.json")[0]
+            if text.startswith("{"):
+                cols = json.loads(text)["MetaData"]["Schema"].get("D2", [])
+            else:
+                cols = [json.loads(v) for op, path, v in parse_diff(text) if op in "+=" and path == "MetaData.Schema.D2" and v.startswith("{")]
+            for c in cols:
+                if c.get("UId"):
+                    out[c["A2"]] = c["UId"].lower()
         return out
 
     def is_complete(self, name: str, manager: str) -> bool:

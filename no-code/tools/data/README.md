@@ -1,0 +1,79 @@
+---
+description: Creatio data bindings (Data/<Name>/ - rows of a table the package installs - lookup values, system settings and their values, folders, demo records) of 8.x as package files - read a binding (bound table, columns with key and force-update flags, rows with lookup display values and per-culture texts), validate it, create one for an object of the workspace, set one value, add or remove rows.
+---
+
+# Data binding tools
+
+Scripts that read and change a package's **data bindings**: the rows of one table that the
+platform writes while it installs the package. Pure Python standard library.
+
+| File | What it does |
+| --- | --- |
+| `data.py` | CLI: inspect, validate, rows, new, set, add-row, remove-row |
+| `../creatio_schemas/data/binding.py` | `DataBinding` (and `JsonFile`): the library the CLI uses |
+| `tests/test_data_tools.py` | checks on real bindings with generic names: a lookup with two cultures, a system setting and its value |
+
+```bash
+python data.py new     UsrPkg UsrOrderStatus --table UsrOrderStatus --columns Name,Description --cultures en-US,ru-RU
+python data.py add-row UsrPkg UsrOrderStatus Name=New                 # prints the key (a new Id)
+python data.py set     UsrPkg UsrOrderStatus <key> Name "Новый" --culture ru-RU
+python data.py rows    UsrPkg UsrOrderStatus --culture ru-RU
+clio push-pkg UsrPkg -e dev                                           # clear SysSchema.IsChanged first
+```
+
+## How it is stored
+
+```
+Data/<Name>/descriptor.json             {"Descriptor": {UId, Name, ModifiedOnUtc, InstallType, Schema {UId, Name},
+                                         Columns [{ColumnUId, IsForceUpdate, IsKey, ColumnName, DataTypeValueUId}]}}
+Data/<Name>/data.json                   {"PackageData": [{"Row": [{SchemaColumnUId, Value[, DisplayValue]}]}]}
+Data/<Name>/filter.json                 the designer's filter of the bound records; empty in 308 of 373, else one line of JSON
+Data/<Name>/Localization/data.<c>.json  the localisable columns per culture: [{SchemaColumnUId, ColumnName, Value}],
+                                        the key columns included
+```
+
+- A row is matched on install by its **key columns** (`IsKey`; `Id` in 370 of 373 bindings, two
+  columns in 3). `IsForceUpdate` makes the install overwrite a column of an existing row.
+- `"null"` (a string) is a null value. Lookup cells (`Lookup`, `ImageLookup`) carry the record's
+  UId in `Value` and its caption in `DisplayValue`, which only the designer reads.
+- A localisable column (`Name`, `Description` of a lookup) is in `Localization/` and never in
+  `data.json`; a binding without a `Localization` folder keeps even a localisable `Name` in
+  `data.json` (seen for `SysSettings` and `CaseStatus`). Every culture file has one row per row of `data.json`.
+- The base columns (`Id`, `Name`, `Description`, `CreatedOn` ...) have fixed UIds everywhere;
+  `create` takes them, the types and the localisable flag from the object
+  (`EntitySchema.columns()`, BaseEntity / BaseLookup from `entity/assets`).
+- `InstallType` 0 in 366 bindings, 3 in 7 (not identified).
+- The files differ in style: BOM or not, two spaces, four or tabs, a final newline or not; `/` is
+  escaped only inside `\/Date(ms+zone)\/` literals.
+
+## What the tools write
+
+- An unchanged file is written back as it was read; a changed one is dumped in its own indent,
+  newline and BOM, dates re-escaped. A re-dump reproduces 1316 of 1328 real data and
+  localisation files exactly; the rest are hand-indented files and `0.00` literals (written `0.0`).
+- `filter.json` is never rewritten; `new` writes it empty.
+- `new`: descriptor with the key and named columns, `data.json`, empty `filter.json`, a
+  `Localization` file per culture when a localisable column is bound - BOM, CRLF, two spaces, as
+  the 8.x designer writes them. Only objects of the workspace can be bound; for a platform table
+  (`SysSettings`) copy an existing binding.
+- `set` converts the text to the column's type (Boolean, Integer, Float / Money); a lookup takes a
+  UId or `null` and its stale `DisplayValue` is cleared. `add-row` writes every localisable
+  column to every culture (empty when not given) and a new `Id` when the key is `Id`.
+  `remove-row` drops the row from every culture too.
+
+## Verified
+
+All 373 bindings found locally (8 workspaces) round-trip byte for byte through `DataBinding`,
+and `validate` reports nothing on them. Not yet pushed to an environment.
+
+## Checks
+
+- a value for a column the descriptor does not list;
+- a lookup value that is not a UId (or `null`);
+- duplicate keys;
+- a localisation row whose key is not in `data.json`;
+- warning: no key column.
+
+```bash
+python tests/test_data_tools.py
+```

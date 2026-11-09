@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..entity.catalog import STOCK_ENTITIES
 from ..files import dump_json, is_uid, new_uid, write_text
+from ..filters import summarize
 from ..resources import Resources
 from ..schema import WARNING, Descriptor, Schema
 from ..workspace import Package
@@ -23,8 +24,6 @@ NS = "Terrasoft.Core.DcmProcess."
 DCM_PARENT = "51b280eb-d8a3-4932-81b9-ef61a0877aab"  # BK8 of every case: the base DCM schema
 DEFAULT_COLOR = "#4D84E2"
 LOOKUP_TYPE = "b295071f-7ea9-4e62-8d1a-919bf3732ff2"
-COMPARISON = {0: "between", 1: "exists", 2: "not exists", 3: "=", 4: "!=", 5: ">", 6: ">=", 7: "<", 8: "<=", 9: "starts with", 10: "not starts with",
-              11: "contains", 12: "not contains", 13: "ends with", 14: "not ends with", 15: "is null", 16: "is not null"}
 
 
 class DcmSchema(Schema):
@@ -157,21 +156,7 @@ class DcmSchema(Schema):
             return {"raw": raw}
 
     def describe_filter(self) -> str:
-        f = self.filters
-        if not f:
-            return "every record"
-        parts = []
-        for item in (f.get("items") or {}).values():
-            left = (item.get("leftExpression") or {}).get("columnPath", "?")
-            op = COMPARISON.get(item.get("comparisonType"), str(item.get("comparisonType")))
-            rights = []
-            for r in item.get("rightExpressions") or ([item["rightExpression"]] if item.get("rightExpression") else []):
-                p = (r.get("parameter") or {})
-                v = p.get("value")
-                rights.append(str((v or {}).get("displayValue") if isinstance(v, dict) else v))
-            parts.append(f"{left} {op} {', '.join(rights) if rights else ''}".rstrip() + ("" if item.get("isEnabled", True) else " (disabled)"))
-        glue = " or " if f.get("logicalOperation") == 1 else " and "
-        return f"{f.get('rootSchemaName', self.entity)} where " + (glue.join(parts) or "(empty filter)")
+        return summarize(self.filters, self.entity)
 
     def describe(self) -> str:
         r = self.resources

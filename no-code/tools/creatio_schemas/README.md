@@ -25,6 +25,9 @@ creatio_schemas/
                   storage (own JSON / replacing diff), engine (the platform rule services)
   dcm/            DcmSchema: stages (lookup records, colours, alternatives), steps (sub-processes, conditions), moves, filter
   usertask/       UserTaskSchema: parameters (shared new_param with processes) and the partial C# class
+  data/           DataBinding: Data/<Name>/ rows (key columns, lookups, per-culture texts); JsonFile keeps a file's style
+  classicui/      ClassicSchema: a Classic UI define() module read-only - sections, diff operations, methods
+  text.py         mask: comments and string / template / regex literals blanked, offsets kept (C# and JavaScript readers)
   csharp/         CSharpSource: a .cs file by signatures - types, roles, members, one member body, platform operations
   entity/         EntitySchema, catalog (column and object flags, BaseEntity/BaseLookup, designer templates,
                   stock object UIds), hierarchy (the merged base of a replacing object, fetched and cached),
@@ -110,6 +113,8 @@ python no-code/tools/pages/tests/test_pages_tools.py
 python no-code/tools/sqlscripts/tests/test_sqlscripts_tools.py
 python no-code/tools/dcm/tests/test_dcm_tools.py
 python no-code/tools/usertask/tests/test_usertask_tools.py
+python no-code/tools/data/tests/test_data_tools.py
+python no-code/tools/classicui/tests/test_classicui_tools.py
 ```
 
 The fixtures are real 8.2.3 exports; the round trip must stay byte-identical, and reading

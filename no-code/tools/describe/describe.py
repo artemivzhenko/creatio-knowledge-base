@@ -15,12 +15,16 @@ Topics: every schema - files, resources [culture=], resource <key>;
   sql     - body, deps
   dcm     - stages, stage <name>, steps [stage=], step <name>, moves [from= to=], filter [raw=true]
   user-task - params [direction=], param <name>, methods, method <name>, source
+  data (a Data/<Name> binding) - columns, rows [limit=] [culture=], row <key>; `package <pkg> --kind data` lists them
+  classic (7.x client schema) - diff [op=] [parent=], element <name>, methods, method <name>, messages, attributes, details, mixins, find <text>
   C# (a source code schema, or Files/cs/X.cs by path, file name or stem) - classes [role=] [kind=] [generated=true],
             members [<Type>] [kind=method|property|field|const] [visibility=public], member <Type.Name>, usings, regions,
             operations [kind=], find <text>
   page    - sections, elements [type= parent=], element <name>, attributes [bound=true], attribute <name>,
             data-sources, handlers, handler <request>, validators, converters, containers, find <text>
-The same calls are MCP tools of the creatio-kb server (describe_package, describe_schema, describe_item, index_workspace, find_schema).
+    python describe.py lookups <workspace|package>                      # every lookup object: parent chain, bindings, users
+
+The same calls are MCP tools of the creatio-kb server (describe_package, describe_schema, describe_item, index_workspace, find_schema, list_lookups).
 The index checks itself against the disk on every call: after `clio pull-pkg` the next call sees the new schemas.
 """
 
@@ -30,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from creatio_schemas.describe import QueryError, describe_item, describe_package, describe_schema, find_schema, index_workspace  # noqa: E402
+from creatio_schemas.describe import DEFAULT_LIMIT, QueryError, describe_item, describe_package, describe_schema, find_schema, index_workspace, lookups  # noqa: E402
 
 
 def main(argv=None) -> int:
@@ -42,6 +46,7 @@ def main(argv=None) -> int:
     b = sub.add_parser("schema", help="the summary of one schema")
     b.add_argument("package")
     b.add_argument("schema")
+    b.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="lines to show (0 = all); the rest is one '... N more' line")
     c = sub.add_parser("item", help="one part of a schema")
     c.add_argument("package")
     c.add_argument("schema")
@@ -52,12 +57,16 @@ def main(argv=None) -> int:
     e = sub.add_parser("find", help="where a schema lives and what touches it")
     e.add_argument("path")
     e.add_argument("schema")
+    f = sub.add_parser("lookups", help="every lookup object (parent chain reaches BaseLookup) with bindings and users")
+    f.add_argument("path")
     args = p.parse_args(argv)
     try:
         if args.command == "package":
             print(describe_package(args.package, args.kind))
+        elif args.command == "lookups":
+            print(lookups(args.path))
         elif args.command == "schema":
-            print(describe_schema(args.package, args.schema))
+            print(describe_schema(args.package, args.schema, args.limit))
         elif args.command == "index":
             print(index_workspace(args.path, args.rebuild))
         elif args.command == "find":

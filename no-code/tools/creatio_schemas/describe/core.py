@@ -12,15 +12,9 @@ import json
 import shlex
 from pathlib import Path
 
-from ..csharp import CSharpSource, csharp_files
-from ..dcm import DcmSchema
-from ..entity import EntitySchema
+from ..csharp import csharp_files
+from ..data import DataBinding
 from ..files import read_text
-from ..page import PageSchema
-from ..process import ProcessSchema
-from ..rules import RuleSchema
-from ..sqlscript import SqlScript
-from ..usertask import UserTaskSchema
 
 
 class QueryError(ValueError):
@@ -94,68 +88,32 @@ def _csharp_file(package: Path, name: str) -> Path | None:
 
 
 def open_item(package: Path | str, name: str):
-    """The toolkit object for a schema, SQL script or C# file, or a GenericItem when no toolkit knows the kind."""
+    """The toolkit object for a package item - the first registered kind that recognises it (registry.KINDS), or a
+    GenericItem for a schema no toolkit knows."""
+    from .registry import find_kind
+
     package = Path(package)
-    if (package / "SqlScripts" / name / "descriptor.json").is_file():
-        return SqlScript(package, name)
     desc_path = package / "Schemas" / name / "descriptor.json"
-    if not desc_path.is_file():
-        cs = _csharp_file(package, name)
-        if cs is not None:
-            return CSharpSource(package, cs)
-        raise FileNotFoundError(f"{package} has no schema, SQL script or C# file named {name}")
-    d = json.loads(read_text(desc_path)[0])["Descriptor"]
-    manager = d.get("ManagerName")
-    if manager == "SourceCodeSchemaManager" and (package / "Schemas" / name / f"{name}.cs").is_file():
-        return CSharpSource(package, package / "Schemas" / name / f"{name}.cs", name, d)
-    if manager == "EntitySchemaManager":
-        return EntitySchema(package, name)
-    if manager == "ProcessSchemaManager":
-        return ProcessSchema(package, name)
-    if manager == "DcmSchemaManager":
-        return DcmSchema(package, name)
-    if manager == "ProcessUserTaskSchemaManager":
-        return UserTaskSchema(package, name)
-    if manager == "AddonSchemaManager" and name.endswith("BusinessRule"):
-        return RuleSchema(package, name)
-    if manager == "ClientUnitSchemaManager" and _is_freedom_page(package, name):
-        return PageSchema(package, name)
-    return GenericItem(package, name)
+    descriptor = json.loads(read_text(desc_path)[0])["Descriptor"] if desc_path.is_file() else None
+    kind = find_kind(package, name, descriptor)
+    if kind is None:
+        raise FileNotFoundError(f"{package} has no schema, SQL script, data binding or C# file named {name}")
+    item = kind.make(package, name)
+    item._kind = kind  # the entry that opened it: two kinds may share a class (a generic item, a demo kind over one schema)
+    return item
 
 
 def kind_of(item) -> str:
-    if isinstance(item, PageSchema) and getattr(item, "mobile", False):
-        return "mobile"
-    if isinstance(item, CSharpSource):
-        return "source" if item.descriptor is not None else "csharp"
-    return {EntitySchema: "object", ProcessSchema: "process", RuleSchema: "rules", PageSchema: "page", SqlScript: "sql", DcmSchema: "dcm",
-            UserTaskSchema: "user-task"}.get(type(item)) or item.kind
+    from .registry import kind_name
+
+    return kind_name(item)
 
 
 def summary(item) -> str:
     """The short stats that follow a schema's name at package level."""
-    if isinstance(item, EntitySchema):
-        cols = item.columns()
-        own = sum(1 for c in cols if item.is_own(c))
-        return f"{len(cols)} columns ({own} own)" + (f", replacing {item.parent_name}" if item.replacing else f", parent {item.parent_name}")
-    if isinstance(item, ProcessSchema):
-        return f"{len(item.nodes())} elements, {len(item.params)} params, {len(item.flows())} flows"
-    if isinstance(item, RuleSchema):
-        return f"{len(item.rules)} rules for {item.target}" + (" (replacing)" if item.replacing else "")
-    if isinstance(item, PageSchema):
-        d = item.descriptor.data
-        of = item.entity or (f"extends {d['Parent']['Name']}" if d.get("ExtendParent") and d.get("Parent") else "no own data source")
-        return f"{len(item.elements())} elements, {len(item.attributes)} attributes, " + (f"page of {of}" if item.entity else of)
-    if isinstance(item, SqlScript):
-        return f"{item.engine}, {item.install_type}, {len(item.depends_on)} deps"
-    if isinstance(item, DcmSchema):
-        return f"{len(item.stages)} stages, {len(item.elements())} steps, case of {item.entity}" + ("" if item.enabled else " (disabled)")
-    if isinstance(item, UserTaskSchema):
-        return f"{len(item.params)} params, {len(item.methods())} methods" + (", interactive" if item.interactive else "")
-    if isinstance(item, CSharpSource):
-        return item.summary()
-    files = item.files()
-    return f"{len(files)} files, {sum(p.stat().st_size for p in files)} bytes"
+    from .registry import kind_for
+
+    return kind_for(item).summary(item)
 
 
 def describe_package(package: Path | str, kind: str = "") -> str:
@@ -172,8 +130,14 @@ def describe_package(package: Path | str, kind: str = "") -> str:
     d = idx.data
     lines = [f"{d.get('package')} {d.get('version') or ''}  {len(idx.schemas)} items" + (f"  depends on {', '.join(d['depends_on'])}" if d.get("depends_on") else "")]
     body = idx.lines(kind)
+    if kind == "data":  # bindings are indexed by files only; their summary is read on request (one folder each)
+        for name in sorted(idx.data.get("data", {})):
+            try:
+                body.append(f"  {'data':<9} {name:<36} {'':<34} {DataBinding(package, name).summary()}")
+            except (OSError, ValueError, KeyError) as exc:
+                body.append(f"  {'data':<9} {name:<36} {'':<34} cannot read: {exc}")
     if kind and not body:
-        body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task)"]
+        body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task, data)"]
     return "\n".join(lines + body)
 
 
@@ -187,9 +151,26 @@ def _caption(item) -> str:
     return data.get("Caption", "") if isinstance(data, dict) else ""
 
 
-def describe_schema(package: Path | str, name: str) -> str:
-    """The toolkit's summary of one schema: what `inspect` prints."""
-    return open_item(package, name).describe()
+# The output contract: a list answer shows at most DEFAULT_LIMIT lines, then one TAIL line; `limit=0` means all.
+DEFAULT_LIMIT = 40
+TAIL = "  ... {more} more; add limit=0 for all"
+
+
+def cut(lines: list[str], limit: int = DEFAULT_LIMIT, hint: str = "") -> list[str]:
+    """The first `limit` lines (0 = all) and, when something was left out, one tail line saying how much."""
+    if limit and len(lines) > limit:
+        return lines[:limit] + [TAIL.format(more=len(lines) - limit) + (f"; {hint}" if hint else "")]
+    return lines
+
+
+def describe_schema(package: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
+    """The toolkit's summary of one schema: what `inspect` prints, cut to `limit` lines (0 = all) - a part is asked
+    for with describe_item, never read from the dump."""
+    from .queries import topics_of
+
+    item = open_item(package, name)
+    lines = item.describe().splitlines()
+    return "\n".join(cut(lines, limit, f"this is the summary - ask describe_item for one part (topics: {', '.join(sorted(topics_of(item)))})"))
 
 
 def parse_query(query: str) -> tuple[str, str | None, dict[str, str]]:

@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE.parent))
 from creatio_schemas import EntitySchema  # noqa: E402
 from creatio_schemas.diff import SchemaDiff, path_of  # noqa: E402
 from creatio_schemas.entity.hierarchy import merge_order  # noqa: E402
+from creatio_schemas.workspace import Workspace  # noqa: E402
 
 FIXTURES = HERE / "fixtures" / "iaTest"
 SCHEMAS = ("iaOrder", "iaOrderStatus", "iaTest", "Account")
@@ -226,6 +227,41 @@ def test_command_line():
         assert e.column("iaNotes") and not e.flag("virtual") and all(e.resources.get("Caption", c) == "Order" for c in e.resources.cultures)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_workspace_cache_reuses_scan_with_unchanged_fingerprint():
+    tmp = copy()
+    try:
+        pkg = tmp / "iaTest"
+        Workspace.forget()
+        Workspace.scans = 0
+        
+        ws1 = Workspace(pkg)
+        assert Workspace.scans == 1
+        schemas1_count = len(ws1.schemas)
+        
+        ws2 = Workspace(pkg)
+        assert Workspace.scans == 1, "should reuse cache"
+        assert len(ws2.schemas) == schemas1_count
+        assert ws1.schemas == ws2.schemas
+        
+        tmp_root = pkg.parent
+        new_schema_dir = tmp_root / "iaTest" / "Schemas" / "UsrNewObject"
+        new_schema_dir.mkdir(parents=True, exist_ok=True)
+        (new_schema_dir / "descriptor.json").write_text('{"Descriptor": {"UId": "12345678-1234-1234-1234-123456789012", "Name": "UsrNewObject"}}')
+        
+        ws3 = Workspace(pkg)
+        assert Workspace.scans == 2, "should rescan when folder changes"
+        assert len(ws3.schemas) == schemas1_count + 1
+        
+        Workspace.forget(pkg.parent)
+        assert Workspace.scans == 2, "forget should not increment scans"
+        
+        ws4 = Workspace(pkg)
+        assert Workspace.scans == 3, "should rescan after forget"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        Workspace.forget()
 
 
 if __name__ == "__main__":

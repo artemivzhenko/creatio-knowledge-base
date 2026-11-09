@@ -1,0 +1,14 @@
+﻿{
+  "Descriptor": {
+    "UId": "816cf230-ad94-4057-8883-8f5cdc9e6d88",
+    "Name": "UsrOrderStatus",
+    "ModifiedOnUtc": "\/Date(1794256740000)\/",
+    "Parent": {
+      "UId": "11ab4bcb-9b23-4b6d-9c86-520fae925d75",
+      "Name": "BaseLookup"
+    },
+    "ManagerName": "EntitySchemaManager",
+    "Caption": "Order status",
+    "DependsOn": []
+  }
+}

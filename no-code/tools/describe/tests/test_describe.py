@@ -45,6 +45,36 @@ def test_schema_summaries_are_the_inspect_output():
     assert "elements:" in describe_schema(PROCS, "iaProcess_0d4c445")
 
 
+def test_a_kind_is_one_registry_entry():
+    from creatio_schemas.describe import registry
+    from creatio_schemas.entity import EntitySchema
+    demo = registry.Kind("demo", EntitySchema, lambda p, n, d: n == "iaOrderStatus", EntitySchema, lambda e: "a demo lookup",
+                         {"hello": lambda item, name, f: f"world from {item.name}"})
+    registry.register(demo)
+    try:
+        PackageIndex(PAGES).refresh(rebuild=True)  # the index caches kind and summary; a new kind shows after a rebuild
+        assert "  demo      iaOrderStatus" in describe_package(PAGES) and "a demo lookup" in describe_package(PAGES, "demo")
+        assert describe_item(PAGES, "iaOrderStatus", "hello") == "world from iaOrderStatus"
+        assert "columns" not in describe_item(PAGES, "iaOrderStatus", "topics") and "files" in describe_item(PAGES, "iaOrderStatus", "topics")
+        assert "  object    iaOrder " in describe_package(PAGES)  # other objects keep their kind
+    finally:
+        registry.unregister("demo")
+        PackageIndex(PAGES).refresh(rebuild=True)
+    assert "  object    iaOrderStatus" in describe_package(PAGES) and "columns" in describe_item(PAGES, "iaOrderStatus", "topics")
+
+
+def test_output_contract_cuts_long_answers():
+    from creatio_schemas.describe import DEFAULT_LIMIT, TAIL, cut
+    assert DEFAULT_LIMIT == 40 and TAIL.format(more=3) == "  ... 3 more; add limit=0 for all"
+    assert cut(["a", "b", "c"], 2) == ["a", "b", "  ... 1 more; add limit=0 for all"] and cut(["a", "b"], 2) == ["a", "b"] and cut(["a"] * 99, 0) == ["a"] * 99
+    DCM = TOOLS / "dcm" / "tests" / "fixtures" / "iaTest"
+    full = describe_schema(DCM, "iaRequestCases", limit=0)
+    short = describe_schema(DCM, "iaRequestCases", limit=10)
+    assert len(full.splitlines()) > 10 and len(short.splitlines()) == 11
+    assert short.splitlines()[-1].startswith(f"  ... {len(full.splitlines()) - 10} more; add limit=0 for all; this is the summary - ask describe_item for one part (topics: ")
+    assert "stages" in short.splitlines()[-1] and describe_schema(DCM, "iaRequestCases") == full  # 28 lines: under the default
+
+
 def test_object_queries():
     lookups = describe_item(PAGES, "iaOrder", "columns type=Lookup")
     assert "iaStatus" in lookups and "iaName" not in lookups
@@ -130,6 +160,60 @@ def test_index_follows_the_disk():
 
 
 CS = HERE / "fixtures" / "UsrPkg"
+
+
+DATA = TOOLS / "data" / "tests" / "fixtures" / "UsrPkg"
+
+
+def test_data_bindings_answer_columns_and_rows():
+    assert describe_schema(DATA, "UsrStatus").startswith("UsrStatus: binds UsrOrderStatus, 3 rows, columns Id Name(loc) Description(loc)")
+    listed = describe_package(DATA, "data")
+    assert "  data      UsrStatus" in listed and "SysSettings_UsrMaxRows" in listed and len(listed.splitlines()) == 4
+    cols = describe_item(DATA, "UsrStatus", "columns")
+    assert cols.splitlines()[0].startswith("Id ") and "key" in cols.splitlines()[0] and "(loc)" in cols
+    rows = describe_item(DATA, "UsrStatus", "rows limit=1 culture=en-US")
+    assert len(rows.splitlines()) == 2 and rows.endswith("... 2 more") and 'Name="New"' in rows
+    key = rows.splitlines()[0].split()[0]
+    assert "Name = " in describe_item(DATA, "UsrStatus", f"row {key}")
+    try:
+        describe_item(DATA, "UsrStatus", "row nope")
+        raise AssertionError("expected QueryError")
+    except QueryError:
+        pass
+
+
+CLASSIC = TOOLS / "classicui" / "tests" / "fixtures" / "UsrPkg"
+
+
+def test_classic_ui_schemas_answer_diff_and_methods():
+    listed = describe_package(CLASSIC)
+    assert "  classic   UsrOrderPage" in listed and "diff operations" in listed and "  classic   UsrOrderSection" in listed
+    assert describe_schema(CLASSIC, "UsrOrderPage").startswith("UsrOrderPage:")
+    diff = describe_item(CLASSIC, "UsrOrderPage", "diff op=insert")
+    assert diff.splitlines() and all(line.startswith("insert ") for line in diff.splitlines())
+    first = diff.splitlines()[0].split()[1]
+    assert first in describe_item(CLASSIC, "UsrOrderPage", f"element {first}") and "values" in describe_item(CLASSIC, "UsrOrderPage", f"element {first}")
+    methods = describe_item(CLASSIC, "UsrOrderPage", "methods")
+    name = methods.splitlines()[0].split()[0]
+    assert describe_item(CLASSIC, "UsrOrderPage", f"method {name}").startswith(name)
+    assert "diff" in describe_item(CLASSIC, "UsrOrderPage", "topics") and "details" in describe_item(CLASSIC, "UsrOrderPage", "topics")
+    try:
+        describe_item(CLASSIC, "UsrOrderPage", "element Nope")
+        raise AssertionError("expected QueryError")
+    except QueryError:
+        pass
+
+
+def test_lookups_follow_the_parent_chain():
+    from creatio_schemas.describe import lookups
+    out = lookups(PAGES)
+    assert out.splitlines()[0].startswith("1 lookups in iaTest")
+    assert "  iaOrderStatus" in out and "parent BaseLookup" in out and "0 own columns" in out and "bindings: none" in out and "used by 1" in out
+    assert "not decided" not in out
+    cli = io.StringIO()
+    with contextlib.redirect_stdout(cli):
+        assert main(["lookups", str(PAGES)]) == 0
+    assert "iaOrderStatus" in cli.getvalue()
 
 
 def test_csharp_by_signatures():

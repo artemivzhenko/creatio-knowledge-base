@@ -281,6 +281,68 @@ def index_workspace(path: Path | str, rebuild: bool = False) -> str:
     return "\n".join(out)
 
 
+STOCK_LOOKUPS: set[str] = set(json.loads((Path(__file__).resolve().parent.parent / "entity" / "assets" / "stock_lookups_8.2.3.json").read_text(encoding="utf-8"))["names"])
+
+
+def lookups(path: Path | str) -> str:
+    """Every object of the workspace that is a lookup - its parent chain reaches BaseLookup, through the workspace's own
+    objects or the stock ones (assets/stock_lookups_8.2.3.json) - with package, caption, own columns, data bindings
+    (rows bound) and how many items refer to it: the list a de-duplication or binding-check task starts from."""
+    pkgs = packages_of(path)
+    indexes = [PackageIndex(p) for p in pkgs]
+    for idx in indexes:
+        idx.refresh()
+    parents = {n: e.get("parent") for idx in indexes for n, e in idx.schemas.items() if e.get("kind") == "object"}
+
+    def is_lookup(name: str, seen: frozenset = frozenset()) -> bool | None:
+        """True / False, or None when the chain leaves the workspace into an object the stock list does not know."""
+        if name == "BaseLookup" or name in STOCK_LOOKUPS:
+            return True
+        if name == "BaseEntity" or name in seen:
+            return False
+        parent = parents.get(name)
+        if parent is None:
+            return None if name in parents else (True if name in STOCK_LOOKUPS else None)
+        return is_lookup(parent, seen | {name})
+
+    rows, unknown = [], []
+    for idx in indexes:
+        pkg = idx.data.get("package", idx.package.name)
+        for n, e in idx.schemas.items():
+            if e.get("kind") != "object":
+                continue
+            verdict = is_lookup(n)
+            if verdict is None:
+                unknown.append(f"{n} (parent {parents.get(n)}, {pkg})")
+                continue
+            if not verdict:
+                continue
+            chain, cur = [], parents.get(n)
+            while cur and cur not in chain and cur != "BaseLookup":
+                chain.append(cur)
+                cur = parents.get(cur)
+            own = re.search(r"\((\d+) own\)", e.get("summary", ""))
+            bindings = []
+            for dn, de in idx.data.get("data", {}).items():
+                if de.get("schema") == n:
+                    count = 0
+                    for rel in de.get("files", {}):
+                        if rel.endswith("/data.json") and "/Localization/" not in rel:
+                            try:
+                                count += len(json.loads(read_text(idx.package / rel)[0]).get("PackageData", []))
+                            except (OSError, ValueError):
+                                pass
+                    bindings.append(f"Data/{dn} ({count} rows)")
+            users = sum(len(other.referrers(n)) for other in indexes)
+            rows.append(f"  {n:<34} {e.get('caption', '')!r:<30} {pkg:<16} "
+                        + ("replacing " if "replacing" in e.get("summary", "") else "parent ") + " -> ".join(chain + ["BaseLookup"])
+                        + (f"  {own.group(1)} own columns" if own else "") + f"  bindings: {', '.join(bindings) if bindings else 'none'}  used by {users}")
+    out = [f"{len(rows)} lookups in {', '.join(p.name for p in pkgs)}"] + rows
+    if unknown:
+        out.append(f"  not decided ({len(unknown)}; parent outside the workspace and the stock list): " + ", ".join(unknown[:15]) + (" ..." if len(unknown) > 15 else ""))
+    return "\n".join(out)
+
+
 def find_schema(path: Path | str, name: str) -> str:
     """Where a schema lives and what touches it: package, kind, files (absolute), what it refers to, who refers to it, its data bindings."""
     pkgs = packages_of(path)

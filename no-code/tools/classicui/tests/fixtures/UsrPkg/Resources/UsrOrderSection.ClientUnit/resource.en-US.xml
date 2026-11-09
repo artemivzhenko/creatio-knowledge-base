@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Orders section" />
+			<Item Name="LocalizableStrings.RecalculateButtonCaption.Value" Value="Recalculate" />
+			<Item Name="LocalizableStrings.RecalculateMessage.Value" Value="{0} orders" />
+		</Items>
+	</Group>
+</Resources>

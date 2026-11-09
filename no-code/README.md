@@ -82,6 +82,24 @@ described, not written.
 method's body), creates one with a compilable skeleton, adds, renames or removes parameters and
 replaces the C# half (`usertask.py`); icons in the resources are kept.
 
+## Data binding tools
+
+[tools/data/](tools/data/README.md) reads a data binding (the bound table, key columns, rows with
+lookup captions and per-culture texts), validates it, binds an object of the workspace, sets one
+value, adds or removes rows (`data.py`); unchanged files are written back byte for byte.
+
+## Classic UI tools
+
+[tools/classicui/](tools/classicui/README.md) reads a Classic UI (7.x) edit page, section or detail
+(sections, diff operations and elements, methods and one method's source) and warns about parent
+containers and handlers the file alone cannot prove (`classicui.py`); read-only.
+
+## UI test cases
+
+[tools/uitests/](tools/uitests/README.md) is the UI test utility (`automatic-creatio-tests`) for an
+agent: build and run, the page and process files, the DSL in one table, the backend tier, the
+recipe that turns an acceptance criterion into an `.act` case, and the traps; nothing to run here.
+
 ## SQL script tools
 
 [tools/sqlscripts/](tools/sqlscripts/README.md) creates and changes the package's SQL scripts

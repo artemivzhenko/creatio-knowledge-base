@@ -1,0 +1,14 @@
+﻿{
+  "Descriptor": {
+    "UId": "0c2a2029-8cdc-405b-9888-520975de23f0",
+    "Name": "UsrOrderSection",
+    "ModifiedOnUtc": "\/Date(1794257692000)\/",
+    "Parent": {
+      "UId": "7912fb69-4fee-429f-8b23-93943c35d66d",
+      "Name": "BaseSectionV2"
+    },
+    "ManagerName": "ClientUnitSchemaManager",
+    "Caption": "Orders section",
+    "DependsOn": []
+  }
+}

@@ -162,6 +162,142 @@ def test_command_line():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_record_signals_modes_columns_and_conditions():
+    import json
+    tmp = Path(tempfile.mkdtemp()) / "packages"
+    shutil.copytree(FIXTURES, tmp / "iaTest")
+    try:
+        pkg = tmp / "iaTest"
+        p = ProcessSchema.create(pkg, "iaSignals_Process", "Signals")
+        start = p.add_element("startSignal", "OnOrderChange", "On order change")
+        p.set_signal(start, "iaTest", "added,modified", ["iaName", "iaIsActive"], "iaNumber > 100; iaIsActive = true; iaContactLookup is not null")
+        assert start["FC2"] == "8e9352c9-3362-4c77-8dc2-acbb079c1040" and start["DZ5"] == 3 and start["DZ3"] is True and start["DZ2"] is False
+        assert start["DZ11"] is True and len(json.loads(start["DZ12"])) == 2 and start["DZ8"] is True
+        outer = json.loads(start["DZ13"])
+        edit, run = json.loads(outer["serializedFilterEditData"]), json.loads(outer["dataSourceFilters"])
+        kinds = sorted(i["className"] for i in edit["items"].values())
+        assert kinds == ["Terrasoft.CompareFilter", "Terrasoft.CompareFilter", "Terrasoft.IsNullFilter"] and edit["rootSchemaName"] == "iaTest"
+        assert len(run["items"]) == 3 and all("className" not in i for i in run["items"].values())
+        gt = next(i for i in edit["items"].values() if i["leftExpression"]["columnPath"] == "iaNumber")
+        assert gt["comparisonType"] == 5 and gt["rightExpression"]["parameter"]["value"] == 100 and gt["dataValueType"] == 4
+        flag = next(i for i in edit["items"].values() if i["leftExpression"]["columnPath"] == "iaIsActive")
+        assert flag["rightExpression"]["parameter"]["value"] is True and flag["dataValueType"] == 12
+        assert p.describe_signal(start) == ("record signal: iaTest added or modified (columns: iaName, iaIsActive); "
+                                            "when iaTest where iaNumber > 100 and iaIsActive = True and iaContactLookup is not null")
+        # a named (non-record) signal on a catch element, then back to a record one
+        catch = p.add_element("catchSignal", "WaitSig", "Wait", after="OnOrderChange")
+        p.set_message(catch, "OrderClosed")
+        assert catch["CA1"] == "OrderClosed" and catch["CA2"] is True and catch["CA3"] is False and p.describe_signal(catch) == "signal 'OrderClosed'"
+        p.set_signal(catch, "iaTest", "deleted")
+        assert catch["CA3"] is True and catch["CA5"] == 4 and catch["CA6"] == start["FC2"] and "CA13" in catch
+        p.add_flow("WaitSig", "TerminateEvent1")
+        p.save()
+        again = ProcessSchema(pkg, "iaSignals_Process")
+        assert again.describe_signal(again.element("OnOrderChange")).startswith("record signal: iaTest added or modified")
+        assert again.errors() == []
+        for bad in (lambda: p.set_signal(start, on="renamed"), lambda: p.set_signal(start, columns=["Nope"]), lambda: p.set_signal(start, condition="iaNumber ~ 1")):
+            try:
+                bad()
+                raise AssertionError("expected an error")
+            except (ValueError, KeyError):
+                pass
+    finally:
+        shutil.rmtree(tmp.parent, ignore_errors=True)
+
+
+def test_record_values_and_sub_process_mappings():
+    import contextlib
+    import io
+    sys.path.insert(0, str(HERE.parent))
+    import proc
+    tmp = Path(tempfile.mkdtemp()) / "packages"
+    shutil.copytree(FIXTURES, tmp / "iaTest")
+    try:
+        pkg = tmp / "iaTest"
+        child = ProcessSchema(pkg, "iaProcess_0d4c445")
+        child.add_param("RecordId", "Guid", "In", "Record")
+        child.add_param("Note", "Text", "In", "Note")
+        child.save()
+        p = ProcessSchema.create(pkg, "iaValues_Process", "Values")
+        p.add_param("StatusId", "Guid", "Variable", "Status")
+        add = p.add_element("addData", "AddTest", "Add test", after="StartEvent1", before="TerminateEvent1")
+        p.set_entity(add, "iaTest")
+        p.set_record_values(add, {"iaNumber": 100, "iaName": 'Say "hi"', "iaIsActive": "true", "iaContactLookup": "{Parameter:StatusId}",
+                                  "iaAccount": "c4ed336c-3e9b-40fe-8b82-5632476472b4", "iaAmount": "null"})
+        p.set_record_values(add, {"iaNumber": "200"})  # a column set again keeps its place and item id
+        change = p.add_element("changeData", "MarkTest", "Mark test", after="AddTest", before="TerminateEvent1")
+        p.set_entity(change, "iaTest")
+        p.set_record_values(change, {"iaComment": "{Element:AddTest.Parameter:RecordId}"}, expression=True)
+        sub = p.add_element("subProcess", "CallChild", "Call child", after="MarkTest", before="TerminateEvent1")
+        p.set_calls(sub, "iaProcess_0d4c445")
+        p.map_params(sub, {"RecordId": "{Parameter:StatusId}"})
+        p.save()
+
+        q = ProcessSchema(pkg, "iaValues_Process")
+        assert q.validate() == [], q.validate()
+        add = q.element("AddTest")
+        assert q.describe_record_values(add) == ('iaNumber = 200, iaName = "Say \\"hi\\"", iaIsActive = True, iaContactLookup = {Parameter:StatusId}, '
+                                                 'iaAccount = c4ed336c-3e9b-40fe-8b82-5632476472b4, iaAmount = null')
+        assert q.describe_record_values(q.element("MarkTest")) == "iaComment = {Element:AddTest.Parameter:RecordId}"
+        values = q.element_param(add, "RecordDefValues")
+        items = json.loads(values["L8"]["GS2"])["$values"]
+        assert list(items[0]) == ["ItemUId", "columnMetaPath", "schemaUId", "value", "displayValue", "parameterValue"]
+        assert items[3]["displayValue"]["value"] == "[#StatusId#]" and items[4]["value"]["value"].startswith("[#Lookup.25d7c1ab-1de0-4501-b402-02e0e5a72d6e.")
+        assert json.loads(items[0]["parameterValue"]["value"])["DataValueTypeUId"] == "6b6b74e2-820d-490e-a017-2b73d4ccf2b0"
+        assert next(m for m in q.mappings if m["GT3"] == values["UId"])["GT1"] == values["L8"]  # the mapping carries the same value
+        sub = q.element("CallChild")
+        assert q.describe_call(sub) == "calls iaProcess_0d4c445 with RecordId = {Parameter:StatusId}"
+        assert [x["A2"] for x in sub["BP2"]] == ["RecordId", "Note"] and all(x["A3"] == child.uid for x in sub["BP2"])
+        maps = [m for m in q.mappings if m["A2"] == "CallChild"]
+        assert len(maps) == 2 and {m["GT5"] for m in maps} == {x["UId"] for x in child.params} and all(m["GT4"] == child.uid for m in maps)
+        text = q.describe()
+        assert "values: iaNumber = 200" in text and "calls iaProcess_0d4c445 with RecordId" in text
+        assert ProcessSchema(pkg, "iaValues_Process").diff() == ""  # a no-op load writes the same bytes
+
+        for bad, error in ((lambda: q.set_record_values(add, {"Nope": 1}), KeyError), (lambda: q.set_record_values(add, {"iaNumber": "many"}), ValueError),
+                           (lambda: q.set_record_values(add, {"iaAccount": "Acme"}), ValueError), (lambda: q.set_record_values(add, {"iaDate": "2026-01-01"}), ValueError),
+                           (lambda: q.set_record_values(sub, {"iaNumber": 1}), ValueError), (lambda: q.map_params(sub, {"Nope": 1}), KeyError),
+                           (lambda: q.map_params(add, {"RecordId": 1}), ValueError)):
+            try:
+                bad()
+            except error:
+                pass
+            else:
+                raise AssertionError(f"expected {error.__name__}")
+        # a value list that names a column the object no longer has
+        stale = json.loads(values["L8"]["GS2"])
+        stale["$values"][0]["columnMetaPath"]["value"] = "11111111-1111-1111-1111-111111111111"
+        values["L8"]["GS2"] = json.dumps(stale)
+        assert q.validate() == ["element AddTest: column 11111111-1111-1111-1111-111111111111 is not a column of iaTest"]
+        # collection mode and an unknown called process are refused
+        sub["BP2"].append({"A2": "InputRecordCollection"})
+        for bad, error in ((lambda: q.map_params(sub, {"RecordId": 1}), ValueError),):
+            try:
+                bad()
+            except error:
+                pass
+            else:
+                raise AssertionError("collection mode must be refused")
+        sub["CK4"] = "22222222-2222-2222-2222-222222222222"
+        try:
+            q.called_process(sub)
+        except KeyError as e:
+            assert "not in the workspace" in str(e)
+        else:
+            raise AssertionError("an unknown called process must raise")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert proc.main(["element", str(pkg), "iaValues_Process", "values", "MarkTest", "iaNumber=7"]) == 0
+            assert proc.main(["element", str(pkg), "iaValues_Process", "map", "CallChild", "Note={Parameter:StatusId}", "--expr"]) == 0
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert proc.main(["element", str(pkg), "iaValues_Process", "values", "MarkTest", "Nope=1"]) == 2
+        r = ProcessSchema(pkg, "iaValues_Process")
+        assert r.describe_record_values(r.element("MarkTest")).endswith("iaNumber = 7")
+        assert r.describe_call(r.element("CallChild")).endswith("Note = {Parameter:StatusId}")
+    finally:
+        shutil.rmtree(tmp.parent, ignore_errors=True)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
