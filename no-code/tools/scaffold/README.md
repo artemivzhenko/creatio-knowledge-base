@@ -9,7 +9,7 @@ not do, it only chains them and checks the result. Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `scaffold.py` | CLI: `entity` |
+| `scaffold.py` | CLI: `entity`, `source`, `module` |
 | `tests/test_scaffold_tools.py` | checks on temp copies of the pages fixture |
 
 ```bash
@@ -17,6 +17,26 @@ python scaffold.py entity UsrPkg UsrShipment --caption "Shipment" \
     --column "UsrNumber:Integer:required" --column "UsrNotes:MediumText" --column "UsrContact:Lookup:Contact" \
     --lookup "UsrStatus:UsrShipmentStatus:New,In progress,Done" --pages --dry-run
 ```
+
+## A source code schema and a client module
+
+```bash
+python scaffold.py source UsrPkg UsrOrderService --caption "Order service" --service
+python scaffold.py module UsrPkg UsrOrderMixin --caption "Order mixin" --mixin
+```
+
+`source` writes `Schemas/<Name>/` (SourceCodeSchemaManager) in the shape of the 102 real ones: the
+descriptor, `metadata.json` (`ManagerName, UId, A2, A5, B1, B2, B3, B6, B8, HD1`) and `properties.json`
+with BOM and CRLF and no final newline, `<Name>.cs` in CRLF without BOM, the caption in
+`Resources/<Name>.SourceCode/`. The C# follows the code style (namespace `Terrasoft.Configuration.<Name>Namespace`,
+usings inside, regions); `--service` is the `[ServiceContract]` + `[DefaultServiceRoute]` `BaseService`
+skeleton of the KB recipe with one `Ping` operation (`POST 0/rest/<Name>/Ping`). The code style keeps
+logic in `Files/cs`; a source code schema is for the API.
+
+`module` writes a client module (`ClassicSchema.create_module`): full metadata with `HD4` 1 as all 6
+real modules have, the one-space `.less` the designer adds, `SchemaType` Module; `--mixin` gives the
+`Ext.define("Terrasoft.configuration.mixins.<Name>")` body with `alternateClassName: "Terrasoft.<Name>"`
+that a Classic page lists with `classicui.py add-mixin`. Both refuse a name the workspace holds.
 
 ## The spec
 

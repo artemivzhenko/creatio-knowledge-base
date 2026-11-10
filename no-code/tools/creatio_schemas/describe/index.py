@@ -18,17 +18,19 @@ import time
 from pathlib import Path
 
 from ..csharp import csharp_files
-from ..files import read_text
+from ..files import LEGACY_ENCODED, read_text
 from ..resources import Resources
 from ..workspace import Workspace
 from .core import DEFAULT_LIMIT, _caption, cut, kind_of, open_item, summary
+from .deps import Edge, Resolver, deps_of
 
 INDEX_DIR = ".creatio-index"
-INDEX_FORMAT = 2
+INDEX_FORMAT = 4  # 3: typed `deps` edges per item (describe/deps.py); 4: the text extractors (S20-T02)
 TYPE_NAME_RE = re.compile(r"\b(?:class|interface|struct|enum|record)\s+(\w+)")
 # Identifiers and GUIDs: the two ways a file names another schema.
 TOKEN_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z_][A-Za-z0-9_]{2,}")  # GUID first: one may start with a letter
 SCAN_SUFFIXES = {".json", ".cs", ".js", ".sql", ".less", ".css"}  # resource XML is captions, not references
+UNREADABLE = (OSError, UnicodeDecodeError, ValueError, KeyError, IndexError)  # one bad item costs one line, never the answer
 
 
 def index_path(package: Path) -> Path:
@@ -106,6 +108,7 @@ class PackageIndex:
 
     def _load_names(self) -> None:
         ws = Workspace(self.package)
+        self._resolver = Resolver(ws)
         self._names = {}
         for s in ws.schemas:
             self._names[s["name"].lower()] = s["name"]
@@ -148,7 +151,16 @@ class PackageIndex:
             entry["kind"] = kind_of(item)
             entry["caption"] = _caption(item)
             entry["summary"] = summary(item)
+            if entry["summary"].startswith("unreadable: "):  # a reader that answers instead of raising (CSharpSource)
+                entry["error"] = entry["summary"][len("unreadable: "):]
+            if any((self.package / rel).resolve() in LEGACY_ENCODED for rel in files):
+                entry["summary"] += " (cp1251)"
             entry["parent"] = _parent_of(item)
+            from .registry import kind_for  # the registry name, not the renamed one: a GenericItem called "mobile" has no page body
+            try:
+                entry["deps"] = [e.as_dict() for e in deps_of(item, self._resolver, kind_for(item).name)]
+            except Exception as e:  # the edges are an extra: a failing extractor costs them, not the item
+                entry["deps"], entry["deps_error"] = [], f"{type(e).__name__}: {e}"
             desc = getattr(item, "descriptor", None)
             data = desc.data if hasattr(desc, "data") else (desc or {})
             entry["manager"] = data.get("ManagerName") if isinstance(data, dict) else None
@@ -168,8 +180,21 @@ class PackageIndex:
             entry["error"] = f"{type(e).__name__}: {e}"
         return entry
 
+    def _json(self, path: Path):
+        """A JSON file of a binding; the error names the file (an empty data.json, a missing descriptor)."""
+        rel = path.relative_to(self.package).as_posix()
+        if not path.is_file():
+            raise ValueError(f"{rel}: missing")
+        text = read_text(path)[0]
+        if not text.strip():
+            raise ValueError(f"{rel}: empty file")
+        try:
+            return json.loads(text)
+        except ValueError as e:
+            raise ValueError(f"{rel}: not JSON ({e})") from None
+
     def _build_data(self, name: str, files: dict[str, list[int]]) -> dict:
-        desc = json.loads(read_text(self.package / "Data" / name / "descriptor.json")[0])["Descriptor"]
+        desc = self._json(self.package / "Data" / name / "descriptor.json")["Descriptor"]
         columns = desc.get("Columns", [])
         by_uid = {str(c.get("ColumnUId", "")).lower(): c.get("ColumnName") for c in columns}
         key_name = next((candidate for candidate in ("Code", "Name") if any(c.get("ColumnName") == candidate for c in columns)), None)
@@ -184,7 +209,7 @@ class PackageIndex:
                            key=lambda p: (p.name != "data.en-US.json", p.name))
         if key_columns and key_name:
             for path in loc_files:
-                for row in json.loads(read_text(path)[0])["PackageData"]:
+                for row in self._json(path)["PackageData"]:
                     data = values(row)
                     if all(col in data for col in key_columns) and key_name in data:
                         localized.setdefault(tuple(str(data[col]).lower() for col in key_columns), data[key_name])
@@ -192,7 +217,7 @@ class PackageIndex:
         for path in sorted((self.package / "Data" / name).rglob("data.json")):
             if "localization" in (part.lower() for part in path.relative_to(self.package / "Data" / name).parts):
                 continue
-            data_rows = json.loads(read_text(path)[0])["PackageData"]
+            data_rows = self._json(path)["PackageData"]
             rows += len(data_rows)
             for row in data_rows:
                 data = values(row)
@@ -201,8 +226,10 @@ class PackageIndex:
                     value = localized.get(tuple(str(data[col]).lower() for col in key_columns))
                 if value is not None and len(keys) < DEFAULT_LIMIT:
                     keys.append(value)
-        return {"schema": desc.get("Schema", {}).get("Name"), "columns": [c["ColumnName"] for c in columns],
-                "rows": rows, "keys": keys, "files": files, "refs": self._refs(files, name)}
+        schema = desc.get("Schema", {}).get("Name")
+        deps = [Edge("object", *self._resolver.entity(schema), "binds", "name", [c["ColumnName"] for c in columns]).as_dict()] if schema else []
+        return {"schema": schema, "columns": [c["ColumnName"] for c in columns],
+                "rows": rows, "keys": keys, "files": files, "refs": self._refs(files, name), "deps": deps}
 
     def refresh(self, rebuild: bool = False) -> dict:
         """Bring the index in line with the disk; returns {"added": [...], "changed": [...], "removed": [...]}."""
@@ -238,7 +265,10 @@ class PackageIndex:
         for name, folder in todo_schemas:
             schemas[name] = self._build_schema(name, files_now[name])
         for name in todo_data:
-            data[name] = self._build_data(name, files_now[f"Data/{name}"])
+            try:
+                data[name] = self._build_data(name, files_now[f"Data/{name}"])
+            except UNREADABLE as e:  # an empty data.json, a folder without its descriptor
+                data[name] = {"error": f"{type(e).__name__}: {e}", "files": files_now[f"Data/{name}"], "refs": []}
         if rebuild or changes["added"] or changes["removed"]:
             # The set of names changed: every item may now refer to a new name, or to one that is gone.
             for name, entry in schemas.items():
@@ -263,6 +293,20 @@ class PackageIndex:
     def schemas(self) -> dict:
         return self.data.get("schemas", {})
 
+    def entries(self) -> list[tuple[str, dict]]:
+        """(name, entry) of every schema and data binding (`Data/<name>`)."""
+        return list(self.schemas.items()) + [(f"Data/{n}", e) for n, e in self.data.get("data", {}).items()]
+
+    def dependents(self, name: str) -> list[tuple[str, str, Edge]]:
+        """(kind, name, edge) of every item whose typed edges point at `name`."""
+        key = name.lower()
+        out = []
+        for n, e in self.entries():
+            for d in e.get("deps", []):
+                if d["name"].lower() == key:
+                    out.append((e.get("kind", "data"), n, Edge.from_dict(d)))
+        return out
+
     def referrers(self, name: str) -> list[tuple[str, str]]:
         """(kind, name) of every schema or data binding in this package that refers to `name`."""
         hits = [(e["kind"], n) for n, e in self.schemas.items() if name in e.get("refs", [])]
@@ -270,16 +314,32 @@ class PackageIndex:
         return hits
 
     def lines(self, kind: str = "") -> list[str]:
-        """The describe_package lines, from the index."""
+        """The describe_package lines, from the index; `kind="error"` lists only the unreadable items."""
         out = []
         for name, e in self.schemas.items():
             if "error" in e:
-                if kind and kind != "schema":
+                if kind and kind not in ("schema", "error"):
                     continue
                 out.append(f"  {'?':<9} {name:<36} {'':<34} cannot read: {e['error']}")
             elif not kind or e["kind"] == kind:
                 out.append(f"  {e['kind']:<9} {name:<36} {e['caption']!r:<34} {e['summary']}")
+        if kind in ("", "error"):
+            out += [f"  {'?':<9} {'Data/' + name:<36} {'':<34} cannot read: {e['error']}" for name, e in self.data.get("data", {}).items() if "error" in e]
         return out
+
+
+def _unreadable(idx) -> int:
+    return sum("error" in e for e in idx.schemas.values()) + sum("error" in e for e in idx.data.get("data", {}).values())
+
+
+def _unreadable_line(indexes: list[PackageIndex]) -> list[str]:
+    """The one line find_schema and lookups end with when items were skipped."""
+    broken = [idx for idx in indexes if _unreadable(idx)]
+    if not broken:
+        return []
+    n = sum(_unreadable(idx) for idx in broken)
+    where = ", ".join(f"describe.py package {idx.package} --kind error" for idx in broken[:3]) + (" ..." if len(broken) > 3 else "")
+    return [f"{n} items unreadable ({where} lists them)"]
 
 
 def _file_lines(package: Path, files: dict[str, list[int]]) -> list[str]:
@@ -329,12 +389,12 @@ def index_workspace(path: Path | str, rebuild: bool = False) -> str:
     return "\n".join(out)
 
 
-STOCK_LOOKUPS: set[str] = set(json.loads((Path(__file__).resolve().parent.parent / "entity" / "assets" / "stock_lookups_8.2.3.json").read_text(encoding="utf-8"))["names"])
+from ..entity.catalog import STOCK_LOOKUPS  # noqa: E402  (stock_lookups_<version>.json: 8.3.2 when present, else 8.2.3)
 
 
 def lookups(path: Path | str, limit: int = DEFAULT_LIMIT) -> str:
     """Every object of the workspace that is a lookup - its parent chain reaches BaseLookup, through the workspace's own
-    objects or the stock ones (assets/stock_lookups_8.2.3.json) - with package, caption, own columns, data bindings
+    objects or the stock ones (entity/assets/stock_lookups_<version>.json) - with package, caption, own columns, data bindings
     (rows bound) and how many items refer to it: the list a de-duplication or binding-check task starts from."""
     cut([], limit)
     pkgs = packages_of(path)
@@ -373,7 +433,7 @@ def lookups(path: Path | str, limit: int = DEFAULT_LIMIT) -> str:
             own = re.search(r"\((\d+) own\)", e.get("summary", ""))
             bindings = []
             for dn, de in idx.data.get("data", {}).items():
-                if de.get("schema") == n:
+                if de.get("schema") == n and "error" not in de:
                     bindings.append(f"Data/{dn} ({de['rows']} rows)")
             users = sum(len(other.referrers(n)) for other in indexes)
             rows.append(f"  {n:<34} {e.get('caption', '')!r:<30} {pkg:<16} "
@@ -383,7 +443,7 @@ def lookups(path: Path | str, limit: int = DEFAULT_LIMIT) -> str:
     if unknown:
         out.append(f"  not decided ({len(unknown)}; parent outside the workspace and the stock list):")
         out.extend(cut([f"    {item}" for item in unknown], limit))
-    return "\n".join(out)
+    return "\n".join(out + _unreadable_line(indexes))
 
 
 def find_schema(path: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
@@ -400,6 +460,9 @@ def find_schema(path: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
             # a plain C# file answers to its path, its file name or its stem
             if n.lower() != key and not (e["kind"] == "csharp" and key in (Path(n).name.lower(), Path(n).stem.lower())):
                 continue
+            if "error" in e:  # the one asked for is broken: say so in one line, list nothing of it
+                out.append(f"{n}  cannot read, in {idx.data.get('package', idx.package.name)}: {e['error']}")
+                continue
             out.append(f"{n}  {e['kind']} in {idx.data.get('package', idx.package.name)}  ({idx.package})")
             parent = e.get("parent")
             out.append(f"  {e['summary']}" + (f"; caption {e['caption']!r}" if e["caption"] else "") + (f"; builds on {parent}" if parent and parent not in e["summary"] else "") + (f"; {e['error']}" if "error" in e else ""))
@@ -408,7 +471,7 @@ def find_schema(path: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
                 out.append(f"  resources: {', '.join(resources['cultures'])}; {resources['keys']} keys; missing: "
                            + (", ".join(f"{c}={count}" for c, count in resources["missing"].items()) or "none"))
             bindings = [f"Data/{dn} ({de['rows']} rows, {other.package.name})"
-                        for other in indexes for dn, de in other.data.get("data", {}).items() if de.get("schema") == n]
+                        for other in indexes for dn, de in other.data.get("data", {}).items() if de.get("schema") == n and "error" not in de]
             if bindings:
                 shown = cut(bindings, limit)
                 tail = shown.pop() if limit and len(shown) > limit else None
@@ -417,6 +480,20 @@ def find_schema(path: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
                     out.append(tail)
             out.append("  files:")
             out += _file_lines(idx.package, e["files"])
+            typed = [Edge.from_dict(d).line() for d in e.get("deps", [])]
+            if typed:
+                shown = cut(typed, limit)
+                tail = shown.pop() if limit and len(shown) > limit else None
+                out.append("  depends on: " + "; ".join(shown))
+                if tail:
+                    out.append(tail)
+            dependents = sorted(f"{fk} {fn}{'' if other is idx else ', ' + other.package.name} ({ed.via})" for other in indexes for fk, fn, ed in other.dependents(n))
+            if dependents:
+                shown = cut(dependents, limit)
+                tail = shown.pop() if limit and len(shown) > limit else None
+                out.append("  dependents: " + "; ".join(shown))
+                if tail:
+                    out.append(tail)
             if e.get("refs"):
                 refs = cut(e["refs"], limit)
                 tail = refs.pop() if len(refs) > limit and limit else None
@@ -432,5 +509,5 @@ def find_schema(path: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
             if tail:
                 out.append(tail)
     if not out:
-        return f"no schema named {name} in {', '.join(p.name for p in pkgs)}"
-    return "\n".join(out)
+        out = [f"no schema named {name} in {', '.join(p.name for p in pkgs)}"]
+    return "\n".join(out + _unreadable_line(indexes))

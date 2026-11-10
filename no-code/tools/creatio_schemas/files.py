@@ -33,10 +33,19 @@ def is_uid(value) -> bool:
     return isinstance(value, str) and bool(GUID_RE.fullmatch(value))
 
 
+LEGACY_ENCODED: set[Path] = set()  # files read_text could decode only as cp1251 (a .cs saved in the Windows code page)
+
+
 def read_text(path: Path) -> tuple[str, bool]:
-    """(text with its newlines untouched, had a BOM)."""
-    with open(path, encoding="utf-8", newline="") as fh:
-        text = fh.read()
+    """(text with its newlines untouched, had a BOM). Not UTF-8: cp1251, and the file is noted in LEGACY_ENCODED
+    (written back, it becomes UTF-8)."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1251")  # raises on the five bytes cp1251 leaves undefined: then the file is unreadable
+        LEGACY_ENCODED.add(Path(path).resolve())
     return (text[1:], True) if text.startswith(BOM) else (text, False)
 
 

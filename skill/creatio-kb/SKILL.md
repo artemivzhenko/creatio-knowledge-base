@@ -38,7 +38,11 @@ of objects and Freedom UI pages, objects and their columns, fields and grids on 
 pages, package SQL scripts - use the toolkits under `no-code/tools/` instead of the designer
 or clio's write commands: `get_recipe("tools/process")`, `get_recipe("tools/rules")`,
 `get_recipe("tools/objects")`, `get_recipe("tools/pages")`,
-`get_recipe("tools/sqlscripts")`, `get_recipe("tools/dcm")`, `get_recipe("tools/usertask")` (each README: the loop, the spec format, the verified
+`get_recipe("tools/sqlscripts")`, `get_recipe("tools/dcm")`, `get_recipe("tools/usertask")`,
+`get_recipe("tools/data")` (data bindings), `get_recipe("tools/classicui")` (7.x client schemas, read),
+`get_recipe("tools/resources")` (captions across a package), `get_recipe("tools/scaffold")` (object + lookup +
+binding + pages in one command), `get_recipe("tools/push")` (install in one command), `get_recipe("tools/describe")`,
+`get_recipe("tools/uitests")` (the test utility for the tester) (each README: the loop, the spec format, the verified
 traps; `tools/creatio_schemas` is the library behind them). The loop is the same for all:
 edit with `--dry-run`, write, `clio push-pkg`, then the tool's `probe` on the environment.
 
@@ -54,9 +58,19 @@ body or a process body first. The order is:
    the schema answers; `limit=N` cuts a list, `limit=0` shows all.
 4. `find_schema(path, Name)` - the files of a schema with absolute paths, what it refers to and
    what refers to it. Open a file only for what no topic returns, and only at the path this gives.
+5. `schema_deps(path, Name[, direction, kind, via])` - the typed graph: which objects a page or
+   process builds on (and through which columns), and every process, rule, page, DCM, binding or
+   listener that builds on an object. Run it before changing an object or page; never grep for users.
 
 A tail line `... N more` means the answer was cut: ask for the part, do not raise the limit
 to read everything.
+
+On the environment (a clio environment name, never a private script): `env_sql(env, sql)` rows
+as JSON, `env_odata(env, Entity, select, filter, top)` records, `env_call(env, method, path,
+body)` a service or OData call with login and CSRF, `schema_layers(env|project.json, Schema)`
+the copies of a schema in the order the platform applies them - run it before planning a change
+to a page or object another package already has; `Custom layer present` means a copy on the
+site overrides whatever you push.
 
 For C# code, also read `get_code_style` (whole, or a section such as `"logging"` or
 `"review checklist"`): recipes show what to call, the style guide says how the code

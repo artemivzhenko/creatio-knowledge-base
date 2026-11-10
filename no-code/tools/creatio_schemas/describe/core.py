@@ -142,7 +142,7 @@ def describe_package(package: Path | str, kind: str = "", limit: int = DEFAULT_L
             except (OSError, ValueError, KeyError) as exc:
                 body.append(f"  {'data':<9} {name:<36} {'':<34} cannot read: {exc}")
     if kind and not body:
-        body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task, data)"]
+        body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task, data, error)"]
     return "\n".join(lines + cut(body, limit))
 
 

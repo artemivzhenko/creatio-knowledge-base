@@ -24,6 +24,10 @@
 //
 // Overriding save() itself is for side effects (notify a detail, publish a
 // message), not for validation. Always call this.callParent(arguments).
+//
+// A question to the user inside asyncValidate: the save's body mask is up, so
+// hide it first (this.hideBodyMask()) or the dialog renders behind it - see
+// Dialogs/HowToConfirmWithCustomButtons for the dialog and both answers.
 
 define("UsrMyEntity1Page", [], function() {
 	return {

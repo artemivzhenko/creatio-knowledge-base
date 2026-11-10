@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import json
 import shutil
 import sys
 import tempfile
@@ -12,8 +13,10 @@ TOOLS = HERE.parent.parent
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(HERE.parent))
 
+from creatio_schemas.classicui import ClassicSchema  # noqa: E402
+from creatio_schemas.csharp import CSharpSource  # noqa: E402
 from creatio_schemas.data import DataBinding  # noqa: E402
-from creatio_schemas.describe import describe_package  # noqa: E402
+from creatio_schemas.describe import describe_item, describe_package  # noqa: E402
 from creatio_schemas.entity import EntitySchema  # noqa: E402
 from creatio_schemas.page import PageSchema  # noqa: E402
 from scaffold import caption_of, main, parse_column, parse_lookup  # noqa: E402
@@ -134,6 +137,40 @@ def test_toolkit_refusal_stops_the_write():
     finally:
         EntitySchema.errors = original
     assert scaffold.EntitySchema.errors is original
+
+
+def test_source_and_module():
+    with package() as pkg:
+        code, out = run("source", str(pkg), "UsrOrderRecalc", "--caption", "Order recalculation")
+        assert code == 0 and "Schemas/UsrOrderRecalc/UsrOrderRecalc.cs" in out and "Resources/UsrOrderRecalc.SourceCode/resource.en-US.xml" in out, out
+        sdir = pkg / "Schemas" / "UsrOrderRecalc"
+        raw = {f.name: f.read_bytes() for f in sdir.iterdir()}
+        assert set(raw) == {"UsrOrderRecalc.cs", "descriptor.json", "metadata.json", "properties.json"}
+        for name in ("descriptor.json", "metadata.json", "properties.json"):  # the shape of the real ones
+            assert raw[name].startswith(b"\xef\xbb\xbf") and b"\r\n" in raw[name] and not raw[name].endswith(b"\n"), name
+        assert not raw["UsrOrderRecalc.cs"].startswith(b"\xef\xbb\xbf") and b"\n" not in raw["UsrOrderRecalc.cs"].replace(b"\r\n", b"")
+        meta = json.loads(raw["metadata.json"].decode("utf-8-sig"))["MetaData"]["Schema"]
+        assert list(meta) == ["ManagerName", "UId", "A2", "A5", "B1", "B2", "B3", "B6", "B8", "HD1"] and meta["HD1"] == "50e3acc0-26fc-4237-a095-849a1d534bd3"
+        cs = CSharpSource(pkg, sdir / "UsrOrderRecalc.cs")
+        assert cs.namespaces == ["Terrasoft.Configuration.UsrOrderRecalcNamespace"] and [t["name"] for t in cs.types] == ["UsrOrderRecalc"]
+        assert [m["kind"] for m in cs.members()] == ["field", "constructor"], cs.members()
+        assert describe_item(pkg, "UsrOrderRecalc", "topics") and "Order recalculation" in describe_package(pkg)
+
+        code, out = run("source", str(pkg), "UsrOrderApi", "--caption", "Order API", "--service", "--cultures", "en-US,ru-RU")
+        api = CSharpSource(pkg, pkg / "Schemas" / "UsrOrderApi" / "UsrOrderApi.cs")
+        assert code == 0 and "[ServiceContract]" in api.text and ": BaseService" in api.text and [m["name"] for m in api.members() if m["kind"] == "method"] == ["Ping"]
+        assert sorted(p.name for p in (pkg / "Resources" / "UsrOrderApi.SourceCode").iterdir()) == ["resource.en-US.xml", "resource.ru-RU.xml"]
+        code, out = run("source", str(pkg), "UsrOrderApi", "--caption", "again")
+        assert code == 2 and "exists" in out
+        code, out = run("source", str(pkg), "bad name", "--caption", "x")
+        assert code == 2 and "valid schema name" in out
+
+        code, out = run("module", str(pkg), "UsrOrderMixin", "--mixin", "--caption", "Order mixin")
+        assert code == 0 and "Schemas/UsrOrderMixin/UsrOrderMixin.less" in out and "Schemas/UsrOrderMixin/UsrOrderMixin.js" in out, out
+        mixin = ClassicSchema(pkg, "UsrOrderMixin")
+        assert mixin.kind == "module" and "Terrasoft.configuration.mixins.UsrOrderMixin" in mixin.body and mixin.resources.get("Caption") == "Order mixin"
+        code, out = run("module", str(pkg), "UsrOrderMixin")
+        assert code == 2 and "exists" in out
 
 
 if __name__ == "__main__":

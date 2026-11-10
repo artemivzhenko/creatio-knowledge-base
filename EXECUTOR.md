@@ -62,14 +62,21 @@ backend tier) with its own `AGENTS.md`. Task cards live in `../tasks/` (one fold
 - **Do not reformat** files you did not need to change. Keep the style around you: 4-space
   Python, double quotes, type hints, one-line docstrings that say what, not how; C# per the
   framework's `AGENTS.md`.
+- **Package files are bytes.** Never touch a file under `packages/` or a fixture with `sed -i`,
+  a shell heredoc or a redirect: Git Bash strips CRLF, heredocs eat backslashes. Edit through the
+  toolkits, the Edit tool, or a Python script that reads and writes bytes; check with `file` or
+  `git diff --stat` that only the intended lines changed.
 - **No scratch files in the repositories.** Temporary scripts go to your temp folder and are
   passed paths as arguments; never run an interpreter from inside a folder you downloaded.
 
 ## Where things are and how to run them
 
+On Windows, if `python` is a Microsoft Store stub, use `py -3` instead.
+Synchronize the test framework credentials from the project with `python no-code/tools/project.py sync <project.json>`.
+
 ```bash
 cd no-code/tools
-python <kind>/tests/test_<kind>_tools.py        # kind: objects, process, rules, pages, sqlscripts, dcm, usertask, describe
+python <kind>/tests/test_<kind>_tools.py        # kind: objects, process, rules, pages, sqlscripts, dcm, usertask, data, classicui, resources, scaffold, push, describe
 python describe/describe.py package <pkg>        # one line per schema (from the index)
 python describe/describe.py item <pkg> <Schema> "<topic> [<name>] [k=v]"
 python describe/describe.py find <workspace> <Schema>
@@ -92,6 +99,13 @@ Library map (what to reuse):
 | other schemas of the workspace, UIds, columns | `workspace.py` (`Workspace`, `Package`) |
 | a kind's object | `entity/`, `process/`, `rules/`, `page/`, `dcm/`, `usertask/`, `csharp/`, `sqlscript.py` |
 | filter groups, conditions | `filters.py` |
+| data bindings (`Data/<Name>`) | `data/` (`DataBinding`) |
+| 7.x client schemas, read | `classicui/` (`ClassicSchema`) |
+| captions across a package | `tools/resources/` over `resources.py` (`package_resources`) |
+| object + lookup + binding + pages at once | `tools/scaffold/` |
+| install a package in one command | `push.py` (`push`), `tools/push/` |
+| comments and strings blanked for brace matching | `text.py` (`mask`) |
+| the kinds the describe layer knows | `describe/registry.py` (`Kind`, `register`) |
 | package index, find, lookups | `describe/index.py` |
 | one answer about a schema | `describe/core.py`, `describe/queries.py` |
 | a CLI | `cli.py` (`CommandLine`, `parse_assignments`) |

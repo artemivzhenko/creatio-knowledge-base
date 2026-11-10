@@ -19,6 +19,7 @@ creatio_schemas/
   diff.py         SchemaDiff: the `= + - ~` metadata of a schema with a parent - apply to the parent, change one path
   refactor.py     rename_schema across a workspace
   clio.py         Clio: call-service and SQL on a saved environment
+  environment.py  Environment: one site over HTTP (login, CSRF, OData, services, RunProcess) and SQL through clio
   cli.py          the shared command-line skeleton (sub-commands, --dry-run, save + validate)
   process/        ProcessSchema, catalog (ElementKind per designer element, user tasks), expressions
   rules/          RuleSchema, model (keys and enums), actions (ActionType registry), builder (spec -> rule),
@@ -68,6 +69,26 @@ Every schema type has the same surface, from `Schema`:
 Elements, flows, parameters and rules stay the plain dicts of `metadata.json` (keys decoded in
 `process/assets/keymap.json` and the docstring of `rules/model.py`); the methods keep the
 cross-references between them in step (mappings, captions, flow endpoints, generated rules).
+
+## Metadata keys
+
+`metadata.json` keys are obfuscated by the platform; `process/assets/keymap.json` names all 569 of
+them for every kind, and `describe_item <pkg> <Schema> keys` prints a schema's top-level keys with
+their names. The ones every schema carries: `A2` Name, `A3` CreatedInSchemaUId, `A4`
+ModifiedInSchemaUId, `A5` CreatedInPackageId (the package the schema was *created* in - it differs
+between schemas of one package), `B6` PackageUId (the package it lives in now), `B7` ExtendParent,
+`B8` CreatedInVersion, `B1` Methods, `B2` LocalizableStrings (items `{UId, A2 key, A3, A4 schema
+uid, A5 package uid}`), `B3` Usings. Client schemas: `HD1` ParentSchemaUId, `HD2` Body, `HD4`
+SchemaType, `HD5` Dependencies, `HD7` Messages, `HD8` Images, `HD11` Parameters, `HD12`
+SchemaDifferences. Objects: `D2` columns; processes and cases: see their READMEs.
+
+A **replacing schema** (`ExtendParent: true` in the descriptor, `Parent {UId, Name}`) stores its
+metadata as a diff against the parent, one operation per line: `= MetaData.Schema.<key> <json>`
+sets a value, `+ MetaData.Schema.<key> <json>` appends an item to a list, `- MetaData.Schema.<key>
+<json>` removes one; values may span lines; CRLF. The rules: a new `UId`, `A5` = the package it
+was created in, `B6` = the package it lives in, `HD1` = the parent's UId, localizable strings as
+`+ B2` items, the body in `<Name>.js` / `<Name>.cs` of its own. `entity/hierarchy.py::parse_diff`
+reads the form, `entity/schema.py` writes it for objects.
 
 ## Extending
 

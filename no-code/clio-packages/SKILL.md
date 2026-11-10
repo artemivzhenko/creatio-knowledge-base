@@ -60,6 +60,25 @@ What a pull after a no-code change looks like on 8.2.3 (verified):
 
 ## Traps (verified)
 
+- **Changed SQL scripts need a newer `ModifiedOnUtc`** in their descriptor or the platform can
+  retain the previously installed body.
+- **Assembly packages need `compile-package` when unrelated configuration errors prevent the
+  configuration build**; use `--wait` before relying on the resulting assembly.
+- **A push ships the whole package**, including other tasks' uncommitted files; check task locks
+  and git status before installing.
+- **`push-pkg` exits 0 even when its log carries a 500 page and an `AppInfoValidator` /
+  "Cannot combine app info" trace** - on a successful install too. The exit code and the log
+  prove nothing; the proof of an install is `SysSchema."ModifiedOn"` of the pushed schemas or
+  the toolkits' probes (`tools/push/push.py --probe`).
+- **`last-compilation-log` shows the main configuration build only** (Terrasoft.Configuration),
+  with the errors of every package in it, other teams' included; an assembly package's own build
+  is not there. Judge your package by its own errors (or `compile-package <Pkg>`), not by
+  "Errors: 0" of the whole log.
+- **`delete-schema` on clio's MCP picks the schema by name among the *workspace's* packages**:
+  with a workspace that holds your replacing copy it deletes that copy, not the one in `Custom`
+  that you meant; a schema installed from an archive is refused ("installed from the file
+  archive"). Check which copy it will take before calling it; the `Custom` copy is deleted by
+  the human in the configuration designer.
 - **`Files/<Package>.csproj` differs between the server copy and a workspace copy** (about
   750 lines of churn: imports, property groups). Do not copy it back from a pull; keep the
   workspace one.

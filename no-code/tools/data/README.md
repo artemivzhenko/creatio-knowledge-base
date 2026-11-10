@@ -61,6 +61,17 @@ Data/<Name>/Localization/data.<c>.json  the localisable columns per culture: [{S
   column to every culture (empty when not given) and a new `Id` when the key is `Id`.
   `remove-row` drops the row from every culture too.
 
+## Duplicates on an environment
+
+`data.py duplicates <Object> <Column> -e <env> | --project <project.json>` answers "how many
+duplicates are there already" before a de-duplication task is planned: the records are read over
+OData (`Id` and the column, 500 a page, `--where` narrows them), grouped by the normalised value
+(`--normalize trim,lower,digits`; `digits` keeps `0-9` only, for phones), and every group of two or
+more is one line - `"<value>"  N records  ids: ...` - followed by the count of groups and of records
+in them; exit 1 when there are any, `--json` for the tester's evidence. A lookup column needs
+`--lookup`: the `Name` of the referenced record is grouped (`$expand`), and a record without one
+groups under the empty value. Nothing is written; the environment is the one of `creatio_schemas/environment.py`.
+
 ## Verified
 
 All 373 bindings found locally (8 workspaces) round-trip byte for byte through `DataBinding`,

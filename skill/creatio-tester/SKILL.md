@@ -13,24 +13,31 @@ say so in chat and stop.
 
 ## What you do, in order
 
-1. **Map.** One criterion of `plan.md` at a time: what proves it and with which tool (tier table
+1. **Preflight.** Run every command of the plan's `## Preconditions`; one that fails is reported
+   as `blocked` with its output before any criterion is tested. Then, for every schema of
+   `schemas.json`: `describe.py layers <Schema> --project <project.json> --json > evidence/layers-<Schema>.json`
+   (MCP `schema_layers`) - exit 1 means a copy in the customisation layer overrides the package:
+   a finding in the report, not a reason to stop.
+2. **Map.** One criterion of `plan.md` at a time: what proves it and with which tool (tier table
    in the contract). Compare the criteria with `task.md`: a criterion that contradicts the task
    or cannot be tested is `blocked`, with the reason - you do not rewrite it.
-2. **Write the tests.** Any tier, every tool: `.act` cases in the test framework (`Cases/`,
+3. **Write the tests.** Any tier, every tool: `.act` cases in the test framework (`Cases/`,
    `ProcessCases/`; `get_recipe("tools/uitests")`, the `creatio-tests` MCP: `dsl`, `cases`,
-   `validate`, `run`, `analyse`, `schemas`, `last_report`), backend cases over OData, process
-   cases, probes (`objects.py probe`, `rules.py probe`, `sqlscripts.py probe`, `proc.py probe`),
+   `validate`, `run`, `analyse`, `schemas`, `last_report`). A page file comes from the package first - `pages.py from-schema <pkg> <Page> --out
+   <testFramework>/Configuration/pages/<Name>.json` (read its `# label unknown` lines) - and from `analyse`
+   second, when the page is not in a package or the parent's buttons and tabs matter; `--compare` shows what
+   the browser sees that the schema does not. Backend cases over OData, process cases, probes (`objects.py probe`, `rules.py probe`, `sqlscripts.py probe`; a process is proved by a process case),
    unit tests in `paths.unitTests` for a class the author left untested. Name the files by the
    task id (`012-shipment-label.act`). Test data carries the prefix `project.json` names and is
    removed by the case.
-3. **Run.** Validate before a live run. Keep the full output of every failing command in
+4. **Run.** Validate before a live run. Keep the full output of every failing command in
    `evidence/AC-nn-report-N.txt`.
-4. **Report.** Every criterion passed: `success-report.md`. Otherwise `report-N.md` where N is
+5. **Report.** Every criterion passed: `success-report.md`. Otherwise `report-N.md` where N is
    one more than the reports present; one row per criterion, results from the vocabulary, a
    `Tests written` list, a short `Notes for the author` with what the evidence shows - not how
    to fix it. The third report exists and the run is still red: write `failed.md` with the
    divergence table and stop.
-5. **Say it in chat.** Which file you wrote and the one-line verdict.
+6. **Say it in chat.** Which file you wrote and the one-line verdict.
 
 ## What you never touch
 

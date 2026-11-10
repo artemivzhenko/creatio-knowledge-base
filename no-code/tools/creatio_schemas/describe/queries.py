@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from ..csharp import CSharpSource
 from ..data import DataBinding
 from ..dcm import DcmSchema
 from ..entity import EntitySchema
 from ..entity.catalog import column_flags
-from ..files import ALL_DATA_VALUE_TYPES, DATA_VALUE_TYPES
+from ..files import ALL_DATA_VALUE_TYPES, DATA_VALUE_TYPES, read_text
 from ..page import PageSchema
 from ..process import ProcessSchema
 from ..process.catalog import DIRECTION, USER_TASK_BY_UID, short_type
@@ -73,7 +74,66 @@ def q_resource(item, name, f):
     return "\n".join(f"{c}: {res.get(key, c)!r}" for c in sorted(res.cultures) if res.get(key, c) is not None) or f"no key {key}"
 
 
-COMMON = {"files": q_files, "resources": q_resources, "resource": q_resource}
+def q_missing(item, name, f):
+    """Keys a culture lacks against a source culture (en-US by default): `missing [culture=ru-RU] [from=en-US]`."""
+    res = getattr(item, "resources", None)
+    if res is None or not res.cultures:
+        return "(no resources)"
+    source = f.get("from", "en-US")
+    if source not in res.cultures:
+        return f"(no {source})"
+    cultures = [f["culture"]] if f.get("culture") else [c for c in sorted(res.cultures) if c != source]
+    lines = [f"{c}: {k}" for c in cultures for k in res.ordered_keys(source) if res.get(k, c) is None]
+    return "\n".join(lines) or f"nothing missing against {source}"
+
+
+def q_keys(item, name, f):
+    """The top-level metadata keys of a schema with their platform names (process/assets/keymap.json names every kind's keys):
+    for full metadata one line per key with a size hint, for a replacing schema's diff form one line per operation."""
+    from ..process.catalog import KEYMAP
+    from ..workspace import parse_diff
+
+    folder = getattr(item, "dir", None)
+    if folder is None and getattr(item, "descriptor", None) is not None and getattr(item, "path", None) is not None:
+        folder = item.path.parent  # a source code schema: the CSharpSource points at its .cs file
+    path = folder / "metadata.json" if folder else None
+    if not path or not path.is_file():
+        return "(no metadata.json)"
+    text = read_text(path)[0]
+
+    def hint(v):
+        return f"[{len(v)} items]" if isinstance(v, list) else f"{{{len(v)} keys}}" if isinstance(v, dict) else json.dumps(v, ensure_ascii=False)[:60]
+
+    if text.lstrip().startswith("{"):
+        schema = json.loads(text).get("MetaData", {}).get("Schema", {})
+        return "\n".join(f"{k:<12} {KEYMAP.get(k, '?'):<28} {hint(v)}" for k, v in schema.items()) or "(empty metadata)"
+    lines = ["diff form against the parent's metadata: = set, + append, - remove, on MetaData.Schema.<key>[.<nested key>]"]
+    for op, p, v in parse_diff(text):
+        path = p.removeprefix("MetaData.Schema.") if p.startswith("MetaData.Schema.") else p
+        last = path.split(".")[-1]
+        lines.append(f"{op} {path:<22} {KEYMAP.get(last, '?'):<28} {(v or '')[:60]}")
+    return "\n".join(lines)
+
+
+def _index_name(item) -> str:
+    name = getattr(item, "name", None)
+    return name or Path(item.path).relative_to(item.package).as_posix()
+
+
+def q_uses(item, name, f):
+    """`uses [kind=object] [via=lookup]`: the typed edges from this item (describe/deps.py), from the workspace index."""
+    from .deps import dependencies
+    return dependencies(item.package, _index_name(item), "out", f.get("kind", ""), f.get("via", ""), int(f.get("limit", DEFAULT_LIMIT)))
+
+
+def q_used_by(item, name, f):
+    """`used-by [kind=process] [via=signal]`: every item of the workspace whose typed edges point here."""
+    from .deps import dependencies
+    return dependencies(item.package, _index_name(item), "in", f.get("kind", ""), f.get("via", ""), int(f.get("limit", DEFAULT_LIMIT)))
+
+
+COMMON = {"files": q_files, "resources": q_resources, "resource": q_resource, "missing": q_missing, "keys": q_keys,
+          "uses": q_uses, "used-by": q_used_by}
 
 # -- objects ------------------------------------------------------------------ #
 
@@ -504,7 +564,7 @@ def answer(item, topic: str, name: str | None, filters: dict[str, str]) -> str:
     list_topics = {"files", "resource", "columns", "elements", "params", "flows", "rules", "attributes",
                    "handlers", "containers", "stages", "steps", "moves", "members", "operations", "find",
                    "rows", "diff", "methods", "messages", "details", "mixins", "classes", "usings", "regions",
-                   "deps", "sections", "data-sources"}
+                   "deps", "sections", "data-sources", "uses", "used-by"}
     if topic in list_topics or (topic == "resources" and filters.get("culture")):
         return _limited(result.splitlines(), filters)
     return result

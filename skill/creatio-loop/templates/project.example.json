@@ -7,19 +7,29 @@
     "password": "change-me",
     "platformVersion": "8.2.3",
     "database": "PostgreSQL",
-    "mayBreak": true
+    "mayBreak": true,
+    "customLayer": "Custom"
   },
   "package": {
     "name": "UsrPkg",
     "prefix": "Usr",
     "workspace": "C:\\Creatio\\workspaces\\dev",
-    "dependsOn": ["CrtBase"]
+    "dependsOn": ["CrtBase"],
+    "consumers": ["UsrTests"]
   },
   "paths": {
     "tasks": "C:\\Creatio\\workspaces\\dev\\tasks",
     "knowledgeBase": "C:\\Creatio\\workspaces\\agent_repos\\creatio-knowledge-base",
     "testFramework": "C:\\Creatio\\workspaces\\agent_repos\\automatic-creatio-tests",
     "unitTests": "C:\\Creatio\\workspaces\\dev\\tests\\UsrPkg"
+  },
+  "tests": {
+    "runner": "UsrRunTests_Process",
+    "categoryParameter": "Category"
+  },
+  "sandbox": {
+    "objects": ["UsrOrder", "UsrShipment"],
+    "records": { "UsrOrder": ["5d2a1c3e-0000-4000-8000-000000000001"] }
   },
   "readOnly": [
     "C:\\Creatio\\workspaces\\client-prod-copy"

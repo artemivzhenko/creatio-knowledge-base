@@ -1,7 +1,7 @@
 ---
 name: creatio-loop
-description: The contract of the Creatio author/tester loop - a task folder whose files are the protocol (task.md, questions.md, plan.md, schemas.json, report-N.md, success-report.md, failed.md), project.json with the environment and the package, the schema lock between tasks, the evidence rules and the proof tiers (unit, probe, backend, process, ui). Read it with creatio-author or creatio-tester; use for "task folder", "report round", "acceptance criteria", "project.json", "schemas.json".
-version: 2
+description: The contract of the Creatio author/tester loop - a task folder whose files are the protocol (task.md, questions.md, plan.md, schemas.json, report-N.md, success-report.md, failed.md), project.json with the environment and the package, the schema lock between tasks, the evidence rules and the proof tiers (unit, integration, probe, backend, process, ui). Read it with creatio-author or creatio-tester; use for "task folder", "report round", "acceptance criteria", "project.json", "schemas.json".
+version: 2.1
 ---
 
 # The author / tester loop: the contract
@@ -29,7 +29,11 @@ human. Template: [templates/project.example.json](templates/project.example.json
 environment (clio name, url, login, password, platform version, whether it may be broken), the
 package (name, schema prefix, workspace path, dependencies), the paths (the task folders, this
 knowledge base, the test framework, the unit-test project), the read-only workspaces and the
-project's own rules. Every agent reads it before touching anything; values from it are never
+project's own rules; since v2.1 also `package.consumers` (packages pushed and compiled with this
+one, the test package among them), `environment.customLayer` (the customisation package, `Custom`
+by default), `tests.runner` (the process or service that runs in-Creatio tests and its category
+parameter) and `sandbox` (the objects and record ids a case may write to). Credentials live here
+only; the test framework's own config is produced from it by `project.py sync`. Every agent reads it before touching anything; values from it are never
 copied into a repository file.
 
 ## The task folder
@@ -40,7 +44,7 @@ copied into a repository file.
 |---|---|---|---|
 | `task.md` | human | start | the business task, free form, numbered by the folder |
 | `questions.md` | author, then human | before the plan | the author's questions, the human's answers under each; `No questions.` when none |
-| `plan.md` | author | after the answers | how it will be built, the artifacts, the acceptance criteria table |
+| `plan.md` | author | after the answers | how it will be built, the artifacts, the acceptance criteria table, the preconditions with the command that checks each |
 | `schemas.json` | author | with the plan, kept current | every schema the task creates or changes: the lock other tasks check |
 | `evidence/` | tester | each run | command output behind every `fail` row |
 | `report-1.md` … `report-3.md` | tester | a run with at least one `fail` or `blocked` | one row per criterion |
@@ -54,20 +58,34 @@ Templates for every file: [templates/](templates/).
 1. The human writes `task.md`.
 2. The author reads `project.json`, `task.md`, the knowledge base; writes `questions.md`; stops
    and says so in chat. The human answers in the same file.
-3. The author writes `plan.md` and `schemas.json`, checks the lock (below), builds, pushes,
+3. The author copies answers given in chat into `questions.md`, runs the layers probe for every
+   schema the task replaces (a `Custom` layer goes into the questions), writes `plan.md` with its
+   preconditions and `schemas.json`, checks the lock (below), runs the preconditions, builds, pushes,
    probes, runs its unit tests, and says "done" in chat. No approval step: the plan is built
    as written. Anything that turns out unplanned is a question in chat, not a silent change.
 4. The human opens the tester. The tester reads `task.md`, `questions.md`, `plan.md`,
-   `schemas.json` and the previous reports; writes and runs the tests of every criterion; writes
+   `schemas.json` and the previous reports; runs the preconditions first (a failed one is `blocked`
+   before any criterion); writes and runs the tests of every criterion; writes
    `success-report.md` or the next `report-N.md`. Three reports and still red: `failed.md`.
 5. The human brings the report to the author. The author reads it, answers in chat (what was
    fixed, or what question the report raises), fixes, pushes, says "done". Back to 4.
 6. `success-report.md` closes the task. `failed.md` parks it until the human deletes it
    (with the old reports, if a fresh count is wanted).
 
+## Preconditions, answers, sub-criteria
+
+A precondition is a fact the plan relies on, written as the command that checks it (`describe.py
+layers UsrOrderPage -e dev` -> no `Custom` layer; `push.py ... --dry-run` -> no drift; the test
+package installed). The author runs them before building, the tester as its first step. The
+human's answers are a file, not a chat: given in chat, the author copies them under the question
+in `questions.md` before the plan. A criterion the tester can only half prove is split by the
+author into `AC-05a`, `AC-05b` when asked; the tester proposes the split in the report and never
+applies it.
+
 ## The schema lock
 
-A task is **active** while its folder has no `success-report.md`. Before creating or changing
+A task is **active** while its folder has no `success-report.md`. The lock is per schema; a push
+is per package - `push.py` stops when the package holds uncommitted files of another active task. Before creating or changing
 a schema, the author reads `schemas.json` of every other active folder under `paths.tasks`; a
 schema listed there belongs to that task - the author stops and asks the human instead of
 touching it. `schemas.json` is updated the moment the scope grows.
@@ -80,6 +98,7 @@ tester picks the tool; the tier says what kind of proof is enough.
 | Tier | Proves | Typical tool |
 |---|---|---|
 | unit | a class in `Files/cs` behaves, with no environment | `dotnet test tests/<Pkg>/` (get_recipe `clio-tests-and-devops`, "Unit tests without an instance") |
+| integration | a test that runs inside Creatio, where the project keeps a test base (`BaseTest`, a category, a runner process or service named in `project.json` `tests.runner`) | `unit.py run -e <env> --category <Cat>` (tools/env), evidence from its JSON |
 | probe | the artifact landed on the environment as written | `objects.py probe`, `rules.py probe`, `sqlscripts.py probe`, `proc.py probe` |
 | backend | listeners, triggers, defaults - the effect of a CRUD operation | a backend case of the test framework: `insert` / `update` / `delete` over OData, `check-record`, `check-count` |
 | process | a process started with parameters returns the expected results and records | a process case: `start`, `check-result`, `check-record` |

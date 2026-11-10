@@ -14,6 +14,7 @@ Every step is idempotent: re-running updates or re-registers without duplicates.
 
     python agent_setup.py            # install
     python agent_setup.py --dry-run  # print the commands only
+    python agent_setup.py --check    # inspect launchers and planned servers, register nothing
 """
 
 from __future__ import annotations
@@ -28,6 +29,28 @@ from pathlib import Path
 KB_ROOT = Path(__file__).resolve().parent
 DRY_RUN = "--dry-run" in sys.argv[1:]
 WIN = sys.platform == "win32"
+
+
+def python_launcher() -> list[str] | None:
+    """Try both launchers before making any changes."""
+    verdicts = []
+    for launcher in (["python"], ["py", "-3"]):
+        try:
+            result = subprocess.run(
+                launcher + ["-c", "import sys;print(sys.version)"],
+                capture_output=True, text=True, timeout=15,
+            )
+            text = (result.stdout + result.stderr).strip()
+            ok = result.returncode == 0 and text.startswith("3.") and "microsoft store" not in text.lower()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            text, ok = str(exc), False
+        print(f"{' '.join(launcher)}: {'works' if ok else 'unavailable'}" + (f" ({text.splitlines()[0]})" if text else ""))
+        verdicts.append(ok)
+    if verdicts[0]:
+        return ["python"]
+    if verdicts[1]:
+        return ["py", "-3"]
+    return None
 
 
 def run(title: str, cmd: list[str]) -> int:
@@ -65,6 +88,16 @@ def register_mcp(claude: str, name: str, add_args: list[str]) -> None:
 
 
 def main() -> None:
+    launcher = python_launcher()
+    if launcher is None:
+        sys.exit("Neither python nor py -3 works; install Python before registering servers.")
+    print("Selected Python launcher: " + " ".join(launcher))
+    if "--check" in sys.argv[1:]:
+        print("Servers: context7, microsoft-learn, roslyn-codelens (requires .NET 10), creatio-kb")
+        if (KB_ROOT.parent / "automatic-creatio-tests" / "mcp-server" / "server.py").is_file():
+            print("Server: creatio-tests")
+        print("Roslyn: set MCP_TIMEOUT=120000 in the server entry for slow solution loading.")
+        return
     claude = find_claude()
     print(f"claude: {claude}")
 
@@ -91,7 +124,8 @@ def main() -> None:
     sdks = subprocess.run(["dotnet", "--list-sdks"], capture_output=True, text=True).stdout if shutil.which("dotnet") else ""
     if any(line.startswith("10.") for line in sdks.splitlines()):
         run("dotnet tool: RoslynCodeLens.Mcp", ["dotnet", "tool", "update", "-g", "RoslynCodeLens.Mcp"])
-        register_mcp(claude, "roslyn-codelens", ["roslyn-codelens", "--", "roslyn-codelens-mcp"])
+        register_mcp(claude, "roslyn-codelens", ["--env", "MCP_TIMEOUT=120000", "roslyn-codelens", "--", "roslyn-codelens-mcp"])
+        print("Roslyn MCP_TIMEOUT=120000: allow extra time for solution loading.")
     else:
         print("\nroslyn-codelens skipped: .NET 10 SDK not found (dotnet --list-sdks).")
 
@@ -99,7 +133,7 @@ def main() -> None:
     venv = KB_ROOT / "mcp-server" / ".venv"
     venv_py = venv / ("Scripts/python.exe" if WIN else "bin/python")
     if not venv_py.exists():
-        run("creatio-kb: venv", [sys.executable, "-m", "venv", str(venv)])
+        run("creatio-kb: venv", launcher + ["-m", "venv", str(venv)])
     run("creatio-kb: pip install -e", [str(venv_py), "-m", "pip", "install", "-q", "-e", str(KB_ROOT / "mcp-server")])
     register_mcp(claude, "creatio-kb", ["creatio-kb", "--", str(venv_py), str(KB_ROOT / "mcp-server" / "server.py")])
 
@@ -110,7 +144,7 @@ def main() -> None:
         tests_venv = tests / "mcp-server" / ".venv"
         tests_py = tests_venv / ("Scripts/python.exe" if WIN else "bin/python")
         if not tests_py.exists():
-            run("creatio-tests: venv", [sys.executable, "-m", "venv", str(tests_venv)])
+            run("creatio-tests: venv", launcher + ["-m", "venv", str(tests_venv)])
         run("creatio-tests: pip install mcp", [str(tests_py), "-m", "pip", "install", "-q", "mcp>=2.0"])
         register_mcp(claude, "creatio-tests", ["creatio-tests", "--", str(tests_py), str(tests_server)])
     else:

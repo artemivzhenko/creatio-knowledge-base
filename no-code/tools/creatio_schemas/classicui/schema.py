@@ -5,7 +5,8 @@ the returned object literal carries the sections: entitySchemaName, attributes, 
 modules, diff (an array of operations: insert / merge / remove / move with name, parentName, propertyName,
 values), methods, rules, businessRules, userCode, in any order and any of them missing. It is JavaScript,
 not JSON (comments, trailing commas, Terrasoft.* constants, regex literals), so it is read by brace matching
-over a copy with comments and literals masked (text.mask). Read-only: an untouched schema saves its bytes back.
+over a copy with comments and literals masked (text.mask). An untouched schema saves its bytes back; the writers
+(write.py) splice one span at a time.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pathlib import Path
 from ..files import read_text
 from ..schema import WARNING, Schema
 from ..text import mask
+from .write import ClassicWriter
 
 _KEY_RE = re.compile(r'([A-Za-z_$][\w$]*|"[^"\n]*"|\'[^\'\n]*\')\s*:')
 _STRING_RE = re.compile(r'"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'')
@@ -51,7 +53,7 @@ def _rstrip(masked: str, i: int) -> int:
     return i
 
 
-class ClassicSchema(Schema):
+class ClassicSchema(ClassicWriter, Schema):
     RESOURCE_SUFFIX = "ClientUnit"
 
     def load_metadata(self, text: str) -> None:
@@ -64,6 +66,8 @@ class ClassicSchema(Schema):
         self.module_name: str | None = None
         self.dependencies: list[str] = []
         self.sections: dict[str, tuple[int, int]] = {}
+        self._return_at: int | None = None  # the "{" of the returned object literal
+        self._deps_at: int | None = None  # the "[" of define()'s dependency list
         self._parse()
 
     def render_metadata(self) -> str:
@@ -95,6 +99,7 @@ class ClassicSchema(Schema):
         fn = re.compile(r"\bfunction\b").search(masked, m.end(), args_end)
         deps = masked.find("[", m.end(), fn.start() if fn else args_end)
         if deps >= 0:
+            self._deps_at = deps
             self.dependencies = [a or b for a, b in _STRING_RE.findall(text[deps:_close(masked, deps)])]
         if not fn:
             return
@@ -115,6 +120,7 @@ class ClassicSchema(Schema):
         obj = _skip_space(masked, ret + 6)
         if masked[obj] != "{":
             return  # `return Ext.apply(...)` and the like: no literal to read
+        self._return_at = obj
         self.sections = {k: (a, b) for k, _, a, b in self._members(obj)}
 
     def _members(self, at: int) -> list[tuple[str, int, int, int]]:

@@ -4,7 +4,7 @@ description: Push a Creatio package to an environment in one command - clear IsC
 
 # Push command
 
-Push a package to an environment with all the mandatory steps in one command. Pure Python standard library.
+Push a package to an environment with drift, task ownership and compilation checks. Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
@@ -14,22 +14,34 @@ Push a package to an environment with all the mandatory steps in one command. Pu
 
 ## How it works
 
-The typical package install requires four manual steps:
-1. Clear `IsChanged` in `SysSchema`: schemas edited in the designer otherwise count as
-   modified locally and `push-pkg` skips them.
-2. Run `clio push-pkg` to install the package
-3. Check `clio last-compilation-log` to verify no errors
-4. Run `clio compile-configuration` when the package has processes with scripts or user tasks (takes minutes)
+The command checks environment drift since the package's last git commit, checks changed files
+against other active task locks, and updates the dates of changed SQL scripts. It then clears
+`IsChanged`, runs `push-pkg`, reads the compilation log, compiles assembly packages with
+`compile-package --wait`, optionally checks a baseline and publishes processes with script or user
+tasks. `IsChanged` is cleared because designer-edited schemas otherwise count as modified locally
+and `push-pkg` skips them.
 
 `push.py` does them all in order, stopping at the first failure.
+Also available as the MCP tool `push_package`, with the same v2 safety options.
 
 ```bash
 python push.py UsrPkg -e dev                      # push and check
 python push.py UsrPkg -e dev --probe              # also run probes
 python push.py UsrPkg -e dev --dry-run            # print commands only
+python push.py UsrPkg -e dev --project project.json --task tasks/001-order
+python push.py UsrPkg -e dev --tasks tasks --task tasks/001-order --baseline tasks/001-order/evidence/errors.txt
 ```
 
-Output: one line per step, then a summary line with timing.
+`--project` reads `paths.tasks` from the supplied project; `--tasks` overrides it. When a tasks
+folder is supplied, `--task` must identify the current task folder directly inside it. Without a
+tasks folder the ownership check is skipped. `--force` allows drift; `--skip-drift`,
+`--skip-foreign-files`, `--skip-sql-dates` and `--skip-compile-package` explicitly skip their
+respective checks or steps. `--baseline` creates a file containing the current compilation error
+lines on first use; later runs fail on new error lines. Without a baseline, non-assembly packages
+still fail on configuration compilation errors.
+
+Output: one line per step, then a summary line with timing or the failed step. A dry run performs
+no subprocess calls or writes.
 
 ## Traps
 

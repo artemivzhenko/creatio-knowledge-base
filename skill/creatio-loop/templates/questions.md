@@ -1,7 +1,7 @@
 # 012 Questions
 
 The author writes the questions, numbered, with what it would assume if unanswered. The human
-answers under each. Write `No questions.` when there are none - the file still exists.
+answers under each - in this file, or in chat, in which case the author copies the answer here. Write `No questions.` when there are none - the file still exists.
 
 ## Q1. Where does the shipment number come from?
 

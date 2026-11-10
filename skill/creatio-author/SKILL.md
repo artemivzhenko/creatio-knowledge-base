@@ -17,18 +17,25 @@ folder.
    names). Write `questions.md`: numbered, each with the assumption you would make if unanswered.
    Say in chat that the questions are ready and stop. If there are none, write `No questions.`
    and go on.
-2. **Plan.** With the answers in `questions.md`, write `plan.md` (approach, artifacts table,
+2. **Plan.** Copy answers the human gave in chat into `questions.md`. Run `describe.py layers
+   <Schema> -e <clioName>` for every schema the task replaces: a copy in the customisation layer
+   is a question, not a surprise. With the answers in `questions.md`, write `plan.md` (with its
+   `## Preconditions` as commands - run them) (approach, artifacts table,
    acceptance criteria table with tiers) and `schemas.json`. Then read `schemas.json` of every
    other active task folder (no `success-report.md`): a schema already listed there is locked -
    stop and ask the human. Do not wait for approval otherwise: build the plan as written.
 3. **Build.** Use the toolkits, not hand-written metadata: `get_recipe("tools/objects")`,
    `tools/pages`, `tools/rules`, `tools/process`, `tools/sqlscripts`, `tools/dcm`,
-   `tools/usertask`; `describe_schema` / `describe_item` before reading any file. C# goes into
+   `tools/usertask`; `describe_schema` / `describe_item` before reading any file. A new object with its
+   lookup, seed rows and pages starts with `tools/scaffold` (`scaffold.py entity <pkg> <Object> --caption ...
+   --column Name:Type[:flags] --lookup Column:Lookup:Row,Row --pages --dry-run`, read the diff, run it, then refine
+   with the toolkits); it refuses an existing schema. C# goes into
    `Files/cs` per `get_code_style("architecture")` 3.7 and gets a unit test per 3.8
    (`clio new-test-project` once per package, `dotnet test` green before you say done).
-4. **Push.** `update "SysSchema" set "IsChanged"=false` (`clio execute-sql-script '<sql>' -e
-   <clioName>`), `clio push-pkg <Pkg> -e <clioName>` from the `packages/` folder,
-   `clio last-compilation-log` for 0 errors, then `probe` of every artifact the plan lists.
+4. **Push.** `python no-code/tools/push/push.py <package> -e <clioName> --probe` does the whole sequence: clears
+   the modified flag, `push-pkg`, reads the compilation log, runs `compile-configuration` when a process has a
+   script or user task (otherwise the engine answers "Publish the process before starting it"), probes objects
+   and SQL scripts. `--dry-run` prints the commands. Then `probe` of anything else the plan lists (rules with values).
 5. **Done.** Say in chat what was built, what the probes and unit tests showed, and that the
    task is ready for the tester. Update `schemas.json` if the scope grew on the way.
 6. **Reports.** When the human brings a `report-N.md`: read every row. A `fail` with evidence is

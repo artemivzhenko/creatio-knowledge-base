@@ -43,6 +43,8 @@ class Clio:
             src.write_text(query, encoding="utf-8")
             run = subprocess.run(["clio", "execute-sql-script", "-e", self.env, "-f", str(src), "-v", "json", "-d", str(out)],
                                  capture_output=True, text=True, check=False)
+            if run.returncode or "[ERR]" in (run.stdout + run.stderr):
+                raise RuntimeError(f"clio execute-sql-script failed: {(run.stdout + run.stderr)[-500:]}")
             if not out.is_file():
                 raise RuntimeError(f"clio execute-sql-script wrote no result (environment {self.env!r}?): {run.stdout[-500:]}{run.stderr[-500:]}")
             text = out.read_text(encoding="utf-8-sig").strip()
@@ -53,3 +55,7 @@ class Clio:
         output = self.run(["execute-sql-script", sql, "-e", self.env])
         if "[ERR]" in output:
             raise RuntimeError(output[-500:])
+
+    def execute_sql_rows(self, sql: str) -> list[dict]:
+        """Return SQL result rows using the file and JSON export form."""
+        return self.sql(sql)

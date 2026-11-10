@@ -35,7 +35,12 @@ class JsonFile:
     def __init__(self, path: Path, text: str | None = None, bom: bool = True):
         self.path = Path(path)
         self.text, self.bom = read_text(self.path) if text is None else (text, bom)
-        self.obj = json.loads(self.text)
+        if not self.text.strip():
+            raise ValueError(f"{self.path}: empty file")
+        try:
+            self.obj = json.loads(self.text)
+        except ValueError as e:
+            raise ValueError(f"{self.path}: not JSON ({e})") from None
         self._read = json.dumps(self.obj)
         self.nl = newline_of(self.text)
         m = _INDENT_RE.search(self.text)
@@ -86,6 +91,8 @@ class DataBinding(PackageItem):
         super().__init__(package, name)
         self.dir = self.package / "Data" / name
         if not (self.dir / "descriptor.json").is_file():
+            if self.dir.is_dir():  # a folder the package carries, broken: the index records it as unreadable
+                raise ValueError(f"{self.dir / 'descriptor.json'}: missing")
             raise FileNotFoundError(f"no data binding {name} in {self.package}")
         self.descriptor = Descriptor(self.dir / "descriptor.json")
         self.data = JsonFile(self.dir / "data.json")

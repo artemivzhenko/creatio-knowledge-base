@@ -10,6 +10,7 @@
     DataBinding     data bindings: rows of a table the package installs (creatio_schemas.data)
     ClassicSchema   Classic UI client schemas, read-only: sections, diff, methods (creatio_schemas.classicui)
     Package, Workspace, Resources, Descriptor, rename_schema, Clio
+    Environment     one site over HTTP and SQL through clio      (creatio_schemas.environment)
 
 Pure standard library. See README.md for the layout and how to add a schema type,
 a process element kind or a rule action.
@@ -20,6 +21,7 @@ from .clio import Clio
 from .data import DataBinding
 from .dcm import DcmSchema
 from .entity import EntitySchema
+from .environment import Environment
 from .files import DATA_VALUE_TYPES, DVT_OF, new_uid
 from .page import PageSchema
 from .process import ProcessSchema
@@ -30,5 +32,5 @@ from .schema import WARNING, Descriptor, Schema
 from .usertask import UserTaskSchema
 from .workspace import Package, Workspace
 
-__all__ = ["ClassicSchema", "Clio", "DataBinding", "DcmSchema", "EntitySchema", "DATA_VALUE_TYPES", "DVT_OF", "Descriptor", "Package", "PageSchema", "ProcessSchema", "Resources", "RuleEngine",
+__all__ = ["ClassicSchema", "Clio", "DataBinding", "DcmSchema", "EntitySchema", "Environment", "DATA_VALUE_TYPES", "DVT_OF", "Descriptor", "Package", "PageSchema", "ProcessSchema", "Resources", "RuleEngine",
            "RuleSchema", "Schema", "UserTaskSchema", "WARNING", "Workspace", "new_uid", "rename_schema"]

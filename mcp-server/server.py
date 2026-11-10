@@ -159,7 +159,8 @@ def get_recipe(recipe_id: str) -> str:
                command name ("execute-sql-script"), a block skill name
                ("clio-sql-and-data") or a file toolkit ("tools/objects",
                "tools/pages", "tools/process", "tools/rules", "tools/sqlscripts",
-               "tools/dcm", "tools/usertask", "tools/data", "tools/describe", "tools/push")
+               "tools/dcm", "tools/usertask", "tools/data", "tools/classicui", "tools/resources",
+               "tools/scaffold", "tools/describe", "tools/push", "tools/uitests")
                works directly.
 
     The code is a template, not a drop-in: schema names, column names and the
@@ -338,7 +339,7 @@ def describe_item(package: str, schema: str, query: str = "topics", limit: int =
       page   : "sections", "elements parent=SideAreaProfileContainer", "element UsrName",
                "attributes bound=true", "data-sources", "handlers", "handler crt.SaveRecordRequest",
                "validators", "converters", "containers", "find <text>"
-      any    : "files", "resources culture=uk-UA", "resource Caption"
+      any    : "files", "resources culture=uk-UA", "resource Caption", "missing culture=ru-RU from=en-US"
     Nothing is returned that was not asked for: a page is a database, this is the query.
     """
     _tools_path()
@@ -404,6 +405,138 @@ def find_schema(path: str, schema: str, limit: int = DEFAULT_LIMIT) -> str:
         return _fs(path, schema, limit)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
+
+
+@mcp.tool()
+def schema_deps(path: str, schema: str, direction: str = "both", kind: str = "", via: str = "", limit: int = DEFAULT_LIMIT) -> str:
+    """
+    The typed dependency graph around one schema, from the workspace index: `depends on` (its
+    parent, lookup columns, data sources, signals, sub-processes, details, mixins, bindings) and
+    `dependents` (every object, process, page, DCM, rule, binding or C# listener of the workspace
+    that builds on it). One line per edge: `<kind> <name>  <via>: <columns>  [ref]` - no `[ref]`
+    means the metadata stores the UId; `[name]` means a name resolved in a context that names the
+    object (a page's data source), and a column ending with `?` could not be shown on that object.
+    Call it before changing an object or page to see the impact, and instead of grepping for who
+    uses a schema. `direction` both | out | in; `kind` and `via` filter the edges (kind: object,
+    process, page, dcm, rules, data, csharp; via: lookup, signal, data-source, detail, ...).
+    `path` is a clio workspace root, a packages folder or one package.
+    """
+    _tools_path()
+    from creatio_schemas.describe.deps import dependencies
+    try:
+        return dependencies(path, schema, direction, kind, via, limit)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def push_package(package: str, env: str, probe: bool = False, dry_run: bool = False,
+                 project: str = "", tasks: str = "", task: str = "", force: bool = False,
+                 baseline: str = "", skip_drift: bool = False, skip_foreign_files: bool = False,
+                 skip_sql_dates: bool = False, skip_compile_package: bool = False) -> str:
+    """
+    Install a package using push v2: check drift and task ownership, update changed SQL
+    dates, clear IsChanged, push-pkg and check compilation. Assembly packages are compiled
+    with compile-package --wait. compile-configuration runs only for processes with script
+    or user tasks and may take minutes. probe also checks objects and SQL scripts; dry_run
+    prints commands without launching processes or writing files.
+
+    project and task select the current task for ownership checks; tasks overrides the
+    project tasks folder. Without either tasks or project the ownership check is skipped.
+    force, baseline and the skip flags have the same meaning as in the push CLI.
+    """
+    if not package.strip() or not (Path(package) / "descriptor.json").is_file():
+        return "error: package must contain descriptor.json"
+    if not env.strip():
+        return "error: env must not be empty"
+    _tools_path()
+    from creatio_schemas import push as _push
+    lines: list[str] = []
+    try:
+        code = _push.push(Path(package), env, _push.Clio(env), probe, dry_run, log=lines.append,
+                          project=Path(project) if project else None, tasks=Path(tasks) if tasks else None,
+                          task=Path(task) if task else None, force=force,
+                          baseline=Path(baseline) if baseline else None, skip_drift=skip_drift,
+                          skip_foreign_files=skip_foreign_files, skip_sql_dates=skip_sql_dates,
+                          skip_compile_package=skip_compile_package)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        lines.append(f"error: {e.args[0] if e.args else e}")
+        code = 2
+    lines.append(f"exit code {code}")
+    return "\n".join(lines)
+
+
+def _env(env: str):
+    from creatio_schemas.environment import Environment
+    if not env.strip():
+        raise ValueError("env must be a clio environment name")
+    return Environment.from_clio(env.strip())
+
+
+@mcp.tool()
+def env_sql(env: str, sql: str, limit: int = DEFAULT_LIMIT) -> str:
+    """Run SQL on a Creatio environment through clio and return the rows as JSON (one object per row; several
+    statements separated by `;` at line ends run one by one). `env` is a clio environment name. Read-only by habit:
+    an update or delete runs too, so only on the project's environment. An `[ERR]` from the database comes back
+    as `error: ...`."""
+    import json
+    from creatio_schemas.describe import cut
+    try:
+        rows = _env(env).sql(sql)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    return "\n".join(cut([json.dumps(r, ensure_ascii=False, default=str) for r in rows], limit, "rows")) or "(no rows)"
+
+
+@mcp.tool()
+def env_call(env: str, method: str, path: str, body: str = "") -> str:
+    """Call a site path with login and CSRF: `rest/<Svc>/<Method>`, `ServiceModel/<Svc>.svc/<Method>`,
+    `odata/<Entity>`, `ServiceModel/ProcessEngineService.svc/RunProcess`. `method` GET/POST/PATCH/DELETE, `body` a JSON
+    text. Returns `status: N` and the JSON answer (a JSON string inside an XML answer is unwrapped), or
+    `error: <status>: <reason>` with the reason taken from the WCF fault page. Writes whatever the call writes."""
+    import json
+    try:
+        r = _env(env).request(method.upper(), path.lstrip("/"), json.loads(body) if body.strip() else None)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    if not r.ok:
+        return f"error: {r.error}"
+    answer = r.json()
+    return f"status: {r.status}\n" + (json.dumps(answer, ensure_ascii=False, indent=2) if answer is not None else r.text.strip())
+
+
+@mcp.tool()
+def env_odata(env: str, entity: str, select: str = "", filter: str = "", top: int = 20) -> str:
+    """Read records of an object through OData 4: `select` comma-separated columns (a lookup is `<Column>Id`),
+    `filter` an OData expression (`Name eq 'x'`), at most `top` rows, as JSON - one object per line."""
+    import json
+    try:
+        rows = _env(env).odata(entity, [c.strip() for c in select.split(",") if c.strip()] or None, filter or None, top)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    return "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) or "(no rows)"
+
+
+@mcp.tool()
+def schema_layers(path_or_env: str, schema: str, rule: str = "") -> str:
+    """The copies of a schema on a Creatio environment, in the order the platform applies them (the last one wins):
+    package, replacing or not, modified on / by, IsChanged, body size and md5. Run it BEFORE planning a change to a page
+    or object that the platform or another package already has, and as the tester's first preflight step: a copy in the
+    customisation package (Custom) is applied after every package you push and silently overrides it - the answer then ends
+    with `Custom layer present: <package>`. `path_or_env` is a clio environment name or the path of project.json (its
+    environment.customLayer names the customisation package). `rule`: a business rule UId - its state (absent / enabled /
+    disabled / removed) in every layer. Reads the environment (one SELECT), writes nothing."""
+    import json
+    from creatio_schemas.describe.layers import CUSTOM_LAYER, render, schema_layers as _layers
+    from creatio_schemas.environment import open_environment
+    project = path_or_env if path_or_env.endswith(".json") else None
+    try:
+        env = open_environment(None if project else path_or_env, project)
+        custom = json.loads(Path(project).read_text(encoding="utf-8-sig")).get("environment", {}).get("customLayer") if project else None
+        return render(_layers(env, schema, rule or None, custom or CUSTOM_LAYER), env.clio_name or env.url)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+
 
 def main() -> None:
     """Console entry point: serve over stdio."""

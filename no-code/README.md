@@ -112,6 +112,13 @@ setting, renaming and removing a key everywhere (`resources.py`); only changed f
 with its columns, lookup objects with a data binding of their rows, a form page with every field and a
 list page, each through its toolkit and validated, as one dry-run diff first (`scaffold.py entity`).
 
+## Environment tools
+
+[tools/env/](tools/env/README.md) talks to a site without private scripts: SQL rows as JSON or CSV
+(`sql.py`), a service call with login and CSRF and the fault in one line (`call.py`), a process
+started with its result parameters (`proc-run.py`), the in-Creatio tests of a project (`unit.py`) and
+the members of a platform type by reflection over a local `bin/` (`api.py`).
+
 ## SQL script tools
 
 [tools/sqlscripts/](tools/sqlscripts/README.md) creates and changes the package's SQL scripts

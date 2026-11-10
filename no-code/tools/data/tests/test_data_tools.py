@@ -201,6 +201,45 @@ def test_cli():
         assert [r["Name"] for r in DataBinding(pkg, "UsrPriority").rows("ru-RU")] == ["High", "Низкий"]
 
 
+class FakeEnvironment:
+    """Two pages of Contact rows: the first full (PAGE rows), the second short."""
+
+    def __init__(self, rows):
+        self.rows, self.calls = rows, []
+
+    def odata(self, entity, select=None, filter=None, top=None, orderby=None, skip=None, expand=None):
+        self.calls.append((entity, select, filter, top, orderby, skip, expand))
+        return self.rows[skip or 0:(skip or 0) + top]
+
+
+def test_duplicates_over_the_environment():
+    import data as tool
+    rows = [{"Id": f"id-{i}", "Phone": f"+1 ({i % 3})"} for i in range(tool.PAGE)] + [{"Id": "last", "Phone": " +1 (0) "}]
+    env = FakeEnvironment(rows)
+    tool.open_environment = lambda e, p: env  # the CLI's -e would read clio's settings
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert main(["duplicates", "Contact", "Phone", "-e", "dev", "--normalize", "trim,digits", "--where", "Name ne ''", "--limit", "2"]) == 1
+    text = out.getvalue()
+    assert text.splitlines()[0].startswith('"+1 (0)"  168 records  ids: id-0, id-3') and "+158 more" in text
+    assert "... 1 more groups" in text and "3 duplicate groups, 501 records in them (Contact.Phone, normalize: trim,digits)" in text
+    assert env.calls[0] == ("Contact", ["Id", "Phone"], "Name ne ''", tool.PAGE, "Id", 0, None) and env.calls[1][5] == tool.PAGE
+    # a lookup column: the Name of the referenced record, through $expand
+    env = FakeEnvironment([{"Id": "a", "AccountId": "1", "Account": {"Name": "Acme"}}, {"Id": "b", "AccountId": "2", "Account": {"Name": "acme "}},
+                           {"Id": "c", "AccountId": None, "Account": None}])
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert main(["duplicates", "Contact", "Account", "-e", "dev", "--lookup", "--normalize", "trim,lower", "--json"]) == 1
+    result = json.loads(out.getvalue())
+    assert result["groups"] == [{"value": "Acme", "count": 2, "ids": ["a", "b"]}] and result["records"] == 2
+    assert env.calls[0][1] == ["Id", "AccountId"] and env.calls[0][6] == "Account($select=Name)"
+    assert main(["duplicates", "Contact", "Phone", "-e", "dev", "--normalize", "nope"]) == 2
+    # no duplicates: exit 0
+    env.rows = [{"Id": "a", "Account": {"Name": "A"}}]
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert main(["duplicates", "Contact", "Account", "-e", "dev", "--lookup"]) == 0
+
+
 if __name__ == "__main__":
     for fn in [v for k, v in list(globals().items()) if k.startswith("test_")]:
         fn()

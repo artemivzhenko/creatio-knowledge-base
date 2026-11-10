@@ -20,6 +20,14 @@ share it. The read-only rule is a page business rule on `UsrShipment_FormPage`. 
 | process | `UsrShipmentLabel_Process` | new |
 | page | `UsrShipment_FormPage` | rule: `UsrLabel` read-only when status is Shipped |
 
+## Preconditions
+
+| Fact | Checked by |
+|---|---|
+| `UsrShipment_FormPage` has no copy in the customisation layer | `describe.py layers UsrShipment_FormPage -e dev` exits 0 |
+| the environment's package is unchanged since the last commit | `push.py packages/UsrPkg -e dev --dry-run` reports no drift |
+| the test package is installed | `describe.py package` of the environment's test package lists `UsrTests` |
+
 ## Acceptance criteria
 
 | AC | Action | Expected result | Tier |

@@ -52,14 +52,97 @@ package file, so the index does not see it: such a change bumps `INDEX_FORMAT` i
 run `describe.py index <workspace> --rebuild` after updating the toolkit. A change of the *kinds* (a kind added, removed or reordered in `registry.py`)
 needs neither: the index header carries a registry fingerprint and rebuilds itself on mismatch.
 
+A broken item costs one line, never the answer: a schema, C# file or data binding that cannot be
+read (an empty `data.json`, a `Data/` folder without its descriptor, a parser error) is stored as
+`{"error": "<type>: <message>"}` - the message names the file - and listed as `cannot read:` in
+`describe.py package`; `describe.py package <pkg> --kind error` lists only those. `find` and
+`lookups` skip them and end with `N items unreadable (describe.py package <pkg> --kind error lists
+them)`; asked for a broken item by name, `find` answers its error in one line. A file that is not
+UTF-8 is read as cp1251 (a `.cs` saved in the Windows code page) and its item's summary ends with
+`(cp1251)`; a writer that saves such a file writes it as UTF-8. `CSharpSource` never raises: a file
+it cannot read answers `summary()` = `unreadable: <reason>`.
+
+## Typed dependencies
+
+`describe.py deps <workspace|package> <Schema> [--in|--out] [--kind object] [--via lookup]` (MCP
+`schema_deps`; topics `uses` and `used-by` of every item; `find` prints both directions) answers
+"what does this build on" and "who builds on this" from edges the index stores per item
+(`creatio_schemas/describe/deps.py`, format 3). An edge is `to_kind to_name via ref detail`:
+
+- `via` is one closed word per kind - object `parent`, `lookup`; process `signal`, `read-data`,
+  `add-data`, `modify-data`, `delete-data`, `sub-process`, `user-task`, `param`; dcm `entity`,
+  `step`; rules `target`, `column`; page `parent`, `data-source`, `module`; classic `parent`,
+  `entity`, `detail`, `mixin`, `module`, `lookup`, `rule`; data `binds`; sql `after`, `table`;
+  csharp/source `listener`, `esq`, `query`, `string`.
+- The words of code: `esq` - `new EntitySchemaQuery(esm, "X")` or `GetInstanceByName("X")`, with
+  the columns `esq.AddColumn("Y")` names until the block ends; `query` - `Select ... From("X")`,
+  `Into("X")`, `new Update(uc, "X")`, a join, with the `Column` / `Set` columns when the statement
+  names one table; `listener` also lists the columns the listener reads or sets on its object
+  (`XId` of a lookup `X` counts as `X`); `string` - a bare literal that is a workspace object's
+  name and no other edge reaches. A process script task gives the same words, the element first in
+  `detail`. `table` - a SQL script's table after `from`, `join`, `update`, `into`, `alter table`
+  that is a workspace or stock object (a CTE, a temp table, a comment, a string is not). `column` -
+  the attributes a business rule's conditions and actions name, on the target object, or for a page
+  rule on its data source's object. Classic `rule` - the columns `businessRules` / `rules` bind,
+  on the page's entity; `lookup` - an attribute's `referenceSchemaName`; Freedom `module` - a
+  workspace client schema in `SCHEMA_DEPS`.
+- `ref` says how sure the edge is: `uid` - the metadata stores the UId (an object's lookup column,
+  a process signal, a DCM step); `name` - a name resolved in a context that names the object (a
+  page's data source, a listener's `SchemaName`, a Classic page's `entitySchemaName`, the object an
+  ESQ or a query constructor names, a rule's target); `text` - a word found in code or SQL (`string`,
+  `table`): a suspicion to read, not a proof. One target reached several ways keeps the surest ref.
+- `detail` lists the columns: a page's attribute columns are checked against the data source
+  object's effective columns (own, replacing copies, the stock parents, the base cache from the
+  environment, else the stock catalogue - `entity/assets/stock_columns_8.3.2.json`, every object
+  of the 8.3.2 full product with its effective columns), so `Name` there is *that* object's column
+  and not a same-named one elsewhere; a column the chain cannot show ends with `?`. An object the
+  workspace and the stock 8.3.2 list (`entities_8.3.2.json`, 1527 objects) do not know is printed
+  by its UId.
+
+Reverse edges are not stored: `dependents` scans the stored ones over every package of the
+workspace. The `refers to` / `used by` lines of `find` stay the untyped text matches.
+
+## Export
+
+`describe.py export <workspace|package> [--out <folder>]` writes a snapshot of the answers for
+reading without the tools - a human in a file browser, an agent without the MCP, a broken item
+someone wants to see: `<Package>/_package.md` (the `package` lines, then the items that cannot
+be read) and one `<Schema>.md` per item - the `schema` summary, `## Depends on`, `## Dependents`
+(the typed edges, as `deps` prints them) and `## Files` with absolute paths; bindings under
+`Data/`, C# files under `Files/cs/`. An unreadable item is a one-line file with its error. UTF-8,
+LF. Each run overwrites the files, removes the files of items that are gone and touches nothing
+else in the folder. Nothing reads the snapshot back: the index is the store, this is an export of
+it (the whole of a 900-item workspace in about 12 s).
+
+The folder defaults to `<workspace>/.creatio-export` - gitignore it next to `.creatio-index`. For a
+client workspace pass `--out` elsewhere: never write inside a client workspace.
+
 ## Lookups
 
 `describe.py lookups <workspace|package>` (MCP `list_lookups`) lists every object whose parent
 chain reaches `BaseLookup` - through the workspace's own objects or the stock ones
-(`entity/assets/stock_lookups_8.2.3.json`, 272 names) - with package, caption, the chain, own
+(`entity/assets/stock_lookups_8.3.2.json`, 496 names; the 8.2.3 list of 272 is the fallback) - with package, caption, the chain, own
 columns, the data bindings that seed it (rows counted) and how many items refer to it. That is
 the list a de-duplication or binding-value task starts from. An object whose parent is outside
 both the workspace and the stock list is reported as *not decided* rather than guessed.
+
+## Layers on an environment
+
+`describe.py layers <Schema> -e <env> [--rule <UId>] [--json]` (or `--project project.json`;
+library `creatio_schemas/describe/layers.py`) is the one command that reads the environment: every
+`SysSchema` copy of the name, applied first to last - package, replacing or not, ModifiedOn and
+ModifiedBy, IsChanged, the body's size and md5 (`SysSchemaContent`, else the `MetaData` column).
+The order is the package hierarchy of the customisation package (the platform function
+`tsp_GetSysSchemaParentsInPackageHierarchyByPackage`, as the object toolkit's base fetch uses it);
+copies outside that hierarchy are listed first. With `--rule` each layer says whether the business
+rule with that UId is `absent`, `enabled`, `disabled` or `removed` in its body, and the line under
+the table names its state in the layer applied last.
+
+When a copy lives in the customisation package - `Custom`, or `environment.customLayer` of
+project.json, or `--custom-layer` - the last line is `Custom layer present: <package>` and the exit
+code is 1: that copy is applied after every package a task pushes and overrides it. The author runs
+it before the plan, the tester as the first preflight step; `--json` is the evidence. One SQL call
+through `Environment.sql` (tools/env), PostgreSQL only.
 
 ## The output contract
 
@@ -81,7 +164,7 @@ precedence. Package, find and lookup lists accept `--limit` on the CLI and `limi
 
 | Kind | Topics |
 | --- | --- |
-| every schema | `files`, `resources [culture=]`, `resource <key>` |
+| every schema | `files`, `resources [culture=]`, `resource <key>`, `missing [culture=] [from=en-US]` (keys a culture lacks) |
 | object | `columns [type=Lookup] [flag=required] [own=true]`, `column <Name>` (line + raw JSON), `flags`, `base` |
 | process | `elements [kind=FormulaTask]`, `element <Name>` (values, flows in and out), `params [direction=In]`, `flows [from=] [to=]`, `script <Element>` |
 | rules | `rules [enabled=false]`, `rule <Name|caption|uid>` |

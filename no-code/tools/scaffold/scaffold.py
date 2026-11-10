@@ -5,6 +5,8 @@
         [--column "UsrNumber:Integer:required" ..]                 Name:Type[:flag,..]; a lookup: Name:Lookup:<Object>[:flag,..]
         [--lookup "UsrStatus:UsrShipmentStatus:New,In progress,Done" ..]   column : lookup object : rows of its binding
         [--pages] [--cultures en-US,ru-RU] [--dry-run]
+    python scaffold.py source <package> <Name> --caption "Order service" [--service] [--cultures ..]
+    python scaffold.py module <package> <Name> [--caption ..] [--mixin] [--cultures ..]
 
 Builds the object (BaseEntity), each lookup object it lacks (BaseLookup) with a data binding Data/<Lookup> of
 the listed names (new Ids), the lookup columns, and with --pages the form page <Object>_FormPage (every column
@@ -12,6 +14,10 @@ as a field) and the list page <Object>_ListPage, each as its toolkit writes it a
 the names without the prefix, split at capitals ("UsrShipDate" -> "Ship date"). An existing schema or binding
 is refused, never overwritten. Everything is built in a scratch copy first: --dry-run prints the diff of every
 file, otherwise the files are copied into the package.
+
+`source` writes an empty source code schema (SourceCodeSchemaManager: full metadata, `.SourceCode` resources, a
+CRLF `.cs` laid out by the code style; `--service` the [ServiceContract] skeleton of the KB recipe), `module` a client
+module (ClassicSchema.create_module; `--mixin` the Ext.define mixin a Classic page lists in `mixins`).
 """
 
 from __future__ import annotations
@@ -24,10 +30,15 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from creatio_schemas.classicui import ClassicSchema  # noqa: E402
+from creatio_schemas.classicui.write import MODULE_BASE_UID  # noqa: E402
 from creatio_schemas.cli import CommandLine  # noqa: E402
 from creatio_schemas.data import DataBinding  # noqa: E402
 from creatio_schemas.entity import EntitySchema  # noqa: E402
-from creatio_schemas.files import read_text  # noqa: E402
+from creatio_schemas.files import CRLF, dump_json, new_uid, read_text, write_text  # noqa: E402
+from creatio_schemas.resources import Resources  # noqa: E402
+from creatio_schemas.schema import Descriptor  # noqa: E402
+from creatio_schemas.workspace import Package  # noqa: E402
 from creatio_schemas.page import PageSchema  # noqa: E402
 from creatio_schemas.workspace import Workspace  # noqa: E402
 
@@ -165,6 +176,123 @@ def entity(_, a) -> int:
     return 0
 
 
+CLASS_CS = """namespace Terrasoft.Configuration.@NAME@Namespace
+{
+	using System;
+	using Terrasoft.Common;
+	using Terrasoft.Core;
+
+	#region Class: @NAME@
+
+	/// <summary>
+	/// @CAPTION@.
+	/// </summary>
+	public class @NAME@
+	{
+
+		#region Fields: Private
+
+		private readonly UserConnection _userConnection;
+
+		#endregion
+
+		#region Constructors: Public
+
+		public @NAME@(UserConnection userConnection) {
+			userConnection.CheckArgumentNull(nameof(userConnection));
+			_userConnection = userConnection;
+		}
+
+		#endregion
+
+	}
+
+	#endregion
+
+}
+"""
+
+SERVICE_CS = """namespace Terrasoft.Configuration.@NAME@Namespace
+{
+	using System;
+	using System.ServiceModel;
+	using System.ServiceModel.Activation;
+	using System.ServiceModel.Web;
+	using Terrasoft.Web.Common;
+
+	#region Class: @NAME@
+
+	/// <summary>
+	/// @CAPTION@: a thin API over the Files/cs classes; called as POST 0/rest/@NAME@/Ping.
+	/// </summary>
+	[ServiceContract]
+	[DefaultServiceRoute]
+	[AspNetCompatibilityRequirements(RequirementsMode = AspNetCompatibilityRequirementsMode.Required)]
+	public class @NAME@ : BaseService
+	{
+
+		#region Methods: Public
+
+		[OperationContract]
+		[WebInvoke(Method = "POST", RequestFormat = WebMessageFormat.Json, BodyStyle = WebMessageBodyStyle.Wrapped,
+			ResponseFormat = WebMessageFormat.Json)]
+		public string Ping(string value) {
+			return value;
+		}
+
+		#endregion
+
+	}
+
+	#endregion
+
+}
+"""
+
+
+def create_source(package: Path, name: str, caption: str, service: bool = False, cultures: list[str] | None = None,
+                  version: str = "8.2.3.1351") -> list[Path]:
+    """An empty source code schema in the shape of real ones (102 surveyed): BOM + CRLF JSON files without a final newline,
+    HD1 the common base, a CRLF .cs without BOM, the caption in Resources/<Name>.SourceCode."""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
+        raise ValueError(f"{name!r} is not a valid schema name")
+    sdir = package / "Schemas" / name
+    if sdir.exists() or Workspace(package).find(name, "SourceCodeSchemaManager"):
+        raise FileExistsError(f"source code schema {name} exists in the workspace")
+    pkg, uid = Package(package), new_uid()
+    schema = {"ManagerName": "SourceCodeSchemaManager", "UId": uid, "A2": name, "A5": pkg.created_in_uid(), "B1": [], "B2": [], "B3": [],
+              "B6": pkg.uid, "B8": version, "HD1": MODULE_BASE_UID}
+    write_text(sdir / "metadata.json", dump_json({"MetaData": {"Schema": schema}}), True)
+    desc = Descriptor.new(sdir / "descriptor.json", {"UId": uid, "Name": name, "ModifiedOnUtc": "", "ManagerName": "SourceCodeSchemaManager",
+                                                     "Caption": caption, "DependsOn": []})
+    write_text(desc.path, desc.text, True)
+    write_text(sdir / "properties.json", dump_json({"Properties": {"CreatedInVersion": version}}), True)
+    code = (SERVICE_CS if service else CLASS_CS).replace("@NAME@", name).replace("@CAPTION@", caption.rstrip("."))
+    write_text(sdir / f"{name}.cs", code.replace("\n", CRLF), False)
+    known = sorted({p.name[len("resource."):-len(".xml")] for p in package.glob("Resources/*/resource.*.xml")})
+    res = Resources.empty(package / "Resources" / f"{name}.SourceCode", cultures or known or ["en-US"])
+    res.set("Caption", caption)
+    for path, (text, bom) in res.files().items():
+        write_text(path, text, bom)
+    return sorted([*sdir.iterdir(), *res.folder.iterdir()])
+
+
+def source(_, a) -> int:
+    package = Path(a.package).resolve()
+    for f in create_source(package, a.name, a.caption, a.service, a.cultures.split(",") if a.cultures else None):
+        print(f"  {f.relative_to(package).as_posix()}")
+    return 0
+
+
+def module(_, a) -> int:
+    package = Path(a.package).resolve()
+    s = ClassicSchema.create_module(package, a.name, a.caption, a.mixin, a.cultures.split(",") if a.cultures else None)
+    for f in sorted(s.files()):
+        print(f"  {f.relative_to(package).as_posix()}")
+    print(f"  {(s.dir / (s.name + '.less')).relative_to(package).as_posix()}")
+    return 0
+
+
 def build_cli() -> CommandLine:
     c = CommandLine(__doc__, "object")
     p = c.command("entity", entity, "an object with its columns, lookups with seed rows, form and list pages", target=False)
@@ -176,6 +304,18 @@ def build_cli() -> CommandLine:
     p.add_argument("--pages", action="store_true", help="also <Object>_FormPage and <Object>_ListPage")
     p.add_argument("--cultures", help="comma-separated; default: the cultures the package's resources have")
     p.add_argument("--dry-run", action="store_true", help="print the diff of every file, write nothing")
+    p = c.command("source", source, "an empty source code schema (a class, or --service the web service skeleton)", target=False)
+    p.add_argument("package")
+    p.add_argument("name")
+    p.add_argument("--caption", required=True)
+    p.add_argument("--service", action="store_true", help="the [ServiceContract] skeleton of the KB recipe")
+    p.add_argument("--cultures", help="comma-separated; default the package's")
+    p = c.command("module", module, "an empty client module (--mixin: the Ext.define mixin a Classic page lists)", target=False)
+    p.add_argument("package")
+    p.add_argument("name")
+    p.add_argument("--caption")
+    p.add_argument("--mixin", action="store_true")
+    p.add_argument("--cultures", help="comma-separated; default the package's")
     return c
 
 

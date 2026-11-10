@@ -29,14 +29,17 @@ Rules that keep it correct:
 1. **Put the SQL in a file (`-f`).** Inline SQL on Windows PowerShell loses the double quotes
    around identifiers: `"SysPackage"` reaches PostgreSQL as `syspackage` and fails with
    `42P01 relation does not exist` (verified). From bash/cmd inline works, but a file is safe
-   everywhere and keeps multi-line statements readable.
+   everywhere and keeps multi-line statements readable. **One statement per file**: run each
+   statement alone (`tools/env/sql.py` splits on `;` at line ends and makes one call each).
 2. **Export JSON and read the file.** The console table wraps every cell at 40 characters,
    so long values and GUIDs get cut (verified: a 36-character GUID still fits; text does
    not). CSV is unquoted and semicolon-separated - unusable for free text.
 3. **Quote identifiers.** Creatio tables and columns are mixed-case on PostgreSQL:
    `select "Name" from "SysPackage"`. Lookup columns are stored as `<Column>Id`.
 4. **Exit code 1 on any SQL error**, with the database message and `POSITION` on stderr.
-   Read stderr, do not retry blindly.
+   Read stderr, do not retry blindly. **But do not rely on the exit code alone**: on another
+   8.x environment errors came back with exit code 0 and `[ERR]` in the output. Treat `[ERR]`
+   in the output as the failure (`tools/env/sql.py` exits 1 on it).
 5. **A one-line script may hold `|nl|` markers** where newlines would be; cliogate converts
    them before execution (verified).
 6. **Every statement is logged** on the site in `ClioSqlRequestLog` with its full text
