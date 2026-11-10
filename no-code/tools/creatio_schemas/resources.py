@@ -46,6 +46,11 @@ class Resources:
 
     # -- read ---------------------------------------------------------------- #
 
+    @property
+    def kind(self) -> str:
+        """The folder's kind suffix: Entity, ClientUnit, Process, Dcm, ProcessUserTask, SourceCode, Addon ..."""
+        return self.folder.name.rsplit(".", 1)[1] if "." in self.folder.name else ""
+
     def get(self, key: str, culture: str = "en-US") -> str | None:
         return self.cultures.get(culture, {}).get(key)
 
@@ -110,3 +115,9 @@ class Resources:
 
     def files(self) -> dict[Path, tuple[str, bool]]:
         return {self.folder / f"resource.{c}.xml": (self.render(c), True) for c in self.cultures}
+
+
+def package_resources(package: Path) -> dict[str, Resources]:
+    """Every resource folder of a package by schema name (`Resources/<Name>.<Kind>/`); `.kind` tells the kind."""
+    folder = Path(package) / "Resources"
+    return {d.name.rsplit(".", 1)[0]: Resources(d) for d in sorted(folder.iterdir()) if d.is_dir()} if folder.is_dir() else {}

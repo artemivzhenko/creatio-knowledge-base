@@ -15,7 +15,8 @@ Push a package to an environment with all the mandatory steps in one command. Pu
 ## How it works
 
 The typical package install requires four manual steps:
-1. Clear `IsChanged` flag in `SysSchema` (otherwise the platform thinks nothing changed)
+1. Clear `IsChanged` in `SysSchema`: schemas edited in the designer otherwise count as
+   modified locally and `push-pkg` skips them.
 2. Run `clio push-pkg` to install the package
 3. Check `clio last-compilation-log` to verify no errors
 4. Run `clio compile-configuration` when the package has processes with scripts or user tasks (takes minutes)
@@ -35,5 +36,5 @@ Output: one line per step, then a summary line with timing.
 - The script-or-user-task detection reads the package's process metadata files looking for
   `ProcessSchemaScriptTask` or `ProcessSchemaUserTask` class names - it does not parse the
   metadata structure, just searches text.
-- Probes require the probe commands to be available: `objects.py probe`, `rules.py probe`,
-  `sqlscripts.py probe`, `proc.py probe` (in the same environment where push.py runs).
+- `--probe` checks objects and SQL scripts. Rules need attribute values and processes are
+  proved by process cases, so neither is probed here.

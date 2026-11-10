@@ -12,7 +12,7 @@ from, and reading (`describe`, `validate`) never changes anything. Pure standard
 ```
 creatio_schemas/
   files.py        text I/O that keeps BOM and newlines, JSON dump, UIds, the WCF date, data value types
-  resources.py    Resources: resource.<culture>.xml of one schema
+  resources.py    Resources: resource.<culture>.xml of one schema; package_resources: every folder of a package
   workspace.py    Package (descriptor, UIds); Workspace: schema lookup, entity columns, page models
   schema.py       PackageItem (anything a package installs: files, diff, save), Schema on top of it, Descriptor
   sqlscript.py    SqlScript: SqlScripts/<Name>/ (engine, install type, dependencies)
@@ -115,6 +115,7 @@ python no-code/tools/dcm/tests/test_dcm_tools.py
 python no-code/tools/usertask/tests/test_usertask_tools.py
 python no-code/tools/data/tests/test_data_tools.py
 python no-code/tools/classicui/tests/test_classicui_tools.py
+python no-code/tools/resources/tests/test_resources_tools.py
 ```
 
 The fixtures are real 8.2.3 exports; the round trip must stay byte-identical, and reading

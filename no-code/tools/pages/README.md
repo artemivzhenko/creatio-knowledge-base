@@ -9,7 +9,7 @@ object, add a grid of another object, remove an element. Pure Python standard li
 
 | File | What it does |
 | --- | --- |
-| `pages.py` | CLI: inspect, add-field, add-grid, remove, validate |
+| `pages.py` | CLI: inspect, add-field, add-grid, remove, validate, from-schema |
 | [`../creatio_schemas/page/`](../creatio_schemas/README.md) | the library (`PageSchema`, `CONTROL_OF`) |
 | `tests/` | `python tests/test_pages_tools.py` - round trip and build checks on real 8.2.3 pages of both body forms |
 
@@ -69,6 +69,46 @@ operations (`path: ["attributes"]`, `path: ["dataSources"]`). The tools write in
 the page has and keep its indentation (tabs for the designer, two spaces for clio). Handlers
 and anything else outside the JSON sections are kept as text.
 
+## The page file of the UI test utility
+
+`from-schema` writes `Configuration/pages/<name>.json` of `automatic-creatio-tests` from the page
+schema - no browser, no record, no environment. Describe a page from the package first; run
+`analyse` when the page is not in a package or its parent's elements matter.
+
+```bash
+python pages.py from-schema UsrPkg UsrOrder_FormPage --out <testFramework>/Configuration/pages/UsrOrderForm.json
+python pages.py from-schema UsrPkg UsrOrder_FormPage --compare <testFramework>/Configuration/pages/UsrOrderForm.json
+```
+
+- `code` is the element's `name`: the utility addresses an element by `element-name`, which is that
+  name (all 11 own controls of the designer-made test page, and all 18 of the tool-made order page,
+  matched what `analyse` wrote).
+- `type` from the component (`creatio_schemas/page/catalog.py`): `crt.Input` Text, `crt.NumberInput`
+  Integer for an Integer column else Decimal, `crt.DateTimePicker` by `pickerType` (date, time,
+  datetime; else the column's type), `crt.Checkbox` Boolean, `crt.ComboBox` Lookup, `crt.RichTextEditor`,
+  `crt.EmailInput`, `crt.PhoneInput`, `crt.WebInput` Link, `crt.Button`, `crt.TabContainer` Tab,
+  `crt.DataGrid` with its column captions, `crt.EntityStageProgressBar` CasesBar,
+  `crt.ButtonToggleGroup` ToggleTab. Containers, labels, widgets, menus are listed at the end as
+  `# not written (<type>): ...`.
+- `label` as the page shows it: a literal; `#ResourceString(X)#` = the page string
+  `LocalizableStrings.X.Value`; `$Resources.Strings.X` = that string, else the caption of the column
+  the attribute `X` (or `<DataSource>_<Column>`) reads. A caption the workspace cannot resolve (a
+  platform object's column) is written empty and named in `# label unknown`: fix it by hand or with
+  `analyse` - `check <code> exists` compares it.
+- A page's own schema does not list its template's elements. For `PageWithTabsFreedomTemplate` the
+  ones `analyse` found are added (`CloseButton`, `BackButton`, `SetRecordRightsButton`,
+  `AttachmentAddButton`, `AttachmentRefreshButton`, `GeneralInfoTab`, `CardButtonToggleGroup`),
+  minus those the page removes or hides; for any other parent the output says the parent's elements
+  are unknown. Elements the page hides with `visible: false` are left out and named; elements a
+  business rule hides are written (they exist on some records).
+- The file is written as `analyse` writes it (two spaces, LF, elements by type then code): for
+  both test pages the output is byte-identical to `analyse`'s file (`tests/fixtures/expected/`).
+  `--compare` lists elements only in the schema, only in the file, and type, label, column and tab
+  differences; exit code 1 when there are any.
+
+Read from all 244 local Freedom UI pages without an error: 2451 elements written, 593 labels left
+empty for an object outside the workspace, 87 elements hidden by their page.
+
 ## Traps
 
 - **A page saved in the designer is "modified locally"** and `push-pkg` skips it with a
@@ -84,4 +124,6 @@ and anything else outside the JSON sections are kept as text.
 ## Not covered
 
 Tab containers, expansion panels and new containers; moving or resizing an element; the
-list page; handlers.
+list page's columns (`PageSchema.create(..., "list")` writes the empty list page clio's `create-page`
+writes; `PageSchema.create(..., "form")` the empty form page - both byte for byte, used by
+`tools/scaffold`); handlers.

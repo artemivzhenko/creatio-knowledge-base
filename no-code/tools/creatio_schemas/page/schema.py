@@ -18,7 +18,7 @@ import json
 import re
 from pathlib import Path
 
-from ..files import new_uid, newline_of, read_text
+from ..files import dump_json, new_uid, newline_of, read_text, write_text
 from ..resources import Resources
 from ..schema import WARNING, Schema
 
@@ -49,6 +49,10 @@ CONTROL_OF = {
 # DataValueType codes a grid column carries; the ones not listed render as text (1)
 DVT_CODE = {"Guid": 0, "Text": 1, "Integer": 4, "Float": 5, "Money": 6, "DateTime": 7, "Date": 8, "Time": 9,
             "Lookup": 10, "Boolean": 12, "ShortText": 28, "MediumText": 29, "MaxSizeText": 30, "LongText": 31}
+
+# template -> (asset, parent UId, parent name) of the empty pages clio's create-page writes on 8.2.3
+PAGE_TEMPLATES = {"form": ("FormPage", "3b2e117f-8c6b-4ca5-80a2-7ebb497cddf9", "PageWithTabsFreedomTemplate"),
+                  "list": ("ListPage", "3334b6c0-c8ab-4b59-a367-0c9182102552", "ListPageV2Template")}
 
 DEFAULT_FIELD_PARENT = "SideAreaProfileContainer"
 DEFAULT_GRID_PARENT = "GeneralInfoTabContainer"
@@ -411,6 +415,127 @@ class PageSchema(Schema):
             lines.append(f"  ! {p}")
         return "\n".join(lines)
 
+    # -- the UI test utility's page file ----------------------------------------- #
+
+    def _text(self, value) -> str | None:
+        """A caption or label as the page shows it: a literal, a page string, or the caption of the bound column; None when unknown."""
+        if not isinstance(value, str):
+            return None
+        m = re.fullmatch(r"#ResourceString\((\w+)\)#", value) or re.fullmatch(r"\$Resources\.Strings\.(\w+)", value)
+        if not m:
+            return None if value.startswith("$") else value
+        key = m.group(1)
+        text = self.resources.get(f"LocalizableStrings.{key}.Value")
+        if text is not None:
+            return text
+        # not a page string: an attribute (PDS_Name -> PDS.Name) or <DataSource>_<Column>, shown with the column's caption
+        path = ((self.attributes.get(key) or {}).get("modelConfig") or {}).get("path") or key.replace("_", ".", 1)
+        ds, _, column = path.partition(".")
+        entity = ((self.data_sources.get(ds) or {}).get("config") or {}).get("entitySchemaName")
+        return self._captions_of(entity).get(column) if entity and column else None
+
+    def _bound_type(self, values: dict) -> str | None:
+        """The type name of the column a control is bound to (`control: "$Attr"` -> PDS.Column), when the workspace knows it."""
+        control = values.get("control")
+        path = ((self.attributes.get(control[1:]) or {}).get("modelConfig") or {}).get("path", "") if isinstance(control, str) and control.startswith("$") else ""
+        ds, _, column = path.partition(".")
+        entity = ((self.data_sources.get(ds) or {}).get("config") or {}).get("entitySchemaName")
+        return self.workspace.columns(entity).get(column, (None,))[0] if entity and column else None
+
+    def page_file(self, name: str | None = None) -> tuple[dict, list[str]]:
+        """The UI test utility's page file for this page (Configuration/pages/<name>.json) and notes on what was left out."""
+        from .catalog import FRAMEWORK_TYPE, PICKER_TYPE, TEMPLATE_ELEMENTS
+        parent = (self.descriptor.data.get("Parent") or {}).get("Name")
+        entries = {e["code"]: copy.deepcopy(e) for e in TEMPLATE_ELEMENTS.get(parent, [])}
+        unknown: dict[str, list[str]] = {}
+        hidden, unlabelled = [], []
+        for op in self.view_config_diff:
+            code, values, operation = op.get("name"), op.get("values") or {}, op.get("operation")
+            if not code or operation == "move":
+                continue
+            if operation == "remove":
+                entries.pop(code, None)
+                continue
+            if values.get("visible") is False:
+                entries.pop(code, None)
+                hidden.append(code)
+                continue
+            if operation == "merge" and code in entries:
+                text = self._text(values.get("caption", values.get("label")))
+                if text is not None:
+                    entries[code]["label"] = text
+                continue
+            kind = values.get("type")
+            if kind not in FRAMEWORK_TYPE:
+                if kind:
+                    unknown.setdefault(kind, []).append(code)
+                continue
+            ftype = FRAMEWORK_TYPE[kind]
+            if kind == "crt.NumberInput":
+                ftype = "Integer" if self._bound_type(values) == "Integer" else "Decimal"
+            elif kind == "crt.DateTimePicker":
+                column = self._bound_type(values)
+                ftype = PICKER_TYPE.get(values.get("pickerType")) or (column if column in ("Date", "Time", "DateTime") else "DateTime")
+            raw = values.get("caption", values.get("label"))
+            label = "" if raw is None and kind == "crt.DataGrid" else self._text(raw)
+            if label is None:
+                unlabelled.append(code)
+                label = ""
+            entry = {"code": code, "label": label, "type": ftype}
+            if kind == "crt.DataGrid":
+                entry["columns"] = [self._text(c.get("caption")) or "" for c in values.get("columns", [])]
+            entries[code] = entry
+        page = {"name": name or (self.name[:-len("_FormPage")] + "Form" if self.name.endswith("_FormPage") else self.name),
+                "url": f"/0/Shell/#Card/{self.name}", "type": "FreedomUI",
+                "elements": sorted(entries.values(), key=lambda e: (e["type"], e["code"]))}
+        notes = [f"not written ({kind}): {', '.join(codes)}" for kind, codes in sorted(unknown.items())]
+        if hidden:
+            notes.append(f"hidden by the page (visible: false): {', '.join(hidden)}")
+        if unlabelled:
+            notes.append(f"label unknown, written empty (a page string or a column outside the workspace): {', '.join(unlabelled)}")
+        if parent not in TEMPLATE_ELEMENTS:
+            notes.append(f"the elements of the parent {parent} are not known here: describe the page with analyse for its buttons and tabs")
+        return page, notes
+
+    # -- a new page -------------------------------------------------------------------- #
+
+    @classmethod
+    def create(cls, package: Path, name: str, entity: str, template: str = "form", caption: str = "",
+               cultures: list[str] | None = None, version: str = "8.2.3.1351") -> "PageSchema":
+        """An empty form page (PageWithTabsFreedomTemplate) or list page (ListPageV2Template) of `entity`, byte for byte what
+        clio's create-page writes (assets/new_FormPage.*, new_ListPage.*); fields go on with add_field."""
+        from ..schema import Descriptor
+        from ..workspace import Package
+        if template not in PAGE_TEMPLATES:
+            raise ValueError(f"template must be one of {sorted(PAGE_TEMPLATES)}")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
+            raise ValueError(f"{name!r} is not a valid schema name")
+        package = Path(package)
+        sdir = package / "Schemas" / name
+        if sdir.exists():
+            raise FileExistsError(sdir)
+        asset, parent_uid, parent = PAGE_TEMPLATES[template]
+        pkg, uid = Package(package), new_uid()
+        values = {"@NAME@": name, "@ENTITY@": entity, "@UID@": uid, "@CREATED_IN@": pkg.created_in_uid(), "@PACKAGE@": pkg.uid}
+
+        def fill(text: str) -> str:
+            for k, v in values.items():
+                text = text.replace(k, v)
+            return text
+        assets = Path(__file__).resolve().parent / "assets"
+        write_text(sdir / f"{name}.js", fill(read_text(assets / f"new_{asset}.js")[0]), False)
+        write_text(sdir / "metadata.json", fill(read_text(assets / f"new_{asset}.metadata.json")[0]), False)
+        desc = Descriptor.new(sdir / "descriptor.json", {"UId": uid, "Name": name, "ModifiedOnUtc": "", "Parent": {"UId": parent_uid, "Name": parent},
+                                                          "ManagerName": "ClientUnitSchemaManager", "Caption": caption or name, "DependsOn": []})
+        write_text(desc.path, desc.text, True)
+        write_text(sdir / "properties.json", dump_json({"Properties": {"CreatedInVersion": version, "Group": "Page", "SchemaType": "AngularSchema"}}), True)
+        page = cls(package, name)
+        known = sorted({p.name[len("resource."):-len(".xml")] for p in package.glob("Resources/*/resource.*.xml")})
+        page.resources = Resources.empty(page.resources.folder, cultures or known or ["en-US"])
+        page.resources.set("Caption", caption or name)  # clio writes the caption to every culture
+        page.save()
+        return page
+
     def render_body(self) -> str:
         if getattr(self, "mobile", False):
             if any(s.changed for s in self.sections.values()):
@@ -431,3 +556,16 @@ class PageSchema(Schema):
         out = super().files()
         out[self.body_path] = (self.render_body(), self.body_bom)
         return out
+
+
+def compare_page_files(expected: dict, actual: dict) -> list[str]:
+    """What differs between two page files: elements only in one, and type, label or column differences of the shared ones."""
+    a = {e["code"]: e for e in actual.get("elements", [])}
+    b = {e["code"]: e for e in expected.get("elements", [])}
+    lines = [f"only in the schema: {code} ({a[code]['type']})" for code in sorted(set(a) - set(b))]
+    lines += [f"only in the file: {code} ({b[code]['type']})" for code in sorted(set(b) - set(a))]
+    for code in sorted(set(a) & set(b)):
+        for key in ("type", "label", "columns", "tabs"):
+            if a[code].get(key) != b[code].get(key) and (key in a[code] or key in b[code]):
+                lines.append(f"{key} of {code}: schema {a[code].get(key)!r}, file {b[code].get(key)!r}")
+    return lines

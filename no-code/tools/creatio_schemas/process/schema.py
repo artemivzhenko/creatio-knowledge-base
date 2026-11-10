@@ -41,6 +41,26 @@ _LOOKUP_CONST_RE = re.compile(r"\[#Lookup\.[^.#]+\.([^.#]+)#\]")
 _BOOL_CONST_RE = re.compile(r"\[#BooleanValue\.(True|False)#\]")
 
 
+def copy_called_params(owner_uid: str, element: dict, called: "ProcessSchema", mappings: list) -> list[dict]:
+    """The copies of the called process's parameters a sub-process flow element lacks, appended to its BP2, each with its
+    mapping appended to `mappings` (the BK15 of the process or DCM case `owner_uid`), as the designer writes them."""
+    params = element.setdefault("BP2", [])
+    have = {p["A2"] for p in params}
+    added = []
+    for cp in called.params:
+        if cp["A2"] in have:
+            continue
+        p = {"BL1": cp["BL1"], "UId": new_uid(), "A2": cp["A2"], "A3": called.uid, "A4": called.uid, "IL2": element["UId"], "L1": cp["L1"],
+             "L8": {"GS5": called.uid}}
+        p.update({k: cp[k] for k in ("L9", "L12") if k in cp})
+        params.append(p)
+        added.append(p)
+        mappings.append({"BL1": NS + "ProcessSchemaMapping", "UId": new_uid(), "A2": element["A2"], "A3": owner_uid, "A4": owner_uid,
+                         "GT2": f"[Element:{{{element['UId']}}}].[Parameter:{{{p['UId']}}}]", "GT3": p["UId"], "GT5": cp["UId"],
+                         "GT4": called.uid, "GT1": {"GS5": called.uid}})
+    return added
+
+
 class ProcessSchema(Schema):
     RESOURCE_SUFFIX = "Process"
 
@@ -398,17 +418,7 @@ class ProcessSchema(Schema):
         unknown = [n for n in values if n not in {p["A2"] for p in called.params}]
         if unknown:
             raise KeyError(f"{called.name} has no parameter {', '.join(unknown)}; parameters: {', '.join(p['A2'] for p in called.params) or '(none)'}")
-        have = {p["A2"] for p in params}
-        for cp in called.params:
-            if cp["A2"] in have:
-                continue
-            p = {"BL1": cp["BL1"], "UId": new_uid(), "A2": cp["A2"], "A3": called.uid, "A4": called.uid, "IL2": element["UId"], "L1": cp["L1"],
-                 "L8": {"GS5": called.uid}}
-            p.update({k: cp[k] for k in ("L9", "L12") if k in cp})
-            params.append(p)
-            self.own_list("BK15").append({"BL1": NS + "ProcessSchemaMapping", "UId": new_uid(), "A2": element["A2"], "A3": self.uid, "A4": self.uid,
-                                          "GT2": f"[Element:{{{element['UId']}}}].[Parameter:{{{p['UId']}}}]", "GT3": p["UId"], "GT5": cp["UId"],
-                                          "GT4": called.uid, "GT1": {"GS5": called.uid}})
+        copy_called_params(self.uid, element, called, self.own_list("BK15"))
         for name, value in values.items():
             self.set_value(element, name, value, expression)
 

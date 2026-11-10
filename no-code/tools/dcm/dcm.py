@@ -9,6 +9,9 @@
     python dcm.py remove-stage <package> <Case> <stage>
     python dcm.py connect      <package> <Case> <from> <to> [--one-way]
     python dcm.py disconnect   <package> <Case> <from> <to> [--one-way]
+    python dcm.py add-step     <package> <Case> --stage Stage2 --process UsrNotify_Process --caption "Notify"
+                               [--name DcmElement5] [--map Request={Record:Id} ..] [--required] [--when "NextStage = Stage3 -> Stage3" ..]
+    python dcm.py remove-step  <package> <Case> <step>
     python dcm.py set-caption  <package> <Case> <Caption|stage> <value>
     python dcm.py enable       <package> <Case>
     python dcm.py disable      <package> <Case>
@@ -16,7 +19,9 @@
 A case runs on one object and one of its lookup columns (the stage column); a stage is a record of
 that lookup, with a colour and optional steps (sub-processes started on entering the stage).
 `connect` says which stage may follow which (both ways unless --one-way). Steps and their
-conditions are read and described, not written: build them in the designer or copy their JSON.
+conditions are written by add-step: --map gives the called process's parameters ({Record:Column} of the
+case's record, {Parameter:X} of the case, or a constant), --when "Param op value -> Stage" moves the record
+on a result (a lookup value may name a stage of the case).
 Every writing command accepts --dry-run. After `clio push-pkg` (clear SysSchema.IsChanged first)
 the case shows on the object's pages.
 """
@@ -26,7 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from creatio_schemas.cli import CommandLine  # noqa: E402
+from creatio_schemas.cli import CommandLine, parse_assignments  # noqa: E402
 from creatio_schemas.dcm import DcmSchema  # noqa: E402
 
 
@@ -49,6 +54,17 @@ def new(case, a):
 def add_stage(case, a):
     s = case.add_stage(a.caption, a.record, name=a.name, color=a.color, parent=a.parent)
     print(f"add stage {s['A2']} {a.caption!r} record {a.record}")
+
+
+def add_step(case, a):
+    conditions = []
+    for spec in a.when:
+        if "->" not in spec:
+            raise ValueError(f'--when expects "Param op value -> Stage", got {spec!r}')
+        when, stage = spec.rsplit("->", 1)
+        conditions.append((when.strip(), stage.strip()))
+    e = case.add_step(a.stage, a.name, a.process, a.caption, parse_assignments(a.map), a.required, conditions)
+    print(f"add step {e['A2']} {a.caption!r} -> {a.process}")
 
 
 def remove_stage(case, a):
@@ -96,6 +112,17 @@ def build() -> CommandLine:
     p.add_argument("--parent", help="make it an alternative of this stage")
     p = c.command("remove-stage", remove_stage, "drop a stage, its connections and captions", writes=True)
     p.add_argument("stage")
+    p = c.command("add-step", add_step, "a step that starts a process of the workspace on a stage", writes=True)
+    p.add_argument("--stage", required=True)
+    p.add_argument("--process", required=True)
+    p.add_argument("--caption", required=True)
+    p.add_argument("--name")
+    p.add_argument("--map", action="append", default=[], metavar="PARAM=VALUE", help="repeatable; {Record:Column}, {Parameter:X} or a constant")
+    p.add_argument("--required", action="store_true")
+    p.add_argument("--when", action="append", default=[], metavar='"Param op value -> Stage"', help="repeatable; a result condition")
+    p = c.command("remove-step", lambda case, a: print(f"remove step {case.remove_step(a.step)}"), "drop a step, its mappings and captions",
+                  writes=True)
+    p.add_argument("step")
     for name, fn, help_ in (("connect", connect, "allow moving between two stages"), ("disconnect", disconnect, "forbid moving between two stages")):
         p = c.command(name, fn, help_, writes=True)
         p.add_argument("src")

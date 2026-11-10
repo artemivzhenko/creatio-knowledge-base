@@ -145,6 +145,100 @@ def test_handlers_survive_comments_with_apostrophes_and_braces():
     assert [name for name, _ in page.handlers()] == ["crt.HandleViewModelInitRequest", "usr.SecondRequest"]
 
 
+def test_create_writes_what_clio_create_page_writes():
+    import re
+    pkg = copy()
+    try:
+        orig = PageSchema(pkg, "iaOrder_FormPage")  # an empty form page made by clio from PageWithTabsFreedomTemplate
+        new = PageSchema.create(pkg, "iaOrderCopy_FormPage", "iaOrder", "form", "Order form page")
+        swap = lambda t: t.replace(orig.descriptor.data["UId"], new.descriptor.data["UId"]).replace("iaOrder_FormPage", "iaOrderCopy_FormPage")  # noqa: E731
+        for a, b in (("iaOrder_FormPage.js", "iaOrderCopy_FormPage.js"), ("metadata.json", "metadata.json"), ("properties.json", "properties.json")):
+            assert swap(read(pkg / "Schemas" / "iaOrder_FormPage" / a)) == read(pkg / "Schemas" / "iaOrderCopy_FormPage" / b), a
+        undate = lambda t: re.sub(r"Date\(\d+\)", "Date(0)", t)  # noqa: E731
+        assert undate(swap(orig.descriptor.text)) == undate(new.descriptor.text)
+        for f in (pkg / "Resources" / "iaOrder_FormPage.ClientUnit").glob("*.xml"):  # the caption in each of the package's 28 cultures
+            assert read(f) == read(pkg / "Resources" / "iaOrderCopy_FormPage.ClientUnit" / f.name), f.name
+        listing = PageSchema.create(pkg, "iaOrder_ListPage", "iaOrder", "list", "Orders", ["en-US"])
+        assert listing.entity == "iaOrder" and listing.descriptor.data["Parent"]["Name"] == "ListPageV2Template" and listing.validate() == []
+        assert listing.diff() == "" and list(listing.resources.cultures) == ["en-US"]
+        for args, error in ((("iaOrder_ListPage", "iaOrder", "list"), FileExistsError), (("iaX_Page", "iaOrder", "card"), ValueError),
+                            (("ia X", "iaOrder", "form"), ValueError)):
+            try:
+                PageSchema.create(pkg, *args)
+            except error:
+                pass
+            else:
+                raise AssertionError(f"create{args} must raise {error.__name__}")
+    finally:
+        shutil.rmtree(pkg.parent, ignore_errors=True)
+
+
+EXPECTED = HERE / "fixtures" / "expected"  # what the UI test utility's analyse wrote for the two pages after their push
+
+
+def test_page_file_from_schema_equals_what_analyse_wrote():
+    from creatio_schemas.page import compare_page_files
+    data, notes = PageSchema(FIXTURES, "iaTests_FormPage").page_file()
+    assert json.dumps(data, indent=2, ensure_ascii=False) + "\n" == read(EXPECTED / "iaTestsForm.json")  # byte for byte
+    assert notes == ["not written (crt.Feed): Feed", "not written (crt.FileList): AttachmentList"]
+    # the order page was analysed after the 17 fields and the grid were put on it with these tools
+    pkg = copy()
+    try:
+        page = PageSchema(pkg, "iaOrder_FormPage")
+        expected = json.loads(read(EXPECTED / "iaOrderForm.json"))
+        assert all(line.startswith("only in the file: ") for line in compare_page_files(expected, page.page_file()[0]))
+        for e in expected["elements"]:
+            if e["code"] in page.workspace.columns("iaOrder"):
+                page.add_field(e["code"])
+        page.add_grid("iaOrdersGrid", "iaOrder", ["iaName", "iaQuantity", "iaAmount"])
+        assert compare_page_files(expected, page.page_file()[0]) == []
+    finally:
+        shutil.rmtree(pkg.parent, ignore_errors=True)
+
+
+def test_page_file_labels_types_and_template_elements():
+    page = PageSchema(FIXTURES, "iaTests_FormPage")
+    ops = page.view_config_diff
+    by_name = {op.get("name"): op for op in ops}
+    page.resources.set("LocalizableStrings.iaName_caption.Value", "Order name", ["en-US"])
+    by_name["iaName"]["values"]["label"] = "#ResourceString(iaName_caption)#"       # a page string
+    by_name["iaComment"]["values"]["label"] = "Plain text"                           # a literal
+    by_name["iaNumber"]["values"]["label"] = "$Resources.Strings.PDS_Nope_x1"         # nothing to resolve
+    by_name["iaDateTime"]["values"].pop("pickerType")                                # no picker type: the column's type
+    by_name["iaAccount"]["values"]["visible"] = False                                 # hidden by the page itself
+    ops.append({"operation": "merge", "name": "GeneralInfoTab", "values": {"caption": "Main"}})
+    ops.append({"operation": "remove", "name": "BackButton"})
+    data, notes = page.page_file("Custom")
+    got = {e["code"]: e for e in data["elements"]}
+    assert data["name"] == "Custom" and got["iaName"]["label"] == "Order name" and got["iaComment"]["label"] == "Plain text"
+    assert got["iaNumber"]["label"] == "" and any("label unknown" in n and "iaNumber" in n for n in notes)
+    assert got["iaDateTime"]["type"] == "DateTime" and "iaAccount" not in got and any("hidden" in n and "iaAccount" in n for n in notes)
+    assert got["GeneralInfoTab"]["label"] == "Main" and "BackButton" not in got
+    assert got["iaNumber"]["type"] == "Integer" and got["iaAmount"]["type"] == "Decimal" and got["iaOrderList"]["columns"] == ["Name", "Quantity"]
+    page.descriptor.set("Parent", {"UId": "00000000-0000-0000-0000-000000000001", "Name": "BaseMiniPageTemplate"})
+    data, notes = page.page_file()
+    assert "CloseButton" not in {e["code"] for e in data["elements"]} and any("BaseMiniPageTemplate" in n for n in notes)
+
+
+def test_from_schema_command():
+    import contextlib
+    import io
+    pkg = copy()
+    try:
+        out_file = pkg.parent / "iaTestsForm.json"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert main(["from-schema", str(pkg), "iaTests_FormPage", "--out", str(out_file)]) == 0
+            assert main(["from-schema", str(pkg), "iaTests_FormPage", "--compare", str(EXPECTED / "iaTestsForm.json")]) == 0
+            assert main(["from-schema", str(pkg), "iaOrder_FormPage", "--compare", str(EXPECTED / "iaOrderForm.json")]) == 1
+            assert main(["from-schema", str(pkg), "iaTests_FormPage", "--name", "X"]) == 0
+        text = out.getvalue()
+        assert read(out_file) == read(EXPECTED / "iaTestsForm.json") and "wrote " in text and "# not written (crt.Feed): Feed" in text
+        assert "no difference from" in text and "only in the file: iaAmount (Decimal)" in text and '"name": "X"' in text
+    finally:
+        shutil.rmtree(pkg.parent, ignore_errors=True)
+
+
 if __name__ == "__main__":
     for fn in [v for k, v in list(globals().items()) if k.startswith("test_")]:
         fn()

@@ -116,7 +116,12 @@ def summary(item) -> str:
     return kind_for(item).summary(item)
 
 
-def describe_package(package: Path | str, kind: str = "") -> str:
+# The output contract: a list answer shows at most DEFAULT_LIMIT lines, then one TAIL line; `limit=0` means all.
+DEFAULT_LIMIT = 40
+TAIL = "  ... {more} more; add limit=0 for all"
+
+
+def describe_package(package: Path | str, kind: str = "", limit: int = DEFAULT_LIMIT) -> str:
     """One line per schema and SQL script: kind, name, caption, stats. `kind` filters (object, process, page, rules, sql, client, source ...).
 
     Answered from the package index (see index.py), which checks itself against the disk first."""
@@ -138,7 +143,7 @@ def describe_package(package: Path | str, kind: str = "") -> str:
                 body.append(f"  {'data':<9} {name:<36} {'':<34} cannot read: {exc}")
     if kind and not body:
         body = [f"  (no {kind} items; kinds: object, process, rules, page, sql, client, addon, source, csharp, dcm, user-task, data)"]
-    return "\n".join(lines + body)
+    return "\n".join(lines + cut(body, limit))
 
 
 def _caption(item) -> str:
@@ -151,13 +156,10 @@ def _caption(item) -> str:
     return data.get("Caption", "") if isinstance(data, dict) else ""
 
 
-# The output contract: a list answer shows at most DEFAULT_LIMIT lines, then one TAIL line; `limit=0` means all.
-DEFAULT_LIMIT = 40
-TAIL = "  ... {more} more; add limit=0 for all"
-
-
 def cut(lines: list[str], limit: int = DEFAULT_LIMIT, hint: str = "") -> list[str]:
     """The first `limit` lines (0 = all) and, when something was left out, one tail line saying how much."""
+    if limit < 0:
+        raise QueryError("limit must be a non-negative integer")
     if limit and len(lines) > limit:
         return lines[:limit] + [TAIL.format(more=len(lines) - limit) + (f"; {hint}" if hint else "")]
     return lines

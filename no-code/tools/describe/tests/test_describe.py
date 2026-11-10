@@ -52,7 +52,7 @@ def test_a_kind_is_one_registry_entry():
                          {"hello": lambda item, name, f: f"world from {item.name}"})
     registry.register(demo)
     try:
-        PackageIndex(PAGES).refresh(rebuild=True)  # the index caches kind and summary; a new kind shows after a rebuild
+        # the index caches kind and summary, but carries a fingerprint of the registry: a new kind rebuilds it by itself
         assert "  demo      iaOrderStatus" in describe_package(PAGES) and "a demo lookup" in describe_package(PAGES, "demo")
         assert describe_item(PAGES, "iaOrderStatus", "hello") == "world from iaOrderStatus"
         assert "columns" not in describe_item(PAGES, "iaOrderStatus", "topics") and "files" in describe_item(PAGES, "iaOrderStatus", "topics")
@@ -73,6 +73,59 @@ def test_output_contract_cuts_long_answers():
     assert len(full.splitlines()) > 10 and len(short.splitlines()) == 11
     assert short.splitlines()[-1].startswith(f"  ... {len(full.splitlines()) - 10} more; add limit=0 for all; this is the summary - ask describe_item for one part (topics: ")
     assert "stages" in short.splitlines()[-1] and describe_schema(DCM, "iaRequestCases") == full  # 28 lines: under the default
+
+
+def test_list_limits_and_unlimited():
+    full = describe_item(PAGES, "iaTests_FormPage", "elements limit=0").splitlines()
+    short = describe_item(PAGES, "iaTests_FormPage", "elements limit=2").splitlines()
+    assert len(full) > 2 and short == full[:2] + [f"  ... {len(full) - 2} more; add limit=0 for all"]
+    package_full = describe_package(PAGES, limit=0).splitlines()
+    package_short = describe_package(PAGES, limit=2).splitlines()
+    assert package_short == package_full[:3] + [f"  ... {len(package_full) - 3} more; add limit=0 for all"]
+    for query in ("elements limit=-1", "elements limit=bad"):
+        try:
+            describe_item(PAGES, "iaTests_FormPage", query)
+            assert False, query
+        except QueryError as e:
+            assert "non-negative integer" in str(e)
+
+
+def test_find_and_lookup_limits():
+    from unittest.mock import patch
+    from creatio_schemas.describe import lookups
+    from creatio_schemas.describe import index
+
+    class FakeIndex:
+        def __init__(self, path):
+            self.package = Path(path)
+            self.data = {"package": "UsrPkg", "data": {}}
+            self.schemas = {
+                f"UsrLookup{i}": {"kind": "object", "parent": "BaseLookup", "caption": "", "summary": "",
+                                  "files": {}, "refs": ["UsrA", "UsrB", "UsrC"]}
+                for i in range(3)
+            }
+            self.schemas.update({
+                f"UsrUnknown{i}": {"kind": "object", "parent": "UsrExternal", "caption": "", "summary": "",
+                                   "files": {}, "refs": []}
+                for i in range(3)
+            })
+
+        def refresh(self):
+            pass
+
+        def referrers(self, name):
+            return [("object", f"UsrUser{i}") for i in range(3)]
+
+    with patch.object(index, "packages_of", return_value=[Path("UsrPkg")]), patch.object(index, "PackageIndex", FakeIndex):
+        limited = find_schema("unused", "UsrLookup0", 1)
+        assert limited.count("  ... 2 more; add limit=0 for all") == 2
+        assert "UsrB" not in limited and "UsrUser1" not in limited
+        full = find_schema("unused", "UsrLookup0", 0)
+        assert "UsrC" in full and "UsrUser2" in full and "... " not in full
+        limited = lookups("unused", 1)
+        assert limited.count("  ... 2 more; add limit=0 for all") == 2
+        full = lookups("unused", 0)
+        assert "UsrLookup2" in full and "UsrUnknown2" in full and "... " not in full
 
 
 def test_object_queries():
@@ -165,6 +218,56 @@ CS = HERE / "fixtures" / "UsrPkg"
 DATA = TOOLS / "data" / "tests" / "fixtures" / "UsrPkg"
 
 
+def test_index_binding_resources_and_format_rebuild():
+    import json
+    import shutil
+    import tempfile
+    from unittest.mock import patch
+    from creatio_schemas.describe import lookups
+    from creatio_schemas.resources import Resources
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pkg = Path(tmp) / "UsrPkg"
+        shutil.copytree(DATA, pkg)
+        original = PackageIndex(pkg)
+        original.refresh()
+        assert original.data["data"]["UsrStatus"]["keys"] == ["New", "In progress", "Done"]
+        binding = pkg / "Data" / "UsrStatus"
+        desc = {"Descriptor": {"Schema": {"Name": "UsrOrderStatus"}, "Columns": [
+            {"ColumnName": "Code", "ColumnUId": "usr-code"},
+            {"ColumnName": "Name", "ColumnUId": "usr-name"},
+        ]}}
+        (binding / "descriptor.json").write_text(json.dumps(desc), encoding="utf-8")
+        rows = {"PackageData": [
+            {"Row": [{"SchemaColumnUId": "usr-code", "Value": "UsrFirst"}]},
+            {"Row": [{"SchemaColumnUId": "usr-code", "Value": "UsrSecond"}]},
+        ]}
+        (binding / "data.json").write_text(json.dumps(rows), encoding="utf-8")
+        localization = binding / "Localization"
+        (localization / "data.json").write_text(json.dumps(rows), encoding="utf-8")
+        idx = PackageIndex(pkg)
+        idx.refresh()
+        entry = idx.data["data"]["UsrStatus"]
+        assert entry["rows"] == 2 and entry["columns"] == ["Code", "Name"]
+        assert entry["keys"] == ["UsrFirst", "UsrSecond"]
+        res = Resources(pkg / "Resources" / "UsrOrderStatus.Entity")
+        resources = idx.schemas["UsrOrderStatus"]["resources"]
+        assert resources == {"cultures": sorted(res.cultures), "keys": len(res.cultures.get("en-US", {})),
+                             "missing": {c: len(keys) for c, keys in res.missing().items()}}
+        assert "resources:" in find_schema(pkg, "UsrOrderStatus")
+        assert "Data/UsrStatus (2 rows, UsrPkg)" in find_schema(pkg, "UsrOrderStatus")
+        with patch("creatio_schemas.describe.index.read_text", side_effect=AssertionError("unexpected file read")):
+            assert "Data/UsrStatus (2 rows)" in lookups(pkg)
+        old = json.loads(idx.path.read_text(encoding="utf-8"))
+        old["format"] = 1
+        old["data"]["UsrStatus"]["rows"] = 99
+        idx.path.write_text(json.dumps(old), encoding="utf-8")
+        rebuilt = PackageIndex(pkg)
+        rebuilt.refresh()
+        assert rebuilt.data["format"] == 2 and rebuilt.data["data"]["UsrStatus"]["rows"] == 2
+        assert json.loads(idx.path.read_text(encoding="utf-8"))["format"] == 2
+
+
 def test_data_bindings_answer_columns_and_rows():
     assert describe_schema(DATA, "UsrStatus").startswith("UsrStatus: binds UsrOrderStatus, 3 rows, columns Id Name(loc) Description(loc)")
     listed = describe_package(DATA, "data")
@@ -172,7 +275,7 @@ def test_data_bindings_answer_columns_and_rows():
     cols = describe_item(DATA, "UsrStatus", "columns")
     assert cols.splitlines()[0].startswith("Id ") and "key" in cols.splitlines()[0] and "(loc)" in cols
     rows = describe_item(DATA, "UsrStatus", "rows limit=1 culture=en-US")
-    assert len(rows.splitlines()) == 2 and rows.endswith("... 2 more") and 'Name="New"' in rows
+    assert len(rows.splitlines()) == 2 and rows.endswith("... 2 more; add limit=0 for all") and 'Name="New"' in rows
     key = rows.splitlines()[0].split()[0]
     assert "Name = " in describe_item(DATA, "UsrStatus", f"row {key}")
     try:

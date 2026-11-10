@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import json
 import shutil
 import sys
 import tempfile
@@ -93,6 +94,93 @@ def test_edit_and_create():
             assert "not a lookup" in str(e)
         else:
             raise AssertionError("a text column must be refused as stage column")
+    finally:
+        shutil.rmtree(tmp.parent, ignore_errors=True)
+
+
+def test_steps_with_mappings_and_conditions():
+    from creatio_schemas import ProcessSchema
+    tmp = Path(tempfile.mkdtemp()) / "packages"
+    shutil.copytree(FIXTURES, tmp / "iaTest")
+    procs = TOOLS / "process" / "tests" / "fixtures" / "iaTest"
+    shutil.copytree(procs / "Schemas" / "iaProcess_0d4c445", tmp / "iaTest" / "Schemas" / "iaProcess_0d4c445")
+    shutil.copytree(procs / "Resources" / "iaProcess_0d4c445.Process", tmp / "iaTest" / "Resources" / "iaProcess_0d4c445.Process")
+    try:
+        pkg = tmp / "iaTest"
+        called = ProcessSchema(pkg, "iaProcess_0d4c445")
+        called.add_param("Request", "Lookup", "In", "Request")
+        nxt = called.add_param("NextStage", "Lookup", "Out", "Next stage")
+        nxt["L9"] = "0d1a858f-2b4c-4c4f-9738-a99900c3a482"  # the stage column's lookup, as the fixture's Approval step has it
+        called.save()
+        before = {p: read(p) for p in DcmSchema(pkg, "iaRequestCases").files()}
+
+        case = DcmSchema(pkg, "iaRequestCases")
+        e = case.add_step("Stage2", None, "iaProcess_0d4c445", "Check request", {"Request": "{Record:Id}"}, required=True,
+                          conditions=[("NextStage = Stage4", "Stage4")])
+        assert e["A2"] == "DcmElement5" and e["ProcessFlowElement"]["A2"] == "DcmProcessElement5" and e["RequiredType"] == 1
+        assert list(e) == ["BL1", "UId", "A2", "A3", "A4", "A5", "IL2", "RequiredType", "Conditions", "ProcessFlowElement"]
+        flow = e["ProcessFlowElement"]
+        assert list(flow) == ["BL1", "UId", "A2", "BL7", "BN2", "BO2", "BO3", "BP2", "CK4", "CK2", "CK3"] and flow["CK4"] == called.uid
+        request = next(p for p in flow["BP2"] if p["A2"] == "Request")
+        assert request["L8"] == {"GS1": 3, "GS2": "[#ColumnValue.{767ff163-8d41-406e-93db-11e41147b5c3}.{ae0e45ca-c495-4fe7-a39d-3ab7278e1617}#]",
+                                 "GS5": case.uid}
+        maps = [m for m in case.schema["BK15"] if m["A2"] == "DcmProcessElement5"]
+        assert len(maps) == 2 and all(m["GT4"] == called.uid and m["GT1"] == {"GS5": called.uid} for m in maps)
+        cond = json.loads(e["Conditions"])[0]
+        assert cond["nextStageId"] == case.stage("Stage4")["StageRecordId"] and cond["resultFormula"]["displayValue"].startswith("[#Check request.Next stage#] == [#Lookup.")
+        assert case.errors() == []
+        case.save()
+
+        again = DcmSchema(pkg, "iaRequestCases")
+        step = describe_item(pkg, "iaRequestCases", "step DcmElement5")
+        assert "param Request: [#Main record.Id#]" in step and "-> Stage4" in step, step
+        assert "step DcmElement5" in describe_item(pkg, "iaRequestCases", "stage Stage2")
+        bad = next(p for p in again.element("DcmElement5")[1]["ProcessFlowElement"]["BP2"] if p["A2"] == "NextStage")
+        bad["A2"] = "Gone"
+        assert "step DcmElement5: parameter Gone is not a parameter of iaProcess_0d4c445" in again.validate()
+        bad["A2"] = "NextStage"
+        for fn, error in ((lambda: again.add_step("Stage2", None, "iaNope_Process", "x"), KeyError),
+                          (lambda: again.add_step("Stage2", None, "iaProcess_0d4c445", "x", {"Nope": 1}), KeyError),
+                          (lambda: again.add_step("Stage2", "DcmElement5", "iaProcess_0d4c445", "x"), ValueError),
+                          (lambda: again.add_step("Stage2", None, "iaProcess_0d4c445", "x", {"Request": "{Record:Nope}"}), KeyError),
+                          (lambda: again.add_step("Stage2", None, "iaProcess_0d4c445", "x", conditions=[("NextStage ~ 1", "Stage4")]), ValueError),
+                          (lambda: again.add_step("Stage2", None, "iaProcess_0d4c445", "x", conditions=[("Nope = 1", "Stage4")]), KeyError)):
+            try:
+                fn()
+            except error:
+                pass
+            else:
+                raise AssertionError(f"expected {error.__name__}")
+        # a constant, a case parameter and a plain (non-lookup) condition
+        again = DcmSchema(pkg, "iaRequestCases")
+        e2 = again.add_step("Stage5", "DcmElement9", "iaProcess_0d4c445", "Const", {"Request": "c4ed336c-3e9b-40fe-8b82-5632476472b4"},
+                            conditions=[("NextStage != c4ed336c-3e9b-40fe-8b82-5632476472b4", "Stage6")])
+        assert next(p for p in e2["ProcessFlowElement"]["BP2"] if p["A2"] == "Request")["L8"]["GS1"] == 1 and e2["RequiredType"] == 0
+        try:
+            again.add_step("Stage5", None, "iaProcess_0d4c445", "Par", {"Request": "{Parameter:Nope}"})
+        except KeyError:
+            pass
+        else:
+            raise AssertionError("an unknown case parameter must raise")
+
+        case = DcmSchema(pkg, "iaRequestCases")  # the saved case: DcmElement5 only (the second step was never saved)
+        assert case.remove_step("Check request") == "DcmElement5"
+        case.save()
+        after = DcmSchema(pkg, "iaRequestCases")
+        for path, (text, bom) in after.files().items():
+            if path.name != "descriptor.json":  # ModifiedOnUtc moves with every save
+                assert ("﻿" if bom else "") + text == before[path], path
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert main(["add-step", str(pkg), "iaRequestCases", "--stage", "Stage2", "--process", "iaProcess_0d4c445", "--caption", "Cli step",
+                         "--map", "Request={Record:Id}", "--when", "NextStage = Stage4 -> Stage4", "--required"]) == 0
+            assert main(["remove-step", str(pkg), "iaRequestCases", "Cli step", "--dry-run"]) == 0
+        assert "add step DcmElement5 'Cli step'" in out.getvalue() and "remove step DcmElement5" in out.getvalue()
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert main(["add-step", str(pkg), "iaRequestCases", "--stage", "Stage2", "--process", "iaProcess_0d4c445", "--caption", "x",
+                         "--when", "no arrow"]) == 2
+        assert DcmSchema(pkg, "iaRequestCases").element("DcmElement5")[1]["RequiredType"] == 1
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
 

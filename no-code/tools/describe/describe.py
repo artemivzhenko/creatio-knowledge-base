@@ -43,6 +43,7 @@ def main(argv=None) -> int:
     a = sub.add_parser("package", help="one line per schema")
     a.add_argument("package")
     a.add_argument("--kind", default="")
+    a.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     b = sub.add_parser("schema", help="the summary of one schema")
     b.add_argument("package")
     b.add_argument("schema")
@@ -57,20 +58,22 @@ def main(argv=None) -> int:
     e = sub.add_parser("find", help="where a schema lives and what touches it")
     e.add_argument("path")
     e.add_argument("schema")
+    e.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     f = sub.add_parser("lookups", help="every lookup object (parent chain reaches BaseLookup) with bindings and users")
     f.add_argument("path")
+    f.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     args = p.parse_args(argv)
     try:
         if args.command == "package":
-            print(describe_package(args.package, args.kind))
+            print(describe_package(args.package, args.kind, args.limit))
         elif args.command == "lookups":
-            print(lookups(args.path))
+            print(lookups(args.path, args.limit))
         elif args.command == "schema":
             print(describe_schema(args.package, args.schema, args.limit))
         elif args.command == "index":
             print(index_workspace(args.path, args.rebuild))
         elif args.command == "find":
-            print(find_schema(args.path, args.schema))
+            print(find_schema(args.path, args.schema, args.limit))
         else:
             print(describe_item(args.package, args.schema, args.query))
     except (FileNotFoundError, KeyError, QueryError) as e:

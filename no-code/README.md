@@ -100,6 +100,18 @@ containers and handlers the file alone cannot prove (`classicui.py`); read-only.
 agent: build and run, the page and process files, the DSL in one table, the backend tier, the
 recipe that turns an acceptance criterion into an `.act` case, and the traps; nothing to run here.
 
+## Resource tools
+
+[tools/resources/](tools/resources/README.md) works on the captions of a whole package: the
+cultures it ships, the keys missing per culture and schema, filling a culture from another,
+setting, renaming and removing a key everywhere (`resources.py`); only changed files are written.
+
+## Scaffold
+
+[tools/scaffold/](tools/scaffold/README.md) builds the start of an author task in one command: an object
+with its columns, lookup objects with a data binding of their rows, a form page with every field and a
+list page, each through its toolkit and validated, as one dry-run diff first (`scaffold.py entity`).
+
 ## SQL script tools
 
 [tools/sqlscripts/](tools/sqlscripts/README.md) creates and changes the package's SQL scripts

@@ -10,10 +10,11 @@ IL2 container stage, CK4 called schema).
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from ..entity.catalog import STOCK_ENTITIES
-from ..files import dump_json, is_uid, new_uid, write_text
+from ..files import EMPTY_GUID, dump_json, is_uid, new_uid, write_text
 from ..filters import summarize
 from ..resources import Resources
 from ..schema import WARNING, Descriptor, Schema
@@ -24,6 +25,8 @@ NS = "Terrasoft.Core.DcmProcess."
 DCM_PARENT = "51b280eb-d8a3-4932-81b9-ef61a0877aab"  # BK8 of every case: the base DCM schema
 DEFAULT_COLOR = "#4D84E2"
 LOOKUP_TYPE = "b295071f-7ea9-4e62-8d1a-919bf3732ff2"
+SUBPROCESS_MANAGER = "49eafdbb-a89e-4bdf-a29d-7f17b1670a45"  # BL7 of a step's flow element
+ID_COLUMN = "ae0e45ca-c495-4fe7-a39d-3ab7278e1617"
 
 
 class DcmSchema(Schema):
@@ -193,6 +196,16 @@ class DcmSchema(Schema):
             lines.append(f"    {n} -> " + ("any" if set(t) >= set(names) - {n} else ", ".join(t) if t else "(nowhere)"))
         return lines
 
+    def _called_params(self, uid: str) -> set[str] | None:
+        """Parameter names of a process of the workspace (None when it cannot be read)."""
+        from ..process.schema import ProcessSchema
+        for s in self.workspace.find(uid, "ProcessSchemaManager"):
+            try:
+                return {p["A2"] for p in ProcessSchema(s["dir"].parent.parent, s["name"]).params}
+            except (OSError, ValueError, KeyError):
+                return None
+        return None
+
     def validate(self) -> list[str]:
         problems = []
         if not self.entity_uid:
@@ -216,6 +229,11 @@ class DcmSchema(Schema):
                 called = (e.get("ProcessFlowElement") or {}).get("CK4")
                 if called and not self.workspace.name_of(called):
                     problems.append(f"{WARNING}step {e['A2']}: called process {called} is not in the workspace")
+                elif called:
+                    known = self._called_params(called)
+                    for p in (e.get("ProcessFlowElement") or {}).get("BP2", []):
+                        if known is not None and p["A2"] not in known:
+                            problems.append(f"step {e['A2']}: parameter {p['A2']} is not a parameter of {self.workspace.name_of(called)}")
                 for c in self.conditions(e):
                     if is_uid(c["then"]):
                         problems.append(f"step {e['A2']}: condition moves to an unknown stage record {c['then']}")
@@ -300,6 +318,108 @@ class DcmSchema(Schema):
             self.schema.pop("Filters", None)
         else:
             self.schema["Filters"] = filter_json if isinstance(filter_json, str) else json.dumps(filter_json, ensure_ascii=False)
+
+    # -- steps ---------------------------------------------------------------- #
+
+    def _step_value(self, value) -> tuple[dict, str]:
+        """(L8, display value) of a step parameter: {Record:Column} of the case's record, {Parameter:X} of the case, or a constant."""
+        text = "true" if value is True else "false" if value is False else str(value)
+        m = re.fullmatch(r"\{Record:(\w+)\}", text)
+        if m:
+            from ..data.binding import object_columns  # local: entity columns with their parents, as the data toolkit reads them
+            name = self.workspace.name_of(self.entity_uid)
+            columns = {n: c["UId"] for n, c in object_columns(self.workspace, name).items()} if name else {}
+            columns.setdefault("Id", ID_COLUMN)  # the one column whose UId is the same on every object
+            if m.group(1) not in columns:
+                raise KeyError(f"{self.entity} has no column {m.group(1)}" + (f"; columns: {', '.join(sorted(columns))}" if len(columns) > 1 else
+                                                                            " (the object is not in the workspace: only Id is known)"))
+            return ({"GS1": 3, "GS2": f"[#ColumnValue.{{{self.entity_uid}}}.{{{columns[m.group(1)]}}}#]", "GS5": self.uid},
+                    f"[#Main record.{m.group(1)}#]")
+        m = re.fullmatch(r"\{Parameter:(\w+)\}", text)
+        if m:
+            p = next((x for x in self.schema.get("FJ1", []) if x["A2"] == m.group(1)), None)
+            if not p:
+                raise KeyError(f"the case has no parameter {m.group(1)}; use {{Record:Column}} for a column of the case's record")
+            return {"GS1": 3, "GS2": f"[#[IsOwnerSchema:false].[IsSchema:false].[Parameter:{{{p['UId']}}}]#]", "GS5": self.uid}, f"[#{m.group(1)}#]"
+        return {"GS1": 1, "GS2": text, "GS5": self.uid}, text
+
+    def _condition(self, element: dict, flow: dict, when: str, next_stage: str) -> dict:
+        """One result condition `Param op value` -> the next stage, in the designer's form."""
+        m = re.fullmatch(r"\s*(\w+)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*", when)
+        if not m:
+            raise ValueError(f"condition {when!r}: expected `Param op value` (op ==, !=, >, >=, <, <=)")
+        pname, op, value = m.group(1), "==" if m.group(2) == "=" else m.group(2), m.group(3)
+        p = next((x for x in flow.get("BP2", []) if x["A2"] == pname), None)
+        if not p:
+            raise KeyError(f"condition {when!r}: the called process has no parameter {pname}; have {[x['A2'] for x in flow.get('BP2', [])]}")
+        ref = p.get("L9") or EMPTY_GUID
+        if p.get("L1") == LOOKUP_TYPE:
+            record = value if is_uid(value) else self.stage(value)["StageRecordId"]  # a stage name stands for its lookup record
+            ref_name = self.workspace.name_of(ref) or ref
+            rhs, rhs_display = f"[#Lookup.{ref}.{record}#]", f"[#Lookup.{ref_name}.{record}.{record}#]"
+        else:
+            rhs = rhs_display = value
+        left = f"[#[IsOwnerSchema:false].[IsSchema:false].[Element:{{{element['UId']}}}].[Parameter:{{{p['UId']}}}]#]"
+        prefix = f"Stages.{self._stage_of(element)['A2']}.Elements.{element['A2']}"
+        caption = self.resources.get(f"{prefix}.Caption") or element["A2"]
+        pcaption = self.resources.get(f"{prefix}.ProcessFlowElement.Parameters.{pname}.Caption") or pname
+        return {"resultFormula": {"value": f"{left} {op} {rhs}", "isValid": True, "displayValue": f"[#{caption}.{pcaption}#] {op} {rhs_display}",
+                                  "source": 3, "referenceSchemaUId": ref},
+                "nextStageId": self.stage(next_stage)["StageRecordId"]}
+
+    def _stage_of(self, element: dict) -> dict:
+        return self.stage_by_uid(element.get("IL2")) or {}
+
+    def add_step(self, stage: str, name: str | None, process: str, caption: str, mappings: dict | None = None, required: bool = False,
+                 conditions: list[tuple[str, str]] | None = None, cultures: list[str] | None = None) -> dict:
+        """A step on `stage` that starts `process` (a process of the workspace): its parameters copied with their mappings
+        into the case, `mappings` {param: value} written, `conditions` [("Param = value", next_stage)] that move the record."""
+        from ..process.schema import ProcessSchema, copy_called_params  # local: dcm stays importable without the process kit
+        s = self.stage(stage)
+        hits = self.workspace.find(process, "ProcessSchemaManager")
+        if not hits:
+            raise KeyError(f"process {process} is not in the workspace; a step needs the called process's parameters")
+        called = ProcessSchema(hits[0]["dir"].parent.parent, hits[0]["name"])
+        steps = [e for _, e in self.elements()]
+        name = name or self._new_name("DcmElement", steps)
+        if any(e["A2"] == name for e in steps):
+            raise ValueError(f"step {name} exists")
+        unknown = [p for p in (mappings or {}) if p not in {x["A2"] for x in called.params}]
+        if unknown:
+            raise KeyError(f"{called.name} has no parameter {', '.join(unknown)}; parameters: {', '.join(x['A2'] for x in called.params) or '(none)'}")
+        flow = {"BL1": "Terrasoft.Core.Process.ProcessSchemaSubProcess", "UId": new_uid(), "A2": "DcmProcess" + name.removeprefix("Dcm"),
+                "BL7": SUBPROCESS_MANAGER, "BN2": "69;55", "BO2": True, "BO3": True, "BP2": [], "CK4": called.uid, "CK2": [], "CK3": []}
+        element = {"BL1": "Terrasoft.Core.DcmProcess.DcmSchemaElement", "UId": new_uid(), "A2": name, "A3": self.uid, "A4": self.uid,
+                   "A5": self.package_uid, "IL2": s["UId"], "RequiredType": 1 if required else 0, "ProcessFlowElement": flow}
+        # the designer does not sync a step mapping's GT1 with the parameter's value (15 of 15 real steps): only L8 is written
+        copy_called_params(self.uid, flow, called, self.schema.setdefault("BK15", []))
+        s.setdefault("Elements", []).append(element)
+        prefix = f"Stages.{s['A2']}.Elements.{name}"
+        self.resources.set(f"{prefix}.Caption", caption, cultures)
+        for p in flow["BP2"]:
+            self.resources.set(f"{prefix}.ProcessFlowElement.Parameters.{p['A2']}.Caption",
+                               called.resources.get(f"Parameters.{p['A2']}.Caption") or p["A2"], cultures)
+        for pname, value in (mappings or {}).items():
+            p = next(x for x in flow["BP2"] if x["A2"] == pname)
+            p["L8"], display = self._step_value(value)
+            self.resources.set(f"{prefix}.ProcessFlowElement.Parameters.{pname}.DisplayValue", display, cultures)
+        if conditions:
+            items = [self._condition(element, flow, when, nxt) for when, nxt in conditions]
+            element.pop("ProcessFlowElement")
+            element["Conditions"] = json.dumps(items, separators=(",", ":"), ensure_ascii=False)
+            element["ProcessFlowElement"] = flow  # the platform's key order: Conditions before ProcessFlowElement
+        return element
+
+    def remove_step(self, key: str) -> str:
+        """A step with its parameter mappings and captions."""
+        s, e = self.element(key)
+        s["Elements"].remove(e)
+        flow = e.get("ProcessFlowElement") or {}
+        uids = {p["UId"] for p in flow.get("BP2", [])}
+        if "BK15" in self.schema:
+            self.schema["BK15"][:] = [m for m in self.schema["BK15"] if m.get("GT3") not in uids]
+        self.resources.remove_prefix(f"Stages.{s['A2']}.Elements.{e['A2']}")
+        return e["A2"]
 
     # ======================================================================= #
     # New case

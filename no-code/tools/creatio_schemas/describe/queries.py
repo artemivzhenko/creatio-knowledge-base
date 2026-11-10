@@ -16,7 +16,7 @@ from ..process.catalog import DIRECTION, USER_TASK_BY_UID, short_type
 from ..rules import RuleSchema
 from ..sqlscript import SqlScript
 from ..usertask import UserTaskSchema
-from .core import GenericItem, QueryError
+from .core import DEFAULT_LIMIT, GenericItem, QueryError, cut
 
 
 def _match(value: str | None, wanted: str | None) -> bool:
@@ -31,6 +31,17 @@ def _need(name: str | None, what: str) -> str:
     if not name:
         raise QueryError(f"this topic needs a name: '{what} <name>'")
     return name
+
+
+def _limited(lines, filters):
+    """Limit a list of lines using the query's limit."""
+    try:
+        limit = int(filters.get("limit", DEFAULT_LIMIT))
+    except ValueError as exc:
+        raise QueryError("limit must be a non-negative integer") from exc
+    if limit < 0:
+        raise QueryError("limit must be a non-negative integer")
+    return "\n".join(cut(lines, limit))
 
 
 # -- every kind --------------------------------------------------------------- #
@@ -270,7 +281,7 @@ def q_pg_find(pg: PageSchema, name, f):
         for i, line in enumerate(inner.splitlines(), 1):
             if needle in line.lower():
                 hits.append(f"{sec.replace('SCHEMA_', '').lower()}:{i}: {line.strip()[:120]}")
-    return "\n".join(hits[:60]) + (f"\n... {len(hits) - 60} more" if len(hits) > 60 else "") if hits else f"'{needle}' not found"
+    return "\n".join(hits) if hits else f"'{needle}' not found"
 
 
 PAGE = {"sections": q_sections, "elements": q_pg_elements, "element": q_pg_element, "attributes": q_pg_attributes,
@@ -394,7 +405,7 @@ def q_c_operations(c: CSharpSource, name, f):
 
 def q_c_find(c: CSharpSource, name, f):
     hits = c.find(_need(name, "find"))
-    return "\n".join(f"{line:>5}  {text}" for line, text in hits[:50]) + (f"\n  ... {len(hits) - 50} more" if len(hits) > 50 else "") if hits else f"no line contains {name!r}"
+    return "\n".join(f"{line:>5}  {text}" for line, text in hits) if hits else f"no line contains {name!r}"
 
 
 CSHARP = {"classes": q_c_classes, "members": q_c_members, "member": q_c_member, "method": q_c_member, "usings": q_c_usings,
@@ -412,11 +423,7 @@ def q_b_columns(b: DataBinding, name, f):
 
 def q_b_rows(b: DataBinding, name, f):
     rows = b.rows(f.get("culture"))
-    limit = int(f.get("limit", 0) or 0)
-    shown = rows[:limit] if limit else rows
-    out = [f"{b.key_of(r)}  " + "  ".join(f"{k}={json.dumps(v, ensure_ascii=False)}" for k, v in r.items() if k not in b.key_columns) for r in shown]
-    if limit and len(rows) > limit:
-        out.append(f"  ... {len(rows) - limit} more")
+    out = [f"{b.key_of(r)}  " + "  ".join(f"{k}={json.dumps(v, ensure_ascii=False)}" for k, v in r.items() if k not in b.key_columns) for r in rows]
     return "\n".join(out) or "(no rows)"
 
 
@@ -472,7 +479,7 @@ def q_c_method_js(c, name, f):
 
 def q_c_find_js(c, name, f):
     hits = c.find(_need(name, "find"))
-    return "\n".join(f"{line:>5}  {where:<30} {text}" for line, where, text in hits[:50]) + (f"\n  ... {len(hits) - 50} more" if len(hits) > 50 else "") if hits else f"no line contains {name!r}"
+    return "\n".join(f"{line:>5}  {where:<30} {text}" for line, where, text in hits) if hits else f"no line contains {name!r}"
 
 
 CLASSIC = {"diff": q_c_diff, "element": q_c_element, "methods": q_c_methods_js, "method": q_c_method_js, "find": q_c_find_js,
@@ -493,4 +500,11 @@ def answer(item, topic: str, name: str | None, filters: dict[str, str]) -> str:
         return f"{type(item).__name__} topics: " + ", ".join(sorted(table))
     if topic not in table:
         raise QueryError(f"unknown topic '{topic}' for a {type(item).__name__}; topics: {', '.join(sorted(table))}")
-    return table[topic](item, name, filters)
+    result = table[topic](item, name, filters)
+    list_topics = {"files", "resource", "columns", "elements", "params", "flows", "rules", "attributes",
+                   "handlers", "containers", "stages", "steps", "moves", "members", "operations", "find",
+                   "rows", "diff", "methods", "messages", "details", "mixins", "classes", "usings", "regions",
+                   "deps", "sections", "data-sources"}
+    if topic in list_topics or (topic == "resources" and filters.get("culture")):
+        return _limited(result.splitlines(), filters)
+    return result

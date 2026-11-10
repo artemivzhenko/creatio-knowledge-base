@@ -277,8 +277,12 @@ def _tools_path() -> None:
         sys.path.insert(0, tools)
 
 
+_tools_path()
+from creatio_schemas.describe import DEFAULT_LIMIT  # noqa: E402
+
+
 @mcp.tool()
-def describe_package(package: str, kind: str = "") -> str:
+def describe_package(package: str, kind: str = "", limit: int = DEFAULT_LIMIT) -> str:
     """
     What a Creatio package holds, one line per schema and SQL script: kind, name,
     caption, counts (columns, elements, rules, page elements) and the parent or the
@@ -292,13 +296,13 @@ def describe_package(package: str, kind: str = "") -> str:
     _tools_path()
     from creatio_schemas.describe import describe_package as _dp
     try:
-        return _dp(package, kind)
+        return _dp(package, kind, limit)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 
 
 @mcp.tool()
-def describe_schema(package: str, schema: str, limit: int = 40) -> str:
+def describe_schema(package: str, schema: str, limit: int = DEFAULT_LIMIT) -> str:
     """
     The summary of one schema - columns and flags of an object, elements, parameters
     and flows of a process, rules of a rule addon, elements and data sources of a
@@ -316,7 +320,7 @@ def describe_schema(package: str, schema: str, limit: int = 40) -> str:
 
 
 @mcp.tool()
-def describe_item(package: str, schema: str, query: str = "topics") -> str:
+def describe_item(package: str, schema: str, query: str = "topics", limit: int = DEFAULT_LIMIT) -> str:
     """
     One part of a schema, chosen by a query "<topic> [<name>] [key=value ...]";
     "topics" lists what the schema can answer. Examples:
@@ -338,8 +342,10 @@ def describe_item(package: str, schema: str, query: str = "topics") -> str:
     Nothing is returned that was not asked for: a page is a database, this is the query.
     """
     _tools_path()
-    from creatio_schemas.describe import QueryError, describe_item as _di
+    from creatio_schemas.describe import QueryError, describe_item as _di, parse_query
     try:
+        if "limit" not in parse_query(query)[2]:
+            query = f"{query} limit={limit}"
         return _di(package, schema, query)
     except (FileNotFoundError, KeyError, ValueError, QueryError) as e:
         return f"error: {e.args[0] if e.args else e}"
@@ -365,7 +371,7 @@ def index_workspace(path: str, rebuild: bool = False) -> str:
 
 
 @mcp.tool()
-def list_lookups(path: str) -> str:
+def list_lookups(path: str, limit: int = DEFAULT_LIMIT) -> str:
     """
     Every lookup object of a workspace or package - an object whose parent chain reaches
     BaseLookup, through the workspace's own objects or the stock ones - one line each:
@@ -378,13 +384,13 @@ def list_lookups(path: str) -> str:
     _tools_path()
     from creatio_schemas.describe import lookups as _lk
     try:
-        return _lk(path)
+        return _lk(path, limit)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 
 
 @mcp.tool()
-def find_schema(path: str, schema: str) -> str:
+def find_schema(path: str, schema: str, limit: int = DEFAULT_LIMIT) -> str:
     """
     Where a schema lives and what touches it, without searching: the package, kind,
     summary, every file with its absolute path, the schemas it refers to and the schemas
@@ -395,7 +401,7 @@ def find_schema(path: str, schema: str) -> str:
     _tools_path()
     from creatio_schemas.describe import find_schema as _fs
     try:
-        return _fs(path, schema)
+        return _fs(path, schema, limit)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 

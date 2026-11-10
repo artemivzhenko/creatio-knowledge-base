@@ -1,5 +1,5 @@
 ---
-description: Creatio DCM cases (dynamic case management) of 8.x as package files - read a case (object, stage column, filter, stages with their lookup records and colours, steps that start sub-processes, result conditions, allowed stage moves), create a case on an object's lookup column, add or remove stages, connect stages; the describe layer answers stages, stage, steps, step, moves, filter.
+description: Creatio DCM cases (dynamic case management) of 8.x as package files - read a case (object, stage column, filter, stages with their lookup records and colours, steps that start sub-processes, result conditions, allowed stage moves), create a case on an object's lookup column, add or remove stages and steps (sub-process parameter mappings, result conditions), connect stages; the describe layer answers stages, stage, steps, step, moves, filter.
 ---
 
 # DCM case tools
@@ -9,7 +9,7 @@ Scripts that read and change DCM cases as **package files** (`Schemas/<Case>/met
 
 | File | What it does |
 | --- | --- |
-| `dcm.py` | CLI: inspect, validate, new, add-stage, remove-stage, connect, disconnect, set-caption, enable, disable |
+| `dcm.py` | CLI: inspect, validate, new, add-stage, remove-stage, add-step, remove-step, connect, disconnect, set-caption, enable, disable |
 | `../creatio_schemas/dcm/schema.py` | `DcmSchema`: the library the CLI and the describe layer use |
 | `tests/test_dcm_tools.py` | checks on a real case with generic names |
 
@@ -32,9 +32,20 @@ Scripts that read and change DCM cases as **package files** (`Schemas/<Case>/met
 
 `new` builds an empty case (optionally with chained stages) on an object of the workspace; the
 column must be a lookup. `add-stage` / `remove-stage` keep connections, alternatives and captions
-in step; `connect` / `disconnect` edit the allowed moves. Steps and conditions are read and
-described but not written: build them in the designer or paste their JSON - a step needs the
-sub-process's parameter mappings, which the designer derives from that process.
+in step; `connect` / `disconnect` edit the allowed moves.
+
+`add-step` puts a step on a stage that starts a process of the workspace, as the designer does:
+`DcmElementN` with a `DcmProcessElementN` flow element (`CK4` the process), a copy of each of
+the process's parameters (`A3` the called UId) with one mapping per copy in the case's `BK15`
+(the shared `copy_called_params` of the process toolkit), the captions of the step and of each
+parameter. `--map Param=value` writes the value into the copy's `L8`: `{Record:Column}` is a
+column of the case's record (`[#ColumnValue.{object}.{column}#]`, shown as
+`[#Main record.Column#]` - every valued parameter of the 15 real steps is this, `{Record:Id}`),
+`{Parameter:X}` a parameter of the case, anything else a constant. The mapping's `GT1` stays
+`{GS5: called}`, as the designer leaves it. `--when "Param op value -> Stage"` adds a result
+condition (`==`, `!=`, `>`, `>=`, `<`, `<=`; a lookup value is a record UId or the name of a stage,
+standing for its record), serialised like the designer's `Conditions`. `remove-step` takes the
+step's mappings and captions with it.
 
 ```bash
 python dcm.py inspect packages/UsrPkg UsrOrderCases
@@ -42,16 +53,19 @@ python dcm.py new packages/UsrPkg UsrOrderCases --caption "Order cases" --entity
     --stage "New=<record uid>" --stage "In progress=<record uid>" --stage "Done=<record uid>"
 python dcm.py add-stage packages/UsrPkg UsrOrderCases --caption "On hold" --record <uid> --parent Stage2 --color "#FFAC07"
 python dcm.py connect packages/UsrPkg UsrOrderCases Stage1 Stage3 --one-way
+python dcm.py add-step packages/UsrPkg UsrOrderCases --stage Stage2 --process UsrCheckOrder_Process --caption "Check order" \
+    --map OrderId={Record:Id} --required --when "Verdict = Stage3 -> Stage3"
 python describe.py item packages/UsrPkg UsrOrderCases "stage Stage1"
 ```
 
 Validation refuses a stage record that is not a UId, a connection or a parent that is not a stage,
-a step outside its stage, and a condition that points to a stage the case no longer has; a
-sub-process missing from the workspace is a warning.
+a step outside its stage, a condition that points to a stage the case no longer has, and a step
+parameter the called process does not have; a sub-process missing from the workspace is a warning.
 
 ## Verified
 
-Files only: 31 real cases of three workspaces (up to 10 stages, 4 steps, conditions, filters,
+Files only: 32 real cases of the local workspaces (15 steps: all plain sub-processes, 17 parameters, every one
+mapped; 14 values `{Record:Id}`-style column values, one constant; one step with conditions) (up to 10 stages, 4 steps, conditions, filters,
 seven cultures) round-trip byte for byte and describe without errors. On the test environment
 (8.2.3): a case made by `new` on an order object's status lookup with two chained stages was
 pushed with `clio push-pkg`, the configuration compiled with 0 errors and the schema is in

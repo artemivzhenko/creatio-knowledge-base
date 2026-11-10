@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--probe", action="store_true", help="run probes for each schema")
     p.add_argument("--dry-run", action="store_true", help="print commands without executing")
     args = p.parse_args(argv)
-    
+
     try:
         return push(Path(args.package), args.env, Clio(args.env), args.probe, args.dry_run)
     except (FileNotFoundError, KeyError, ValueError, RuntimeError) as e:

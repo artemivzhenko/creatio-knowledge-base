@@ -14,6 +14,17 @@ class Clio:
             raise ValueError("a clio environment name is required")
         self.env = env
 
+    def run(self, args: list[str], cwd: Path | None = None) -> str:
+        """Run clio and return its output, raising on a non-zero exit."""
+        try:
+            result = subprocess.run(["clio", *args], cwd=cwd, capture_output=True, text=True, check=False)
+        except OSError as e:
+            raise RuntimeError(f"could not run clio: {e}") from e
+        output = result.stdout + result.stderr
+        if result.returncode:
+            raise RuntimeError(f"clio exited {result.returncode}: {output[-500:]}")
+        return output
+
     def call_service(self, path: str, body: dict) -> dict:
         """POST `body` to ServiceModel/... through `clio call-service`; the JSON answer."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -38,5 +49,7 @@ class Clio:
             return json.loads(text) if text else []
 
     def execute_sql(self, sql: str) -> None:
-        """Execute a SQL script (no output expected)."""
-        self.sql(sql)
+        """Execute a SQL script without requiring a result file."""
+        output = self.run(["execute-sql-script", sql, "-e", self.env])
+        if "[ERR]" in output:
+            raise RuntimeError(output[-500:])

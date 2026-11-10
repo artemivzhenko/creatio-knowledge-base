@@ -19,10 +19,12 @@ from pathlib import Path
 
 from ..csharp import csharp_files
 from ..files import read_text
+from ..resources import Resources
 from ..workspace import Workspace
-from .core import _caption, kind_of, open_item, summary
+from .core import DEFAULT_LIMIT, _caption, cut, kind_of, open_item, summary
 
 INDEX_DIR = ".creatio-index"
+INDEX_FORMAT = 2
 TYPE_NAME_RE = re.compile(r"\b(?:class|interface|struct|enum|record)\s+(\w+)")
 # Identifiers and GUIDs: the two ways a file names another schema.
 TOKEN_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z_][A-Za-z0-9_]{2,}")  # GUID first: one may start with a letter
@@ -65,6 +67,7 @@ class PackageIndex:
                 self.data = json.loads(self.path.read_text(encoding="utf-8"))
             except ValueError:
                 pass
+        self._format_mismatch = self.data.get("format") != INDEX_FORMAT
         self._names: dict[str, str] = {}  # lower-case name and uid -> schema name, whole workspace
 
     # -- disk -------------------------------------------------------------- #
@@ -149,21 +152,65 @@ class PackageIndex:
             desc = getattr(item, "descriptor", None)
             data = desc.data if hasattr(desc, "data") else (desc or {})
             entry["manager"] = data.get("ManagerName") if isinstance(data, dict) else None
+            folders = sorted(p for p in (self.package / "Resources").glob(f"{name}.*") if p.is_dir())
+            if folders:
+                cultures = {}
+                for folder in folders:
+                    for culture, values in Resources(folder).cultures.items():
+                        cultures.setdefault(culture, {}).update(values)
+                base = cultures.get("en-US", {})
+                entry["resources"] = {
+                    "cultures": sorted(cultures),
+                    "keys": len(base),
+                    "missing": {culture: len(set(base) - set(values)) for culture, values in cultures.items() if culture != "en-US"},
+                }
         except Exception as e:  # one broken schema must not stop the index
             entry["error"] = f"{type(e).__name__}: {e}"
         return entry
 
     def _build_data(self, name: str, files: dict[str, list[int]]) -> dict:
-        target = None
-        try:
-            target = json.loads(read_text(self.package / "Data" / name / "descriptor.json")[0])["Descriptor"].get("Schema", {}).get("Name")
-        except (OSError, ValueError, KeyError):
-            pass
-        return {"schema": target, "files": files, "refs": self._refs(files, name)}
+        desc = json.loads(read_text(self.package / "Data" / name / "descriptor.json")[0])["Descriptor"]
+        columns = desc.get("Columns", [])
+        by_uid = {str(c.get("ColumnUId", "")).lower(): c.get("ColumnName") for c in columns}
+        key_name = next((candidate for candidate in ("Code", "Name") if any(c.get("ColumnName") == candidate for c in columns)), None)
+        key_columns = [c["ColumnName"] for c in columns if c.get("IsKey")]
+
+        def values(row):
+            return {(cell.get("ColumnName") or by_uid.get(str(cell.get("SchemaColumnUId", "")).lower())): cell.get("Value")
+                    for cell in row["Row"]}
+
+        localized = {}
+        loc_files = sorted((self.package / "Data" / name / "Localization").glob("data.*.json"),
+                           key=lambda p: (p.name != "data.en-US.json", p.name))
+        if key_columns and key_name:
+            for path in loc_files:
+                for row in json.loads(read_text(path)[0])["PackageData"]:
+                    data = values(row)
+                    if all(col in data for col in key_columns) and key_name in data:
+                        localized.setdefault(tuple(str(data[col]).lower() for col in key_columns), data[key_name])
+        rows, keys = 0, []
+        for path in sorted((self.package / "Data" / name).rglob("data.json")):
+            if "localization" in (part.lower() for part in path.relative_to(self.package / "Data" / name).parts):
+                continue
+            data_rows = json.loads(read_text(path)[0])["PackageData"]
+            rows += len(data_rows)
+            for row in data_rows:
+                data = values(row)
+                value = data.get(key_name)
+                if value is None and key_columns and all(col in data for col in key_columns):
+                    value = localized.get(tuple(str(data[col]).lower() for col in key_columns))
+                if value is not None and len(keys) < DEFAULT_LIMIT:
+                    keys.append(value)
+        return {"schema": desc.get("Schema", {}).get("Name"), "columns": [c["ColumnName"] for c in columns],
+                "rows": rows, "keys": keys, "files": files, "refs": self._refs(files, name)}
 
     def refresh(self, rebuild: bool = False) -> dict:
         """Bring the index in line with the disk; returns {"added": [...], "changed": [...], "removed": [...]}."""
         t0 = time.time()
+        from .registry import KINDS  # the kinds and their order: a registry change must re-read every item (R01 finding 1)
+
+        registry_fp = "|".join(k.name for k in KINDS)
+        rebuild = rebuild or self._format_mismatch or self.data.get("registry") != registry_fp
         on_disk = self._items_on_disk()
         data_on_disk = sorted(d.name for d in (self.package / "Data").iterdir() if d.is_dir()) if (self.package / "Data").is_dir() else []
         schemas, data = self.data.get("schemas", {}), self.data.get("data", {})
@@ -183,7 +230,7 @@ class PackageIndex:
             if rebuild or entry is None or self._stale(entry, files_now[f"Data/{name}"]):
                 todo_data.append(name)
                 changes["added" if entry is None else "changed"].append(f"Data/{name}")
-        if not any(changes.values()):
+        if not any(changes.values()) and not self._format_mismatch:
             return changes
         self._load_names()
         for name in changes["removed"]:
@@ -201,12 +248,13 @@ class PackageIndex:
                 if name not in todo_data:
                     entry["refs"] = self._refs(entry["files"], name)
         desc = json.loads(read_text(self.package / "descriptor.json")[0])["Descriptor"]
-        self.data = {"package": desc.get("Name", self.package.name), "version": desc.get("PackageVersion"),
+        self.data = {"format": INDEX_FORMAT, "registry": registry_fp, "package": desc.get("Name", self.package.name), "version": desc.get("PackageVersion"),
                      "depends_on": [d["Name"] for d in desc.get("DependsOn", [])],
                      "built": time.strftime("%Y-%m-%dT%H:%M:%S"), "seconds": round(time.time() - t0, 2),
                      "schemas": dict(sorted(schemas.items())), "data": dict(sorted(data.items()))}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.data, indent=1, ensure_ascii=False), encoding="utf-8")
+        self._format_mismatch = False
         return changes
 
     # -- answering ------------------------------------------------------------- #
@@ -284,10 +332,11 @@ def index_workspace(path: Path | str, rebuild: bool = False) -> str:
 STOCK_LOOKUPS: set[str] = set(json.loads((Path(__file__).resolve().parent.parent / "entity" / "assets" / "stock_lookups_8.2.3.json").read_text(encoding="utf-8"))["names"])
 
 
-def lookups(path: Path | str) -> str:
+def lookups(path: Path | str, limit: int = DEFAULT_LIMIT) -> str:
     """Every object of the workspace that is a lookup - its parent chain reaches BaseLookup, through the workspace's own
     objects or the stock ones (assets/stock_lookups_8.2.3.json) - with package, caption, own columns, data bindings
     (rows bound) and how many items refer to it: the list a de-duplication or binding-check task starts from."""
+    cut([], limit)
     pkgs = packages_of(path)
     indexes = [PackageIndex(p) for p in pkgs]
     for idx in indexes:
@@ -325,26 +374,21 @@ def lookups(path: Path | str) -> str:
             bindings = []
             for dn, de in idx.data.get("data", {}).items():
                 if de.get("schema") == n:
-                    count = 0
-                    for rel in de.get("files", {}):
-                        if rel.endswith("/data.json") and "/Localization/" not in rel:
-                            try:
-                                count += len(json.loads(read_text(idx.package / rel)[0]).get("PackageData", []))
-                            except (OSError, ValueError):
-                                pass
-                    bindings.append(f"Data/{dn} ({count} rows)")
+                    bindings.append(f"Data/{dn} ({de['rows']} rows)")
             users = sum(len(other.referrers(n)) for other in indexes)
             rows.append(f"  {n:<34} {e.get('caption', '')!r:<30} {pkg:<16} "
                         + ("replacing " if "replacing" in e.get("summary", "") else "parent ") + " -> ".join(chain + ["BaseLookup"])
                         + (f"  {own.group(1)} own columns" if own else "") + f"  bindings: {', '.join(bindings) if bindings else 'none'}  used by {users}")
-    out = [f"{len(rows)} lookups in {', '.join(p.name for p in pkgs)}"] + rows
+    out = [f"{len(rows)} lookups in {', '.join(p.name for p in pkgs)}"] + cut(rows, limit)
     if unknown:
-        out.append(f"  not decided ({len(unknown)}; parent outside the workspace and the stock list): " + ", ".join(unknown[:15]) + (" ..." if len(unknown) > 15 else ""))
+        out.append(f"  not decided ({len(unknown)}; parent outside the workspace and the stock list):")
+        out.extend(cut([f"    {item}" for item in unknown], limit))
     return "\n".join(out)
 
 
-def find_schema(path: Path | str, name: str) -> str:
+def find_schema(path: Path | str, name: str, limit: int = DEFAULT_LIMIT) -> str:
     """Where a schema lives and what touches it: package, kind, files (absolute), what it refers to, who refers to it, its data bindings."""
+    cut([], limit)
     pkgs = packages_of(path)
     indexes = [PackageIndex(p) for p in pkgs]
     for idx in indexes:
@@ -359,14 +403,34 @@ def find_schema(path: Path | str, name: str) -> str:
             out.append(f"{n}  {e['kind']} in {idx.data.get('package', idx.package.name)}  ({idx.package})")
             parent = e.get("parent")
             out.append(f"  {e['summary']}" + (f"; caption {e['caption']!r}" if e["caption"] else "") + (f"; builds on {parent}" if parent and parent not in e["summary"] else "") + (f"; {e['error']}" if "error" in e else ""))
+            resources = e.get("resources")
+            if resources is not None:
+                out.append(f"  resources: {', '.join(resources['cultures'])}; {resources['keys']} keys; missing: "
+                           + (", ".join(f"{c}={count}" for c, count in resources["missing"].items()) or "none"))
+            bindings = [f"Data/{dn} ({de['rows']} rows, {other.package.name})"
+                        for other in indexes for dn, de in other.data.get("data", {}).items() if de.get("schema") == n]
+            if bindings:
+                shown = cut(bindings, limit)
+                tail = shown.pop() if limit and len(shown) > limit else None
+                out.append("  bindings: " + ", ".join(shown))
+                if tail:
+                    out.append(tail)
             out.append("  files:")
             out += _file_lines(idx.package, e["files"])
             if e.get("refs"):
-                out.append(f"  refers to: {', '.join(e['refs'])}")
+                refs = cut(e["refs"], limit)
+                tail = refs.pop() if len(refs) > limit and limit else None
+                out.append(f"  refers to: {', '.join(refs)}")
+                if tail:
+                    out.append(tail)
             users = []
             for other in indexes:
                 users += [f"{un} ({uk}{'' if other is idx else ', ' + other.package.name})" for uk, un in other.referrers(n)]
-            out.append(f"  used by: {', '.join(users)}" if users else "  used by: nothing in the workspace")
+            limited_users = cut(users, limit)
+            tail = limited_users.pop() if len(limited_users) > limit and limit else None
+            out.append(f"  used by: {', '.join(limited_users)}" if users else "  used by: nothing in the workspace")
+            if tail:
+                out.append(tail)
     if not out:
         return f"no schema named {name} in {', '.join(p.name for p in pkgs)}"
     return "\n".join(out)

@@ -39,11 +39,18 @@ finds the file and who calls it. `describe_package` and
 `find_schema` answer from it: a 578-schema package lists in 1.5 s instead of 35 s, and the agent
 gets the files to open and the impact of a change in one call.
 
+The versioned index also stores binding targets, row counts, columns and up to 40 Code or Name
+values, plus each schema's resource cultures, en-US key count and missing-key counts. An older
+index format is rebuilt automatically.
+
 The index checks itself on every use: a file whose size or mtime changed, a schema folder that
 appeared (after `clio pull-pkg`) or disappeared is re-read before the answer, and when names
 appear or disappear every item's references are rescanned. There is no refresh hook to wire into
 a pull script; `describe.py index <workspace>` after a pull only tells what changed. `--rebuild`
-starts over.
+starts over. A change of the toolkit itself (a new kind, another `summary` or `opens`) changes no
+package file, so the index does not see it: such a change bumps `INDEX_FORMAT` in `index.py`, or
+run `describe.py index <workspace> --rebuild` after updating the toolkit. A change of the *kinds* (a kind added, removed or reordered in `registry.py`)
+needs neither: the index header carries a registry fingerprint and rebuilds itself on mismatch.
 
 ## Lookups
 
@@ -69,6 +76,8 @@ path `find_schema` gives.
 
 `<topic> [<name>] [key=value ...]` - `topics` lists what a schema can answer; `limit=N` cuts a
 list topic (default 40, `0` = all).
+The MCP `describe_item` tool also accepts `limit`; an explicit `limit=` in the query takes
+precedence. Package, find and lookup lists accept `--limit` on the CLI and `limit` on MCP.
 
 | Kind | Topics |
 | --- | --- |
@@ -116,6 +125,21 @@ answers. `open_item`, `kind_of`, `summary`, `topics_of`, the index and the CLI r
 Adding a kind is one `register(Kind(...))` with the kind's class, summary and topic handlers -
 the kind's own module never imports the describe layer. Order matters: the first entry whose
 `opens` says yes wins, so specific kinds sit before the generic `source` / `client` fallbacks.
+
+What a new kind has to know, beyond the `Kind` fields:
+
+- `opens(package, name, descriptor)` gets `descriptor=None` for an item outside `Schemas/` (SQL
+  scripts, data bindings, C# files); such kinds test `d is None` and sit before every kind that
+  needs a descriptor.
+- `register(kind)` inserts first by default (`first=True`), so the new kind wins ties; pass
+  `first=False` to append it.
+- `open_item` stamps `_kind` on the item; an item built without it is matched by class, first
+  entry wins - `source` and `csharp` share `CSharpSource`, so build those through `open_item`.
+- `rename(item)` lets one entry answer two kinds (`page` / `mobile`, the fallback's `client` /
+  `mobile` / `schema`); `_KIND_LABEL` in `core.py` holds the labels of kinds without a toolkit.
+- A kind's `topics` are merged with `COMMON` (`files`, `resources`, `resource`); on a clash
+  `COMMON` wins (`topics_of`).
+- The index caches `kind` and `summary`: see "The package index" above for the rebuild.
 
 ## Kinds without a toolkit
 
