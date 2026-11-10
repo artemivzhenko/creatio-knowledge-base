@@ -20,7 +20,11 @@ say so in chat and stop.
    a finding in the report, not a reason to stop.
 2. **Map.** One criterion of `plan.md` at a time: what proves it and with which tool (tier table
    in the contract). Compare the criteria with `task.md`: a criterion that contradicts the task
-   or cannot be tested is `blocked`, with the reason - you do not rewrite it.
+   or cannot be tested is `blocked`, with the reason - you do not rewrite it. Then the plan's
+   `## Impact` table (or `describe.py impact <workspace> <schemas> --md` when it is missing): one
+   regression row `REG-nn` per dependent - a page runs its existing `.act` cases (`cases`) or at
+   least `validate` of its page file, a process its process case, a rule or DCM `rules.py probe` /
+   `dcm.py inspect`; a dependent you cannot exercise is a `not tested` row with its name, never silence.
 3. **Write the tests.** Any tier, every tool: `.act` cases in the test framework (`Cases/`,
    `ProcessCases/`; `get_recipe("tools/uitests")`, the `creatio-tests` MCP: `dsl`, `cases`,
    `validate`, `run`, `analyse`, `schemas`, `last_report`). A page file comes from the package first - `pages.py from-schema <pkg> <Page> --out

@@ -45,7 +45,7 @@ copied into a repository file.
 | `task.md` | human | start | the business task, free form, numbered by the folder |
 | `questions.md` | author, then human | before the plan | the author's questions, the human's answers under each; `No questions.` when none |
 | `plan.md` | author | after the answers | how it will be built, the artifacts, the acceptance criteria table, the preconditions with the command that checks each |
-| `schemas.json` | author | with the plan, kept current | every schema the task creates or changes: the lock other tasks check |
+| `schemas.json` | author | with the plan, kept current | `schemas`: every schema the task creates or changes - the lock other tasks check; `affects`: their dependents from `impact` |
 | `evidence/` | tester | each run | command output behind every `fail` row |
 | `report-1.md` … `report-3.md` | tester | a run with at least one `fail` or `blocked` | one row per criterion |
 | `success-report.md` | tester | a run where every criterion passes | the task is done |
@@ -88,7 +88,12 @@ A task is **active** while its folder has no `success-report.md`. The lock is pe
 is per package - `push.py` stops when the package holds uncommitted files of another active task. Before creating or changing
 a schema, the author reads `schemas.json` of every other active folder under `paths.tasks`; a
 schema listed there belongs to that task - the author stops and asks the human instead of
-touching it. `schemas.json` is updated the moment the scope grows.
+touching it. `schemas.json` is updated the moment the scope grows. Its `affects` lists the
+dependents of those schemas (`describe.py impact <workspace> <Schema>... --tasks <paths.tasks>
+--current <folder> --md` prints both the `## Impact` table of `plan.md` and the `affects:` line):
+a schema another active task *changes* while this task *affects* it, or the reverse, is a
+conflict the command reports with exit 1 - the author stops and asks the human; `affects` alone
+is a heads-up, not a lock.
 
 ## Acceptance criteria
 

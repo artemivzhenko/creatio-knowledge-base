@@ -117,6 +117,16 @@ it (the whole of a 900-item workspace in about 12 s).
 The folder defaults to `<workspace>/.creatio-export` - gitignore it next to `.creatio-index`. For a
 client workspace pass `--out` elsewhere: never write inside a client workspace.
 
+## Impact of a change
+
+`describe.py impact <workspace> <Schema>... [--tasks <folder>] [--current <task>] [--md]` (MCP
+`schema_impact`) is the graph working for the loop: for every schema a task changes, its typed
+dependents, and - with the loop's tasks folder - the other active task folders (no
+`success-report.md`) that change one of them (`schemas` of their `schemas.json`: a **conflict**,
+exit 1) or depend on it (`affects`: a heads-up). `--md` prints the `## Impact` table the author
+pastes into `plan.md` and the `affects:` line that fills `schemas.json`; the tester reads the
+table to pick what to regression-test. What the task changes is never listed as what it affects.
+
 ## Lookups
 
 `describe.py lookups <workspace|package>` (MCP `list_lookups`) lists every object whose parent

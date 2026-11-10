@@ -20,6 +20,16 @@ share it. The read-only rule is a page business rule on `UsrShipment_FormPage`. 
 | process | `UsrShipmentLabel_Process` | new |
 | page | `UsrShipment_FormPage` | rule: `UsrLabel` read-only when status is Shipped |
 
+## Impact
+
+From `describe.py impact <workspace> UsrShipment UsrShipment_FormPage UsrShipmentLabel_Process --tasks <paths.tasks> --current 012 --md`:
+
+| Schema | Dependents | Other active tasks |
+|---|---|---|
+| `UsrShipment` | page UsrShipment_ListPage (data-source), process UsrShipmentNotify_Process (signal: UsrStatus) | - |
+| `UsrShipment_FormPage` | none typed | - |
+| `UsrShipmentLabel_Process` | none typed | - |
+
 ## Preconditions
 
 | Fact | Checked by |

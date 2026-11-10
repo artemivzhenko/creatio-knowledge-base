@@ -77,6 +77,7 @@ Synchronize the test framework credentials from the project with `python no-code
 ```bash
 cd no-code/tools
 python <kind>/tests/test_<kind>_tools.py        # kind: objects, process, rules, pages, sqlscripts, dcm, usertask, data, classicui, resources, scaffold, push, describe
+python creatio.py                                # every toolkit, one line each; creatio.py <tool> --help, creatio.py <tool> <command> ...
 python describe/describe.py package <pkg>        # one line per schema (from the index)
 python describe/describe.py item <pkg> <Schema> "<topic> [<name>] [k=v]"
 python describe/describe.py find <workspace> <Schema>

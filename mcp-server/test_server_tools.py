@@ -136,6 +136,13 @@ def test_schema_deps_answers_from_the_fixture_index():
     assert server.schema_deps(str(pages), "Nope").startswith("no schema named Nope")
 
 
+def test_schema_impact_ends_with_the_exit_code():
+    pages = TOOLS / "pages" / "tests" / "fixtures" / "iaTest"
+    out = server.schema_impact(str(pages), "iaOrderStatus, iaOrder", md=True)
+    assert out.startswith("## Impact") and "affects: iaOrder_FormPage, iaTests_FormPage" in out and out.endswith("exit code 0"), out
+    assert server.schema_impact(str(pages), " ") == "error: name at least one schema"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

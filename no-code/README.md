@@ -42,6 +42,14 @@ the clio source and docs at that tag. [VERIFIED.md](VERIFIED.md) is the ledger: 
 MCP tool and CLI command that was actually run, with what happened. clio is written against Creatio 10.x first; several
 no-code tools silently store things an 8.x designer cannot show, and the skills say which.
 
+## One front door
+
+`python no-code/tools/creatio.py` lists every toolkit with its purpose; `creatio.py <tool> --help`
+shows that tool's commands; `creatio.py objects inspect <pkg> <Object>`, `creatio.py describe deps
+<workspace> <Schema>`, `creatio.py env sql -e dev "select 1"` run them. The tool names are the
+folders below (the kinds of the describe registry name their own CLI); the `<tool>/<tool>.py`
+paths in the sections keep working - the front door only finds the module and calls it.
+
 ## Process tools
 
 [tools/process/](tools/process/README.md) builds and refactors business processes as

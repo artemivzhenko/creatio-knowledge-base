@@ -21,9 +21,11 @@ folder.
    <Schema> -e <clioName>` for every schema the task replaces: a copy in the customisation layer
    is a question, not a surprise. With the answers in `questions.md`, write `plan.md` (with its
    `## Preconditions` as commands - run them) (approach, artifacts table,
-   acceptance criteria table with tiers) and `schemas.json`. Then read `schemas.json` of every
-   other active task folder (no `success-report.md`): a schema already listed there is locked -
-   stop and ask the human. Do not wait for approval otherwise: build the plan as written.
+   acceptance criteria table with tiers) and `schemas.json`. Run `describe.py impact <workspace>
+   <every schema of schemas.json> --tasks <paths.tasks> --current <this folder> --md` (MCP
+   `schema_impact`): paste its `## Impact` table into `plan.md` and its `affects:` names into
+   `schemas.json`. Exit 1 means another active task changes a schema of this plan or one of its
+   dependents - stop and ask the human. Do not wait for approval otherwise: build the plan as written.
 3. **Build.** Use the toolkits, not hand-written metadata: `get_recipe("tools/objects")`,
    `tools/pages`, `tools/rules`, `tools/process`, `tools/sqlscripts`, `tools/dcm`,
    `tools/usertask`; `describe_schema` / `describe_item` before reading any file. A new object with its

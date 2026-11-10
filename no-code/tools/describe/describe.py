@@ -24,6 +24,7 @@ Topics: every schema - files, resources [culture=], resource <key>, missing [cul
             data-sources, handlers, handler <request>, validators, converters, containers, find <text>
     python describe.py lookups <workspace|package>                      # every lookup object: parent chain, bindings, users
     python describe.py deps    <workspace|package> <Schema> [--in|--out] [--kind object] [--via lookup]  # typed graph
+    python describe.py impact  <workspace|package> <Schema>... [--tasks <folder>] [--current <task>] [--md]  # dependents + locks
     python describe.py layers  <Schema> -e <env> [--rule <UId>] [--json]  # the SysSchema copies on an environment, Custom detected
     python describe.py export  <workspace|package> [--out <folder>]    # a text file per schema and per package (default <workspace>/.creatio-export)
 
@@ -91,6 +92,13 @@ def main(argv=None) -> int:
     h.add_argument("--kind", default="", help="only edges to / from this kind (object, process, page, ...)")
     h.add_argument("--via", default="", help="only this relation (lookup, signal, data-source, ...)")
     h.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    i = sub.add_parser("impact", help="the dependents of the schemas a task changes, and the other active tasks that change or affect them; exit 1 on a conflict")
+    i.add_argument("path")
+    i.add_argument("schemas", nargs="+", metavar="Schema")
+    i.add_argument("--tasks", help="the loop's tasks folder (project.json paths.tasks): locks of the other active tasks are checked")
+    i.add_argument("--current", help="this task's folder name, left out of the lock check")
+    i.add_argument("--md", action="store_true", help="the `## Impact` table for plan.md and the `affects:` line for schemas.json")
+    i.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     g = sub.add_parser("layers", help="the copies of a schema on an environment, applied first to last; exit 1 when the Custom layer has one")
     g.add_argument("schema")
     g.add_argument("-e", "--env", help="clio environment name")
@@ -112,6 +120,11 @@ def main(argv=None) -> int:
         elif args.command == "deps":
             from creatio_schemas.describe.deps import dependencies
             print(dependencies(args.path, args.schema, args.direction, args.kind, args.via, args.limit))
+        elif args.command == "impact":
+            from creatio_schemas.describe.deps import impact
+            text, conflicts = impact(args.path, args.schemas, args.tasks, args.current, args.md, args.limit)
+            print(text)
+            return 1 if conflicts else 0
         elif args.command == "schema":
             print(describe_schema(args.package, args.schema, args.limit))
         elif args.command == "export":

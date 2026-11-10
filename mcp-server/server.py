@@ -430,6 +430,30 @@ def schema_deps(path: str, schema: str, direction: str = "both", kind: str = "",
 
 
 @mcp.tool()
+def schema_impact(path: str, schemas: str, tasks: str = "", current: str = "", md: bool = False, limit: int = DEFAULT_LIMIT) -> str:
+    """
+    What a change to these schemas touches: every typed dependent (pages, processes, rules, DCM,
+    bindings, listeners) of each schema, and - with `tasks` (the loop's tasks folder from
+    project.json paths.tasks) - the other active task folders that change or depend on them, from
+    their schemas.json. The author runs it while writing plan.md: `md=True` returns the `## Impact`
+    table to paste and the `affects:` line for schemas.json; a `CONFLICT` means another active task
+    changes a schema of this plan or one of its dependents - stop and ask the human. The tester
+    reads `## Impact` to pick what to regression-test. `schemas` comma-separated; `current` this
+    task's folder name (left out of the lock check). Ends with the counts.
+    """
+    _tools_path()
+    from creatio_schemas.describe.deps import impact
+    names = [s.strip() for s in schemas.split(",") if s.strip()]
+    if not names:
+        return "error: name at least one schema"
+    try:
+        text, conflicts = impact(path, names, tasks or None, current or None, md, limit)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+    return text + f"\nexit code {1 if conflicts else 0}"
+
+
+@mcp.tool()
 def push_package(package: str, env: str, probe: bool = False, dry_run: bool = False,
                  project: str = "", tasks: str = "", task: str = "", force: bool = False,
                  baseline: str = "", skip_drift: bool = False, skip_foreign_files: bool = False,

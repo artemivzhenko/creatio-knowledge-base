@@ -39,6 +39,8 @@ class Kind:
     topics: dict = field(default_factory=dict)
     # a kind whose instances may report a different kind name (a PageSchema that is a mobile page)
     rename: Callable[[object], str] | None = None
+    # the kind's CLI, relative to no-code/tools (creatio.py <folder> ... dispatches to it); None for kinds read by describe only
+    tool: str | None = None
 
 
 def _manager(descriptor: dict | None) -> str | None:
@@ -68,26 +70,26 @@ def _files_summary(item) -> str:
 
 KINDS: list[Kind] = [
     Kind("sql", SqlScript, lambda p, n, d: d is None and (p / "SqlScripts" / n / "descriptor.json").is_file(), SqlScript,
-         lambda s: f"{s.engine}, {s.install_type}, {len(s.depends_on)} deps", q.SQL),
+         lambda s: f"{s.engine}, {s.install_type}, {len(s.depends_on)} deps", q.SQL, tool="sqlscripts/sqlscripts.py"),
     Kind("data", DataBinding, lambda p, n, d: d is None and (p / "Data" / n / "descriptor.json").is_file(), DataBinding,
-         lambda b: b.summary(), q.DATA),
+         lambda b: b.summary(), q.DATA, tool="data/data.py"),
     Kind("csharp", CSharpSource, lambda p, n, d: d is None and _csharp_file(p, n) is not None, lambda p, n: CSharpSource(p, _csharp_file(p, n)),
          lambda c: c.summary(), q.CSHARP),
     Kind("source", CSharpSource, lambda p, n, d: _manager(d) == "SourceCodeSchemaManager" and (p / "Schemas" / n / f"{n}.cs").is_file(),
          lambda p, n: CSharpSource(p, p / "Schemas" / n / f"{n}.cs", n, _descriptor(p, n)), lambda c: c.summary(), q.CSHARP),
-    Kind("object", EntitySchema, lambda p, n, d: _manager(d) == "EntitySchemaManager", EntitySchema, _entity_summary, q.OBJECT),
+    Kind("object", EntitySchema, lambda p, n, d: _manager(d) == "EntitySchemaManager", EntitySchema, _entity_summary, q.OBJECT, tool="objects/objects.py"),
     Kind("process", ProcessSchema, lambda p, n, d: _manager(d) == "ProcessSchemaManager", ProcessSchema,
-         lambda s: f"{len(s.nodes())} elements, {len(s.params)} params, {len(s.flows())} flows", q.PROCESS),
+         lambda s: f"{len(s.nodes())} elements, {len(s.params)} params, {len(s.flows())} flows", q.PROCESS, tool="process/proc.py"),
     Kind("dcm", DcmSchema, lambda p, n, d: _manager(d) == "DcmSchemaManager", DcmSchema,
-         lambda s: f"{len(s.stages)} stages, {len(s.elements())} steps, case of {s.entity}" + ("" if s.enabled else " (disabled)"), q.DCM),
+         lambda s: f"{len(s.stages)} stages, {len(s.elements())} steps, case of {s.entity}" + ("" if s.enabled else " (disabled)"), q.DCM, tool="dcm/dcm.py"),
     Kind("user-task", UserTaskSchema, lambda p, n, d: _manager(d) == "ProcessUserTaskSchemaManager", UserTaskSchema,
-         lambda s: f"{len(s.params)} params, {len(s.methods())} methods" + (", interactive" if s.interactive else ""), q.USERTASK),
+         lambda s: f"{len(s.params)} params, {len(s.methods())} methods" + (", interactive" if s.interactive else ""), q.USERTASK, tool="usertask/usertask.py"),
     Kind("rules", RuleSchema, lambda p, n, d: _manager(d) == "AddonSchemaManager" and n.endswith("BusinessRule"), RuleSchema,
-         lambda s: f"{len(s.rules)} rules for {s.target}" + (" (replacing)" if s.replacing else ""), q.RULES),
+         lambda s: f"{len(s.rules)} rules for {s.target}" + (" (replacing)" if s.replacing else ""), q.RULES, tool="rules/rules.py"),
     Kind("page", PageSchema, lambda p, n, d: _manager(d) == "ClientUnitSchemaManager" and _is_freedom_page(p, n), PageSchema, _page_summary, q.PAGE,
-         rename=lambda s: "mobile" if getattr(s, "mobile", False) else "page"),
+         rename=lambda s: "mobile" if getattr(s, "mobile", False) else "page", tool="pages/pages.py"),
     Kind("classic", ClassicSchema, lambda p, n, d: _manager(d) == "ClientUnitSchemaManager" and ClassicSchema.is_classic(p, n), ClassicSchema,
-         lambda s: s.summary(), q.CLASSIC),
+         lambda s: s.summary(), q.CLASSIC, tool="classicui/classicui.py"),
 ]
 FALLBACK = Kind("schema", GenericItem, lambda p, n, d: d is not None, GenericItem, _files_summary, {}, rename=lambda g: g.kind)
 

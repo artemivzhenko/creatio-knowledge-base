@@ -502,3 +502,58 @@ def dependencies(path: Path | str, name: str, direction: str = "both", kind: str
         out.append("dependents:" if users else "dependents: nothing typed in the workspace" + (f" of kind {kind}" if kind else ""))
         out += cut(sorted(users), limit)
     return "\n".join(out + _unreadable_line(indexes))
+
+
+def impact(path: Path | str, schemas: list[str], tasks: Path | str | None = None, current: str | None = None,
+           md: bool = False, limit: int | None = None) -> tuple[str, int]:
+    """The dependents of the schemas a task changes, with the other active tasks that change or affect them.
+
+    Returns (text, conflicts): a conflict is a schema of the list, or one of its dependents, that another active task
+    changes (its schemas.json `schemas`). `md` gives the `## Impact` table of plan.md plus the `affects:` line for
+    schemas.json; the plain form is one block per schema."""
+    from ..tasks import active_locks
+    from .core import DEFAULT_LIMIT, cut
+    from .index import PackageIndex, packages_of
+    limit = DEFAULT_LIMIT if limit is None else limit
+    indexes = [PackageIndex(p) for p in packages_of(path)]
+    for idx in indexes:
+        idx.refresh()
+    changes, affects = active_locks(tasks, current) if tasks else ({}, {})
+    rows, conflicts, all_dependents = [], 0, []
+    for schema in schemas:
+        key = schema.lower()
+        own = [(idx, n, e) for idx in indexes for n, e in idx.entries() if n.lower() == key]
+        head = f"{own[0][1]}  {own[0][2].get('kind', 'data')} in {own[0][0].data.get('package', own[0][0].package.name)}" if own else f"{schema}  (not in the workspace)"
+        notes = []
+        if key in changes:
+            notes.append(f"CONFLICT: task {changes[key]} changes it")
+            conflicts += 1
+        if key in affects:
+            notes.append(f"task {affects[key]} depends on it")
+        dependents = sorted({(fk, fn, e.via) for idx in indexes for fk, fn, e in idx.dependents(schema)}, key=lambda d: (d[0], d[1].lower(), d[2]))
+        lines = []
+        for fk, fn, via in dependents:
+            mark = f" - task {changes[fn.lower()]} changes it" if fn.lower() in changes else ""
+            if mark:
+                conflicts += 1
+            lines.append(f"{fk} {fn} ({via}){mark}")
+            if fn not in all_dependents and fn.lower() not in {s.lower() for s in schemas}:  # what the task changes is not what it affects
+                all_dependents.append(fn)
+        rows.append((head, notes, lines))
+    out = []
+    if md:
+        out += ["## Impact", "", "| Schema | Dependents | Other active tasks |", "|---|---|---|"]
+        for head, notes, lines in rows:
+            name = head.split("  ")[0]
+            others = "; ".join(notes + [l.split(" - ")[1] + f" ({l.split(' (')[0]})" for l in lines if " - task " in l]) or "-"
+            out.append(f"| `{name}` | {', '.join(l.split(' - task ')[0] for l in cut(lines, limit)) or 'none typed'} | {others} |")
+    else:
+        for head, notes, lines in rows:
+            out.append(head + (f"  [{'; '.join(notes)}]" if notes else ""))
+            out.append(f"  dependents ({len(lines)}):" if lines else "  dependents: none typed in the workspace")
+            out += ["    " + l for l in cut(lines, limit)]
+    out.append("")
+    out.append(f"affects: {', '.join(all_dependents) if all_dependents else '(none)'}")
+    out.append(f"{len(all_dependents)} dependents of {len(schemas)} schema(s); {conflicts} conflict(s) with other active tasks"
+               + ("" if tasks else " (no tasks folder given: locks not checked)"))
+    return "\n".join(out), conflicts

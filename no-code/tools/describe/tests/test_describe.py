@@ -694,6 +694,37 @@ def dependencies_out(path, name):
     return dependencies(path, name, "out", limit=0)
 
 
+def test_impact_lists_dependents_and_the_locks_of_other_active_tasks():
+    import json
+    import tempfile
+    from creatio_schemas.describe.deps import impact
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        for folder, data, done in (("013-other", {"schemas": ["iaOrder_FormPage"], "affects": ["iaOrderStatus"]}, False),
+                                   ("011-done", {"schemas": ["iaOrder"]}, True), ("012-this", {"schemas": ["iaOrder"]}, False)):
+            (t / folder).mkdir()
+            (t / folder / "schemas.json").write_text(json.dumps(data), encoding="utf-8")
+            if done:
+                (t / folder / "success-report.md").write_text("ok", encoding="utf-8")
+        text, conflicts = impact(PAGES, ["iaOrder", "iaOrderStatus"], t, "012-this")
+        assert conflicts == 1 and "    page iaOrder_FormPage (data-source) - task 013-other changes it" in text
+        assert "iaOrderStatus  object in iaTest  [task 013-other depends on it]" in text and "    object iaOrder (lookup)" in text
+        assert "affects: iaOrder_FormPage, iaTests_FormPage" in text and "011-done" not in text  # a finished task locks nothing; what the task changes is not what it affects
+        assert text.endswith("2 dependents of 2 schema(s); 1 conflict(s) with other active tasks")
+        md, _ = impact(PAGES, ["iaOrder"], t, "012-this", md=True)
+        assert md.splitlines()[:4] == ["## Impact", "", "| Schema | Dependents | Other active tasks |", "|---|---|---|"]
+        assert "| `iaOrder` | page iaOrder_FormPage (data-source), page iaTests_FormPage (data-source) | task 013-other changes it (page iaOrder_FormPage) |" in md
+        # the current task's own lock is not a conflict; a schema another task changes is
+        assert impact(PAGES, ["iaOrder"], t, "012-this")[1] == 1 and impact(PAGES, ["iaOrder_FormPage"], t, "012-this")[1] == 1
+        assert impact(PAGES, ["iaOrder_FormPage"], t, "013-other")[1] == 0
+    text, conflicts = impact(PAGES, ["Nope"])
+    assert text.startswith("Nope  (not in the workspace)") and conflicts == 0 and "locks not checked" in text
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert main(["impact", str(PAGES), "iaOrderStatus", "--md"]) == 0
+    assert out.getvalue().startswith("## Impact")
+
+
 def test_cli():
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
