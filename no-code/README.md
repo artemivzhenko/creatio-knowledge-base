@@ -133,6 +133,31 @@ the members of a platform type by reflection over a local `bin/` (`api.py`).
 (views, functions, triggers, data fixes) per database engine, with install type and run order
 (`sqlscripts.py`); `push-pkg` runs them, `sqlscripts.py probe` shows what the environment recorded.
 
+## Describe layer
+
+[tools/describe/](tools/describe/README.md) answers questions about a package or a clio workspace
+without reading the files (`describe.py`): one line per item of a package, the summary of a schema,
+one part of it by topic, where a schema lives and who refers to it, the typed dependency graph
+(`deps`), the dependents of a change and the locks of the other active tasks (`impact`), what
+changed against git HEAD or a pulled copy in schema terms (`diff`), the copies of a schema on an
+environment (`layers`), every lookup object, and a text snapshot of it all (`export`). The same
+calls are the `describe_*` and `schema_*` tools of the MCP server; every list answer is cut at 40
+lines with a `... N more` tail.
+
+## Push
+
+[tools/push/](tools/push/README.md) installs a package in one command (`push.py`): `IsChanged`
+cleared, `clio push-pkg`, the compilation log read, `compile-configuration` when the package has a
+process with a script or a user task, then the probes of the changed items; `--dry-run` shows the
+plan, and the files of other active tasks of the loop are checked before anything is pushed. The MCP
+tool is `push_package`.
+
+## Project
+
+[tools/project.py](tools/project.py) - `project.py sync <project.json>` writes the test framework's
+environment configuration from the loop's `project.json` (`skill/creatio-loop`), so one file names
+the environment for both repositories.
+
 ## The schema library
 
 The toolkits are command lines over [tools/creatio_schemas/](tools/creatio_schemas/README.md):

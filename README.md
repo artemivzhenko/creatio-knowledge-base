@@ -1,31 +1,39 @@
 # Creatio knowledge base
 
-A curated collection of **170 Creatio development recipes** — Classic UI (7.x), Freedom UI
+A curated collection of **177 Creatio development recipes** — Classic UI (7.x), Freedom UI
 (8.x), C# backend and SQL — plus copyable project templates for Freedom UI and Mobile
-modules, a C# style guide, **a no-code layer for the clio CLI** (13 block skills and a
-reference page for each of its 261 commands), and an MCP server that makes all of it
-searchable by an AI assistant.
+modules, a C# style guide, **a no-code layer** (13 clio block skills with a reference page for
+each of its 261 commands, and 17 Python toolkits that build business processes, rules, objects,
+pages, cases, data bindings and SQL scripts as package files), **a describe layer** that answers
+questions about a package - what it holds, what a schema is, who depends on it, what changed -
+without reading the files, and an MCP server that gives an AI assistant all of it as 20 tools.
+Four Claude Code skills turn the tools into roles: an **author** that builds a task and a
+**tester** that proves it, under one task-folder contract.
 
 | Area | Entries |
 | --- | --- |
-| Frontend — Classic UI (7.x) | 57 |
+| Frontend — Classic UI (7.x) | 61 |
 | Frontend — Freedom UI (8.x) | 44 |
-| Backend — C# | 62 |
+| Backend — C# | 65 |
 | Backend — SQL (PostgreSQL) | 4 |
 | Module templates — Freedom UI component and request handlers, Mobile SDK module | 3 |
-| **Code recipes** | **170** |
+| **Code recipes** | **177** |
 | clio — block skills with verified traps | 13 |
 | clio — command reference (generated from clio's docs) | 261 |
+| Tools — one README per package toolkit, searchable as area `Tools` | 17 |
 
 Recipes do not compile or run on their own. Every recipe is a header block that explains
 the API and its traps, followed by a code template you adapt. The value is concentrated in
 the headers — they carry the things general Creatio knowledge gets wrong. The two module
 templates are the exception: they are real projects that build.
 
-The clio layer in [no-code/](no-code/README.md) is the counterpart for everything an agent
-does *without* writing code: packages, SQL, objects and columns, Freedom UI pages,
-applications, rights, builds, and clio's own MCP server. Its skills record what was
-verified on a real Creatio 8.2.3 environment — including what clio silently gets wrong there.
+The no-code layer in [no-code/](no-code/README.md) is the counterpart for everything an agent
+does *without* writing code: the clio skills cover packages, SQL, objects and columns, Freedom UI
+pages, applications, rights, builds, and clio's own MCP server, and record what was verified on
+a real Creatio 8.2.3 environment — including what clio silently gets wrong there; the toolkits
+under `no-code/tools/` write what clio cannot on 8.x - business processes, business rules, DCM
+cases, user tasks, objects, pages, data bindings, SQL scripts - as package files, byte for byte,
+behind one front door (`python no-code/tools/creatio.py`).
 
 ## Quick start
 
@@ -68,7 +76,7 @@ counter-intuitive in ways that cost hours:
 Writing this from memory produces code that looks right and fails silently. The recipes
 pin down the shape that actually works.
 
-The second problem is context: 170 files do not fit in a model's context window, and
+The second problem is context: 177 files do not fit in a model's context window, and
 loading them wholesale wastes it. Hence the MCP server — the assistant searches for the
 one recipe it needs.
 
@@ -77,15 +85,20 @@ one recipe it needs.
 ```
 CREATIO_CODE_STYLE.md          C# style and architecture guide, served by get_code_style
 agent_setup.py                 one-command setup of the MCP server and companion tooling
-Frontend/ClassicUI/       57   Creatio 7.x — diff, methods, Terrasoft.*
+Frontend/ClassicUI/       61   Creatio 7.x — diff, methods, Terrasoft.*
 Frontend/FreedomUI/       44   Creatio 8.x — viewConfigDiff, handlers, crt.*, @creatio-devkit
 Frontend/RemoteModule/     2   Freedom UI remote module: view element, request handlers — recipes + template/
 Frontend/Mobile/           1   Creatio Mobile SDK handler module — recipe + template/
-Backend/C#/               63   ESQ, Select/Insert/Update, event listeners, web services, processes, files, unit tests
+Backend/C#/               65   ESQ, Select/Insert/Update, event listeners, web services, processes, files, unit tests
 Backend/SQL/               4   PostgreSQL diagnostic queries
-no-code/                       clio CLI for agents: clio-*/SKILL.md per block, reference/<command>.md, tools/sync_clio_docs.py
-mcp-server/                    search server exposing the recipes over MCP
-skill/creatio-kb/              Claude Code skill: the habit of consulting the KB
+no-code/                       clio for agents: clio-*/SKILL.md per block, reference/<command>.md, tools/sync_clio_docs.py
+no-code/tools/                 the package toolkits (creatio.py front door, creatio_schemas/ library, <tool>/<tool>.py CLIs,
+                               describe/ the describe layer, env/ the environment layer, push/, scaffold/, project.py)
+mcp-server/                    the MCP server: recipe search, the describe layer, push and environment tools
+skill/creatio-kb/              Claude Code skill: the habit of consulting the KB and the describe tools before writing
+skill/creatio-loop/            the author/tester contract: the task folder, project.json, the schema lock, proof tiers
+skill/creatio-author/          the author role: plan.md with acceptance criteria, impact, build, push, probe
+skill/creatio-tester/          the tester role: preflight, map, tests of every tier, evidence, the report
 ```
 
 Each area is split into topic folders. Both UI areas use the same vocabulary wherever the
@@ -134,7 +147,9 @@ section at a time.
 
 ## Using it with an AI assistant
 
-The MCP server gives the assistant six tools:
+The MCP server gives the assistant 20 tools in three groups.
+
+Recipes:
 
 | Tool | Purpose |
 | --- | --- |
@@ -145,11 +160,36 @@ The MCP server gives the assistant six tools:
 | `kb_overview()` | map of areas, topics and counts |
 | `get_code_style(section?)` | the C# style guide, whole or by section |
 
+The describe layer, over a package folder or a clio workspace (`no-code/tools/describe/README.md`):
+
+| Tool | Purpose |
+| --- | --- |
+| `describe_package(path, kind?)` | one line per schema, SQL script, data binding: kind, name, caption, counts |
+| `describe_schema(path, Name)` | the summary of one schema - 6x-40x fewer tokens than its files |
+| `describe_item(path, Name, "<topic> [<name>] [k=v]")` | one part: a column, an element, a handler's code, a stage, a parameter |
+| `find_schema(path, Name)` | where a schema lives, its files, what it refers to and what refers to it |
+| `schema_deps(path, Name, direction?, kind?, via?)` | the typed dependency graph: what it builds on, who builds on it, through which columns |
+| `schema_impact(path, schemas, tasks?, current?, md?)` | the dependents of the schemas a task changes and the locks of the other active tasks |
+| `schema_diff(package, schemas?, against?)` | what changed against git HEAD, a revision or a pulled copy, as `+` / `-` / `~` lines per item |
+| `schema_layers(env or project.json, Name)` | the copies of a schema on an environment in the order the platform applies them; a Custom-layer copy is flagged |
+| `list_lookups(path)` | every lookup object with its parent chain, bindings and users |
+| `index_workspace(path, rebuild?)` | build or refresh the index the answers come from |
+
+The environment, through a clio environment name, never a private script:
+
+| Tool | Purpose |
+| --- | --- |
+| `env_sql(env, sql)` | rows as JSON |
+| `env_odata(env, Entity, select?, filter?, top?)` | records over OData |
+| `env_call(env, method, path, body?)` | a service or OData call with login and CSRF |
+| `push_package(package, env, ...)` | install in one command: IsChanged cleared, push-pkg, compilation log, probes of the changed items |
+
 `area` is one of `ClassicUI`, `FreedomUI`, `RemoteModule`, `Mobile`, `Backend`, `SQL`,
-`Clio`. In the `Clio` area `get_recipe("execute-sql-script")` returns a command's reference
-page and `get_recipe("clio-sql-and-data")` a block skill. Without an area filter, clio pages
-are scaled down so that a platform question ("upload a file") is still answered by a
-platform recipe; name clio or a command in the query to bring them up.
+`Clio`, `Tools`. In the `Clio` area `get_recipe("execute-sql-script")` returns a command's reference
+page and `get_recipe("clio-sql-and-data")` a block skill; in `Tools`, `get_recipe("tools/process")`
+a toolkit's README. Without an area filter, clio pages are scaled down so that a platform question
+("upload a file") is still answered by a platform recipe; name clio or a command in the query to
+bring them up.
 
 Search is lexical BM25 with a title bonus and a light stemmer (`pagination` finds
 `paginate`), built in memory at startup and rebuilt automatically when a file changes. No
@@ -162,6 +202,20 @@ The companion skill in [skill/creatio-kb/](skill/creatio-kb/) supplies the *habi
 consulting the tools before writing Creatio code — the server alone will not make an
 assistant reach for it. Copy the folder into `.claude/skills/` of the project you develop
 Creatio in.
+
+## The author/tester loop
+
+Three more skills in [skill/](skill/) make two agents work a task against each other without a
+human in between: [creatio-loop](skill/creatio-loop/SKILL.md) is the contract - a task folder
+whose files are the protocol (`task.md`, `questions.md`, `plan.md` with acceptance criteria and an
+`## Impact` table, `schemas.json` as the lock between tasks, `report-N.md`, `success-report.md`,
+`failed.md`), `project.json` with the environment and the package, the proof tiers (unit, probe,
+backend over OData, process case, UI case); [creatio-author](skill/creatio-author/SKILL.md) plans,
+builds with the toolkits, pushes and probes; [creatio-tester](skill/creatio-tester/SKILL.md)
+reads the plan and `schema_diff`, writes a test of the right tier for every criterion in the
+sibling test framework (`automatic-creatio-tests`, its `creatio-tests` MCP server), keeps the
+evidence and writes the report. The tester never changes package files; the author never writes
+the report.
 
 ## Using it as a human
 

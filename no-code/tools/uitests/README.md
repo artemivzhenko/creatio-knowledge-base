@@ -85,10 +85,18 @@ check-record UsrShipment Id=0f3c2a8e-5d41-4b7a-9c26-1e8d7b4a6f90;UsrLabel=PARCEL
   (a lookup result is its id).
 - `check-record <object> Col=Val;Col=Val [not] exists` - an OData filter; a lookup column given a
   GUID reads `<Column>Id`. Existence only.
-- When S14 lands: `insert <object> as <alias> set ...`, `update <object> $<alias> set ...`,
-  `delete <object> $<alias>`, `check-record ... has <column> <op> <value>`, `check-count`; the
-  inserted records are removed at `end`. Until then a backend criterion that needs a fresh record
-  starts a process that creates it, or uses a record the task's data provides.
+- A case may write: `insert <object> as <alias> set Col=Val;...` (the Id becomes `$alias`),
+  `update <object> $alias set ...`, `delete <object> $alias`, `delete-record <object> <filter>`
+  (refuses more than 20 matches); `check-record ... has <column> <op> <value>`, `check-count
+  <object> <filter> <op> <n>`, `check-distinct`; `remember <code> as $x` and `remember-record
+  <object> <filter> as $x` bind variables, `$x+N` only as the value `check-value` compares with.
+  Every inserted record is deleted when the case ends unless the `insert` says `keep`. The header
+  `# writes` makes the case stop at its first failure and refuses an inserted alias that is neither
+  deleted nor kept; `# ac: AC-02` names the criterion, and a run with `--task-folder <dir>` (MCP
+  `run(..., task_folder, task)`) writes `<dir>/evidence/AC-02-report-N.txt` and a draft report row.
+  `check console no errors [except "<regex>"]` fails on browser errors of the pages opened so far.
+  The full grammar is `docs/dsl.md`, "Cases that write"; the examples are
+  `ProcessCases/order-writes.act.exp` and `Cases/order-page-writes.act.exp`.
 
 ## A case from an acceptance criterion
 

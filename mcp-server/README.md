@@ -1,18 +1,49 @@
 # Creatio KB MCP server
 
 Exposes this knowledge base to an AI assistant over MCP, so the model can look up a
-recipe for a concrete task instead of loading all 170 files into context.
+recipe for a concrete task instead of loading all 177 files into context - and, through the
+same server, ask the describe layer about a package, install it and query the environment.
 
 ## What it gives the model
 
+Recipes (`kb_index.py`):
+
 | Tool | Purpose |
 | --- | --- |
-| `search_recipes(query, area?, limit?)` | Ranked search by task or symptom. `area` = `ClassicUI` / `FreedomUI` / `RemoteModule` / `Mobile` / `Backend` / `SQL` / `Clio`. |
-| `get_recipe(recipe_id)` | Full text of one recipe: explanation header plus runnable code. For clio, a command name (`execute-sql-script`) or a block skill (`clio-sql-and-data`) resolves directly. |
+| `search_recipes(query, area?, limit?)` | Ranked search by task or symptom. `area` = `ClassicUI` / `FreedomUI` / `RemoteModule` / `Mobile` / `Backend` / `SQL` / `Clio` / `Tools`. |
+| `get_recipe(recipe_id)` | Full text of one recipe: explanation header plus runnable code. For clio, a command name (`execute-sql-script`) or a block skill (`clio-sql-and-data`) resolves directly; for a toolkit, `tools/process`. |
 | `find_api(symbol, limit?)` | Reverse lookup — which recipes use `crt.OpenLookupPageRequest`, `UseAdminRights`, `EntitySchemaQuery`… A bare name also matches the dotted one. |
 | `list_recipes(area?, topic?)` | Browse ids and titles. |
 | `kb_overview()` | Map of areas, topics and counts — the entry point when the model does not know what exists. |
 | `get_code_style(section?)` | The C# style and architecture guide (`../CREATIO_CODE_STYLE.md`), whole or one `##` section by number or heading words (`"logging"`, `"9"`). |
+
+The describe layer (`../no-code/tools/creatio_schemas/describe/`, its README is the contract -
+every list answer has a `limit`, default 40, and a `... N more` tail; `0` means all):
+
+| Tool | Purpose |
+| --- | --- |
+| `describe_package(package, kind?, limit?)` | One line per schema, SQL script and data binding, from the package index. |
+| `describe_schema(package, schema, limit?)` | The summary of one schema: what the toolkit's `inspect` prints. |
+| `describe_item(package, schema, query, limit?)` | One part, chosen by `"<topic> [<name>] [k=v]"`; `"topics"` lists what the schema answers. |
+| `find_schema(path, schema, limit?)` | The package, the files (absolute paths), what it refers to, what refers to it. |
+| `schema_deps(path, schema, direction?, kind?, via?, limit?)` | The typed graph: objects a page or process builds on (and through which columns); every process, rule, page, DCM, binding or listener that builds on an object. |
+| `schema_impact(path, schemas, tasks?, current?, md?, limit?)` | The dependents of the schemas a task changes; with the loop's tasks folder, which other active task changes or affects them. Ends with `exit code 1` on a conflict. `md` gives the `## Impact` table for `plan.md`. |
+| `schema_diff(package, schemas?, against?)` | The working copy against git HEAD, a revision or a folder with a pulled copy: `+` / `-` / `~` lines per item, never a JSON hunk. |
+| `schema_layers(path_or_env, schema, rule?)` | The SysSchema copies of a schema on an environment, applied first to last; `Custom layer present` means a copy on the site overrides what you push. |
+| `list_lookups(path, limit?)` | Every lookup object: parent chain, bindings, users. |
+| `index_workspace(path, rebuild?)` | Build or refresh `.creatio-index/` under a workspace; reports added / changed / removed. The other tools refresh it themselves on every call. |
+
+The environment (`creatio_schemas/environment.py` over clio; `env` is a clio environment name):
+
+| Tool | Purpose |
+| --- | --- |
+| `env_sql(env, sql, limit?)` | Rows as JSON, one object per row; a database error comes back as `error: ...`. |
+| `env_odata(env, entity, select?, filter?, top?)` | Records over OData (`top` defaults to 20). |
+| `env_call(env, method, path, body?)` | A service or OData call with login and CSRF; the fault in one line. |
+| `push_package(package, env, ...)` | `IsChanged` cleared, `push-pkg`, the compilation log, `compile-configuration` when needed, the probes of the changed items; `dry_run` shows the plan. |
+
+The describe and environment tools import `../no-code/tools` at startup (standard library only);
+the environment tools also need `clio` on the PATH with the environment registered.
 
 Search is lexical BM25 with a title bonus and a light stemmer (`pagination` finds
 `paginate`, `files` finds `file`), built in memory at startup. No API keys, no network,

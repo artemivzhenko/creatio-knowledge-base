@@ -76,12 +76,18 @@ Synchronize the test framework credentials from the project with `python no-code
 
 ```bash
 cd no-code/tools
-python <kind>/tests/test_<kind>_tools.py        # kind: objects, process, rules, pages, sqlscripts, dcm, usertask, data, classicui, resources, scaffold, push, describe
+python <kind>/tests/test_<kind>_tools.py        # kind: objects, process, rules, pages, sqlscripts, dcm, usertask, data, classicui, resources, scaffold, push, env, project; describe/tests/test_describe.py
+python tests/test_creatio.py; python tests/test_sync_tool_docs.py   # the front door; the generated README blocks are in sync
 python creatio.py                                # every toolkit, one line each; creatio.py <tool> --help, creatio.py <tool> <command> ...
 python describe/describe.py package <pkg>        # one line per schema (from the index)
 python describe/describe.py item <pkg> <Schema> "<topic> [<name>] [k=v]"
 python describe/describe.py find <workspace> <Schema>
-cd ../..; python mcp-server/kb_index.py; python mcp-server/test_kb_index.py   # after touching mcp-server or recipes
+python describe/describe.py deps <workspace> <Schema> [--in|--out]      # the typed graph; impact <ws> <Schema>... --tasks <folder> for the locks
+python describe/describe.py diff <pkg> [<Schema>...] [--against HEAD|<folder>]   # what changed, in schema terms
+python push/push.py <pkg> -e <env> [--dry-run]   # IsChanged, push-pkg, compile, probes
+python env/sql.py -e <env> "select 1"            # rows as JSON; env/call.py, env/proc-run.py, env/unit.py, env/api.py
+python sync_tool_docs.py                         # after changing any CLI's commands or docstring
+cd ../..; python mcp-server/kb_index.py; python mcp-server/test_kb_index.py; python mcp-server/test_server_tools.py   # after touching mcp-server or recipes
 ```
 
 Test framework (`../automatic-creatio-tests`): `dotnet build`, `dotnet test`,
@@ -109,6 +115,13 @@ Library map (what to reuse):
 | the kinds the describe layer knows | `describe/registry.py` (`Kind`, `register`) |
 | package index, find, lookups | `describe/index.py` |
 | one answer about a schema | `describe/core.py`, `describe/queries.py` |
+| the typed dependency graph, impact of a change | `describe/deps.py` (`Edge`, `Resolver`, `deps_of`, `dependencies`, `impact`) |
+| two states of a package compared | `describe/diff.py` (`schema_diff`) |
+| the copies of a schema on an environment | `describe/layers.py` (`schema_layers`) |
+| a text snapshot of a workspace | `describe/export.py` |
+| the stock objects and columns of a platform version | `entity/catalog.py` (`STOCK_ENTITIES`, `stock_columns`), `entity/assets/` |
+| the loop's task folders, the locks of active tasks | `tasks.py` (`active_tasks`, `active_locks`) |
+| SQL, OData, a service call, a process run on an environment | `environment.py` (`Environment`, `open_environment`) |
 | a CLI | `cli.py` (`CommandLine`, `parse_assignments`) |
 | clio calls | `clio.py` (`Clio`) |
 
