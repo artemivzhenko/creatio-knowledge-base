@@ -26,6 +26,51 @@ python unit.py run --project project.json --category UsrOrders --evidence eviden
 python api.py Terrasoft.Core.DB.Select Column --bin "<site>/Terrasoft.WebApp/bin"
 ```
 
+## Commands
+
+<!-- commands:start -->
+### env sql
+
+```
+python sql.py -e <env> "select ..."                 rows of every statement as JSON
+python sql.py -e <env> --file q.sql --csv           statements split on ';' at line ends, each run alone
+python sql.py --project project.json "update ..."   an update/insert prints "(no rows)"
+```
+
+### env call
+
+```
+python call.py -e <env> POST ServiceModel/UsrOrderService.svc/Recalc '{"orderId": "..."}'
+python call.py -e <env> POST rest/UsrOrderService/Recalc --file body.json
+python call.py -e <env> GET odata/Contact?$top=1
+```
+
+### env proc-run
+
+```
+python proc-run.py -e <env> UsrOrder_Process OrderId=<guid> Quantity=3 --result Total --result Status
+```
+
+### env unit
+
+```
+python unit.py run --project project.json --category UsrOrders [--evidence result.json]
+python unit.py run -e <env> --runner UsrRunTests_Process --class UsrOrderTest
+```
+
+| command | what it does |
+| --- | --- |
+| `run` | run the tests of a category or a class |
+
+### env api
+
+```
+python api.py Terrasoft.Core.DB.Select --bin <site>/Terrasoft.WebApp/bin
+python api.py Select Column                       # a short name; members whose name starts with "Column"
+python api.py EntitySchemaQuery AddColumn --bin <folder>   (or set CREATIO_BIN)
+```
+<!-- commands:end -->
+
 ## Which site
 
 `-e <name>` reads the url, login, password and `IsNetCore` of a clio environment from clio's

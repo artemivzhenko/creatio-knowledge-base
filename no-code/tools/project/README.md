@@ -10,3 +10,11 @@ Existing unrelated configuration and case folders are retained; new files use
 file is the source of truth; do not copy credentials back from the framework.
 When an existing file changes it is rewritten as JSON; its comments and formatting
 are not retained.
+## Commands
+
+<!-- commands:start -->
+| command | what it does |
+| --- | --- |
+| `sync` | write the framework environment from project.json |
+<!-- commands:end -->
+

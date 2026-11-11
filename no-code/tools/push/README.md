@@ -8,9 +8,19 @@ Push a package to an environment with drift, task ownership and compilation chec
 
 | File | What it does |
 | --- | --- |
-| `push.py` | CLI: push a package with all steps |
+| `push.py` | CLI (the commands are listed under Commands) |
 | [`../creatio_schemas/push.py`](../creatio_schemas/README.md) | the library (`push`) |
 | `tests/` | `python tests/test_push_tools.py` |
+
+## Commands
+
+<!-- commands:start -->
+```
+python push.py <package> -e <environment>          push and check
+python push.py <package> -e <environment> --probe  also run probes
+python push.py <package> -e <environment> --dry-run print commands only
+```
+<!-- commands:end -->
 
 ## How it works
 

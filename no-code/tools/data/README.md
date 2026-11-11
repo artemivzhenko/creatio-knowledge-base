@@ -9,7 +9,7 @@ platform writes while it installs the package. Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `data.py` | CLI: inspect, validate, rows, new, set, add-row, remove-row |
+| `data.py` | CLI (the commands are listed under Commands) |
 | `../creatio_schemas/data/binding.py` | `DataBinding` (and `JsonFile`): the library the CLI uses |
 | `tests/test_data_tools.py` | checks on real bindings with generic names: a lookup with two cultures, a system setting and its value |
 
@@ -20,6 +20,34 @@ python data.py set     UsrPkg UsrOrderStatus <key> Name "Новый" --culture r
 python data.py rows    UsrPkg UsrOrderStatus --culture ru-RU
 clio push-pkg UsrPkg -e dev                                           # clear SysSchema.IsChanged first
 ```
+
+## Commands
+
+<!-- commands:start -->
+```
+python data.py inspect    <package> <Binding>
+python data.py validate   <package> <Binding>
+python data.py rows       <package> <Binding> [--limit 20] [--culture en-US]
+python data.py new        <package> <Binding> --table UsrOrderStatus [--key Id] [--columns Name,Description]
+                          [--cultures en-US,ru-RU] [--rows rows.json]
+python data.py set        <package> <Binding> <key> <Column> <value> [--culture ru-RU]
+python data.py add-row    <package> <Binding> Column=value ...           (prints the new row's key)
+python data.py remove-row <package> <Binding> <key>
+python data.py duplicates <Object> <Column> -e <env> | --project <project.json>
+                          [--normalize trim,lower,digits] [--lookup] [--where "<OData filter>"] [--limit 40] [--json]
+```
+
+| command | what it does |
+| --- | --- |
+| `inspect` | bound table, row count, columns, problems |
+| `validate` | problems; exit code 1 on errors |
+| `rows` | the rows, one line each, key first |
+| `new` | a binding of an object of the workspace |
+| `set` | one value of one row |
+| `add-row` | a new row |
+| `remove-row` | drop a row and its translations |
+| `duplicates` | groups of records sharing a value on the environment; exit 1 when any |
+<!-- commands:end -->
 
 ## How it is stored
 

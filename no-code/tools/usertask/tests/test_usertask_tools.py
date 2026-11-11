@@ -16,7 +16,7 @@ from creatio_schemas.describe import describe_item, describe_package  # noqa: E4
 from creatio_schemas.usertask import UserTaskSchema  # noqa: E402
 from usertask import main  # noqa: E402
 
-FIXTURES = HERE / "fixtures" / "iaTest"
+FIXTURES = HERE / "fixtures" / "UsrPkg"
 
 
 def read(path: Path) -> str:
@@ -25,7 +25,7 @@ def read(path: Path) -> str:
 
 
 def test_round_trip_keeps_images_in_resources():
-    task = UserTaskSchema(FIXTURES, "iaRunCase_UserTask")
+    task = UserTaskSchema(FIXTURES, "UsrRunCase_UserTask")
     for path, (text, bom) in task.files().items():
         assert read(path) == ("﻿" if bom else "") + text, path
     assert task.diff() == ""
@@ -33,52 +33,52 @@ def test_round_trip_keeps_images_in_resources():
 
 
 def test_describe_and_queries():
-    task = UserTaskSchema(FIXTURES, "iaRunCase_UserTask")
+    task = UserTaskSchema(FIXTURES, "UsrRunCase_UserTask")
     text = task.describe()
     assert "user task, interactive" in text
     assert "RecordId                     Guid         In        required" in text
     assert "protected override bool InternalExecute(ProcessExecutingContext context)" in text
-    assert "iaCaseHelper" in task.method("InternalExecute") and task.method("InternalExecute").rstrip().endswith("}")
-    assert describe_item(FIXTURES, "iaRunCase_UserTask", "params direction=In").count("\n") == 2
-    assert '"A2": "DcmSchemaName"' in describe_item(FIXTURES, "iaRunCase_UserTask", "param DcmSchemaName")
-    assert describe_item(FIXTURES, "iaRunCase_UserTask", "methods").count("\n") == 4
-    assert "RunDcmCase" in describe_item(FIXTURES, "iaRunCase_UserTask", "method InternalExecute")
+    assert "UsrCaseHelper" in task.method("InternalExecute") and task.method("InternalExecute").rstrip().endswith("}")
+    assert describe_item(FIXTURES, "UsrRunCase_UserTask", "params direction=In").count("\n") == 2
+    assert '"A2": "DcmSchemaName"' in describe_item(FIXTURES, "UsrRunCase_UserTask", "param DcmSchemaName")
+    assert describe_item(FIXTURES, "UsrRunCase_UserTask", "methods").count("\n") == 4
+    assert "RunDcmCase" in describe_item(FIXTURES, "UsrRunCase_UserTask", "method InternalExecute")
     assert "user-task" in describe_package(FIXTURES) and "3 params, 5 methods, interactive" in describe_package(FIXTURES)
 
 
 def test_edit_and_create():
     tmp = Path(tempfile.mkdtemp()) / "packages"
-    shutil.copytree(FIXTURES, tmp / "iaTest")
+    shutil.copytree(FIXTURES, tmp / "UsrPkg")
     try:
-        task = UserTaskSchema(tmp / "iaTest", "iaRunCase_UserTask")
+        task = UserTaskSchema(tmp / "UsrPkg", "UsrRunCase_UserTask")
         p = task.add_param("Note", "Text", "Out", "Note", required=False)
         assert p["L12"] == 1 and "L6" not in p
         task.rename_param("DcmSchemaName", "CaseName")
         task.remove_param("EntitySchemaName")
         assert task.errors() == []
         task.save()
-        again = UserTaskSchema(tmp / "iaTest", "iaRunCase_UserTask")
+        again = UserTaskSchema(tmp / "UsrPkg", "UsrRunCase_UserTask")
         assert [x["A2"] for x in again.params] == ["RecordId", "CaseName", "Note"]
         assert again.resources.get("Parameters.CaseName.Caption") == "DcmSchemaName" and again.resources.get("Parameters.Note.Caption") == "Note"
         assert again.resources.get("LargeSvgImage") is not None  # images survive an edit
-        new = UserTaskSchema.create(tmp / "iaTest", "iaNotify_UserTask", "Notify owner", [("RecordId", "Guid", "In", "Record", True), ("Sent", "Boolean", "Out")])
-        reloaded = UserTaskSchema(tmp / "iaTest", "iaNotify_UserTask")
+        new = UserTaskSchema.create(tmp / "UsrPkg", "UsrNotify_UserTask", "Notify owner", [("RecordId", "Guid", "In", "Record", True), ("Sent", "Boolean", "Out")])
+        reloaded = UserTaskSchema(tmp / "UsrPkg", "UsrNotify_UserTask")
         assert reloaded.errors() == [] and len(reloaded.params) == 2 and reloaded.params[0]["L6"] is True
-        assert "partial class iaNotify_UserTask" in reloaded.source and "InternalExecute" in reloaded.methods()[0]
+        assert "partial class UsrNotify_UserTask" in reloaded.source and "InternalExecute" in reloaded.methods()[0]
         assert reloaded.schema["FK7"] is True and reloaded.interactive is False
-        assert "iaNotify_UserTask" in describe_package(tmp / "iaTest", "user-task")
+        assert "UsrNotify_UserTask" in describe_package(tmp / "UsrPkg", "user-task")
         assert not reloaded.generated_path.exists()  # no project in the package: nothing to compile
-        (tmp / "iaTest" / "Files").mkdir()
-        (tmp / "iaTest" / "Files" / "iaTest.csproj").write_text("<Project />")
+        (tmp / "UsrPkg" / "Files").mkdir()
+        (tmp / "UsrPkg" / "Files" / "UsrPkg.csproj").write_text("<Project />")
         reloaded.add_param("Amount", "Money", "In", "Amount")
         reloaded.save()
         generated = read(reloaded.generated_path)
         assert generated.startswith("﻿namespace Terrasoft.Core.Process.Configuration")
-        assert "public partial class iaNotify_UserTask : ProcessUserTask" in generated
+        assert "public partial class UsrNotify_UserTask : ProcessUserTask" in generated
         assert "public virtual Guid RecordId {" in generated and "public virtual bool Sent {" in generated and "public virtual Decimal Amount {" in generated
         assert 'writer.WriteValue("Sent", Sent, false);' in generated and "Amount = reader.GetValue<System.Decimal>();" in generated
         assert f'ResourceManager = "{reloaded.uid.replace("-", "")}"' in generated
-        assert UserTaskSchema(tmp / "iaTest", "iaNotify_UserTask").diff() == ""
+        assert UserTaskSchema(tmp / "UsrPkg", "UsrNotify_UserTask").diff() == ""
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
 
@@ -86,8 +86,8 @@ def test_edit_and_create():
 def test_cli():
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        assert main(["inspect", str(FIXTURES), "iaRunCase_UserTask"]) == 0
-        assert main(["method", str(FIXTURES), "iaRunCase_UserTask", "InternalExecute"]) == 0
+        assert main(["inspect", str(FIXTURES), "UsrRunCase_UserTask"]) == 0
+        assert main(["method", str(FIXTURES), "UsrRunCase_UserTask", "InternalExecute"]) == 0
     assert "parameters:" in out.getvalue() and "RunDcmCase" in out.getvalue()
 
 

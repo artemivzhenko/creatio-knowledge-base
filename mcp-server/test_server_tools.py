@@ -129,18 +129,35 @@ def test_schema_layers_reads_custom_layer_from_project():
 
 
 def test_schema_deps_answers_from_the_fixture_index():
-    pages = TOOLS / "pages" / "tests" / "fixtures" / "iaTest"
-    out = server.schema_deps(str(pages), "iaOrder", "in", kind="page")
-    assert out.splitlines()[:3] == ["iaOrder  object in iaTest", "dependents:", "  page iaOrder_FormPage  data-source: PDS  [name]"], out
-    assert "  object iaOrderStatus  lookup: iaStatus" in server.schema_deps(str(pages), "iaOrder", "out", via="lookup")
+    pages = TOOLS / "pages" / "tests" / "fixtures" / "UsrPkg"
+    out = server.schema_deps(str(pages), "UsrOrder", "in", kind="page")
+    assert out.splitlines()[:3] == ["UsrOrder  object in UsrPkg", "dependents:", "  page UsrOrder_FormPage  data-source: PDS  [name]"], out
+    assert "  object UsrOrderStatus  lookup: UsrStatus" in server.schema_deps(str(pages), "UsrOrder", "out", via="lookup")
     assert server.schema_deps(str(pages), "Nope").startswith("no schema named Nope")
 
 
 def test_schema_impact_ends_with_the_exit_code():
-    pages = TOOLS / "pages" / "tests" / "fixtures" / "iaTest"
-    out = server.schema_impact(str(pages), "iaOrderStatus, iaOrder", md=True)
-    assert out.startswith("## Impact") and "affects: iaOrder_FormPage, iaTests_FormPage" in out and out.endswith("exit code 0"), out
+    pages = TOOLS / "pages" / "tests" / "fixtures" / "UsrPkg"
+    out = server.schema_impact(str(pages), "UsrOrderStatus, UsrOrder", md=True)
+    assert out.startswith("## Impact") and "affects: UsrOrder_FormPage, UsrTests_FormPage" in out and out.endswith("exit code 0"), out
     assert server.schema_impact(str(pages), " ") == "error: name at least one schema"
+
+
+
+
+def test_schema_diff_compares_a_folder_without_git():
+    from creatio_schemas.entity import EntitySchema
+
+    source = TOOLS / "objects" / "tests" / "fixtures" / "UsrPkg"
+    with tempfile.TemporaryDirectory() as tmp:
+        pkg = Path(tmp) / "UsrPkg"
+        shutil.copytree(source, pkg)
+        entity = EntitySchema(pkg, "UsrOrder")
+        entity.add_column("UsrWeight", "Float", "Weight")
+        entity.save()
+        text = server.schema_diff(str(pkg), "UsrOrder", str(source))
+        assert text.splitlines()[0] == "UsrOrder  object" and "+ UsrWeight Float 'Weight'" in text
+        assert server.schema_diff(str(pkg), "UsrNoSuch", str(source)).startswith("error: ")
 
 
 if __name__ == "__main__":

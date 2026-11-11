@@ -9,9 +9,45 @@ Scripts that read and change DCM cases as **package files** (`Schemas/<Case>/met
 
 | File | What it does |
 | --- | --- |
-| `dcm.py` | CLI: inspect, validate, new, add-stage, remove-stage, add-step, remove-step, connect, disconnect, set-caption, enable, disable |
+| `dcm.py` | CLI (the commands are listed under Commands) |
 | `../creatio_schemas/dcm/schema.py` | `DcmSchema`: the library the CLI and the describe layer use |
 | `tests/test_dcm_tools.py` | checks on a real case with generic names |
+
+## Commands
+
+<!-- commands:start -->
+```
+python dcm.py inspect      <package> <Case>
+python dcm.py validate     <package> <Case>
+python dcm.py new          <package> <Case> --caption "Order cases" --entity UsrOrder --stage-column UsrStatus
+                           [--stage "New=<record uid>" --stage "Done=<record uid>" ...] [--cultures en-US,ru-RU]
+python dcm.py add-stage    <package> <Case> --caption "On hold" --record <uid> [--name Stage7] [--color #FFAC07] [--parent Stage4]
+python dcm.py remove-stage <package> <Case> <stage>
+python dcm.py connect      <package> <Case> <from> <to> [--one-way]
+python dcm.py disconnect   <package> <Case> <from> <to> [--one-way]
+python dcm.py add-step     <package> <Case> --stage Stage2 --process UsrNotify_Process --caption "Notify"
+                           [--name DcmElement5] [--map Request={Record:Id} ..] [--required] [--when "NextStage = Stage3 -> Stage3" ..]
+python dcm.py remove-step  <package> <Case> <step>
+python dcm.py set-caption  <package> <Case> <Caption|stage> <value>
+python dcm.py enable       <package> <Case>
+python dcm.py disable      <package> <Case>
+```
+
+| command | what it does |
+| --- | --- |
+| `inspect` | object, stage column, filter, stages with steps and conditions, moves |
+| `validate` | problems; exit code 1 on errors |
+| `new` | an empty case on an object's lookup column, stages optional |
+| `add-stage` | a stage for a record of the stage column's lookup |
+| `remove-stage` | drop a stage, its connections and captions |
+| `add-step` | a step that starts a process of the workspace on a stage |
+| `remove-step` | drop a step, its mappings and captions |
+| `connect` | allow moving between two stages |
+| `disconnect` | forbid moving between two stages |
+| `set-caption` | the case caption (target Caption) or a stage caption |
+| `enable` | set Enabled |
+| `disable` | clear Enabled |
+<!-- commands:end -->
 
 ## How a case is stored
 

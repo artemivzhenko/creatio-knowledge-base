@@ -94,10 +94,10 @@ def kb_overview() -> str:
         "Areas: ClassicUI (Creatio 7.x pages, details, sections), "
         "FreedomUI (8.x pages), RemoteModule (Angular custom view elements), "
         "Mobile (Mobile SDK handler modules), Backend (C# server code), SQL, "
-        "Clio (the clio CLI: one skill per functional block at the root, one "
-        "reference page per command under reference/, and tools/<name> - the "
-        "file toolkits that build processes, business rules, objects and SQL "
-        "scripts as package files). "
+        "Clio (the clio CLI: one skill per functional block at the root and one "
+        "reference page per command under reference/), "
+        "Tools (tools/<name> - the file toolkits that build processes, business "
+        "rules, objects and SQL scripts as package files). "
         "RemoteModule and Mobile recipes each sit next to a copyable project "
         "folder named in the recipe header."
     )
@@ -118,7 +118,8 @@ def search_recipes(query: str, area: str = "", limit: int = 8) -> str:
            "crt.OpenLookupPageRequest", "make a detail editable",
            "execute sql script", "push package to environment".
     area:  optional filter - "ClassicUI", "FreedomUI", "RemoteModule", "Mobile",
-           "Backend", "SQL" or "Clio" (the clio CLI and its MCP server).
+           "Backend", "SQL", "Clio" (the clio CLI and its MCP server) or "Tools"
+           (the file toolkits: objects, process, rules, pages, data, push ...).
            Leave empty to search everything; Classic UI and Freedom UI often have
            a recipe each for the same task, and seeing both tells you which UI
            generation the answer belongs to.
@@ -226,7 +227,7 @@ def list_recipes(area: str = "", topic: str = "") -> str:
     """
     Browse recipe ids and titles, optionally narrowed to an area and a topic.
 
-    area:  "ClassicUI", "FreedomUI", "RemoteModule", "Mobile", "Backend", "SQL" or "Clio".
+    area:  "ClassicUI", "FreedomUI", "RemoteModule", "Mobile", "Backend", "SQL", "Clio" or "Tools".
     topic: a folder inside the area, e.g. "Details", "BaseMethods", "ESQ",
            "reference" (clio command pages; the block skills sit at the root).
            Call kb_overview to see the available topics.
@@ -539,6 +540,24 @@ def env_odata(env: str, entity: str, select: str = "", filter: str = "", top: in
     except (OSError, KeyError, ValueError, RuntimeError) as e:
         return f"error: {e.args[0] if e.args else e}"
     return "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) or "(no rows)"
+
+
+@mcp.tool()
+def schema_diff(package: str, schemas: str = "", against: str = "") -> str:
+    """
+    What changed in a package, in schema terms: the working copy against git HEAD
+    (default), another revision, or a folder holding the package (a pulled copy of the
+    environment). Per item the lines the describe layer prints: `+` added (a column, an
+    element, a rule), `-` removed, `~ key old -> new` changed; `+ Name kind (new)` /
+    `- Name kind (removed)` for whole items. `schemas` limits it to a space-separated
+    list of items. The tester's reading of what the author changed; never a JSON hunk.
+    """
+    _tools_path()
+    from creatio_schemas.describe.diff import schema_diff as _sd
+    try:
+        return _sd(package, schemas.split() or None, against or None)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
 
 
 @mcp.tool()

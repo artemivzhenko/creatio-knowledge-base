@@ -9,7 +9,7 @@ object, add a grid of another object, remove an element. Pure Python standard li
 
 | File | What it does |
 | --- | --- |
-| `pages.py` | CLI: inspect, add-field, add-grid, remove, validate, from-schema |
+| `pages.py` | CLI (the commands are listed under Commands) |
 | [`../creatio_schemas/page/`](../creatio_schemas/README.md) | the library (`PageSchema`, `CONTROL_OF`) |
 | `tests/` | `python tests/test_pages_tools.py` - round trip and build checks on real 8.2.3 pages of both body forms |
 
@@ -18,6 +18,28 @@ were placed on `UsrOrder_FormPage` with these scripts only, `clio push-pkg` inst
 and the UI test utility's `analyse` found all 18 controls with the expected element types
 (Text, Integer, Decimal, Boolean, Date, Time, DateTime, Lookup, RichText, Phone, Email, Link,
 DataGrid). Two pages read from the package render back byte-for-byte.
+
+## Commands
+
+<!-- commands:start -->
+```
+python pages.py inspect   <package> <Page>
+python pages.py add-field <package> <Page> <Column> [--parent SideAreaProfileContainer] [--row N] [--col N] [--span N]
+python pages.py add-grid  <package> <Page> <Name> --entity UsrOrder --columns UsrName,UsrAmount [--parent GeneralInfoTabContainer] [--rows 6] [--editable]
+python pages.py remove    <package> <Page> <Element>
+python pages.py validate  <package> <Page>
+python pages.py from-schema <package> <Page> [--name UsrOrderForm] [--out Configuration/pages/UsrOrderForm.json] [--compare <page file>]
+```
+
+| command | what it does |
+| --- | --- |
+| `inspect` | elements, attributes, data sources and problems |
+| `validate` | problems; exit code 1 on errors |
+| `add-field` | a field bound to a column of the page's object |
+| `add-grid` | a grid listing another object's records |
+| `remove` | drop an element with its attribute and data source |
+| `from-schema` | the UI test utility's page file, from the page schema |
+<!-- commands:end -->
 
 ## The loop
 

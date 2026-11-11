@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Test" />
+			<Item Name="Columns.UsrAccount.Caption" Value="Account" />
+			<Item Name="Columns.UsrAmount.Caption" Value="Amount" />
+			<Item Name="Columns.UsrComment.Caption" Value="Comment" />
+			<Item Name="Columns.UsrContactLookup.Caption" Value="ContactLookup" />
+			<Item Name="Columns.UsrDate.Caption" Value="Date" />
+			<Item Name="Columns.UsrDateTime.Caption" Value="DateTime" />
+			<Item Name="Columns.UsrIsActive.Caption" Value="Is active" />
+			<Item Name="Columns.UsrName.Caption" Value="Name" />
+			<Item Name="Columns.UsrNumber.Caption" Value="Number" />
+			<Item Name="Columns.UsrOnlyDate.Caption" Value="Only date" />
+		</Items>
+	</Group>
+</Resources>

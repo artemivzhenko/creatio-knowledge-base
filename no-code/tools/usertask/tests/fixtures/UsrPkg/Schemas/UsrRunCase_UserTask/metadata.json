@@ -1,0 +1,52 @@
+﻿{
+  "MetaData": {
+    "Schema": {
+      "ManagerName": "ProcessUserTaskSchemaManager",
+      "UId": "27a4002a-2317-481c-baa6-9997beecd3d5",
+      "A2": "UsrRunCase_UserTask",
+      "A5": "c46fe4c6-dce8-405f-bff9-73d297964c6a",
+      "B1": [],
+      "B2": [],
+      "B3": [],
+      "B6": "a360d1f6-1bf4-41a9-b592-faebeff20528",
+      "B8": "8.2.3.1351",
+      "FJ1": [
+        {
+          "BL1": "Terrasoft.Core.Process.ProcessSchemaParameter",
+          "UId": "a0c9ab3f-2041-4a00-3258-76fd55e67c88",
+          "A2": "RecordId",
+          "A3": "27a4002a-2317-481c-baa6-9997beecd3d5",
+          "A4": "27a4002a-2317-481c-baa6-9997beecd3d5",
+          "L1": "23018567-a13c-4320-8687-fd6f9e3699bd",
+          "L8": {},
+          "L6": true,
+          "L11": false
+        },
+        {
+          "BL1": "Terrasoft.Core.Process.ProcessSchemaParameter",
+          "UId": "afcc0bd8-0a1d-136f-1e6c-6b3a85f17dfa",
+          "A2": "EntitySchemaName",
+          "A3": "27a4002a-2317-481c-baa6-9997beecd3d5",
+          "A4": "27a4002a-2317-481c-baa6-9997beecd3d5",
+          "L1": "8b3f29bb-ea14-4ce5-a5c5-293a929b6ba2",
+          "L8": {},
+          "L6": true,
+          "L11": false
+        },
+        {
+          "BL1": "Terrasoft.Core.Process.ProcessSchemaParameter",
+          "UId": "f55bb082-7fe8-27d6-047a-f0396fe502b7",
+          "A2": "DcmSchemaName",
+          "A3": "27a4002a-2317-481c-baa6-9997beecd3d5",
+          "A4": "27a4002a-2317-481c-baa6-9997beecd3d5",
+          "L1": "8b3f29bb-ea14-4ce5-a5c5-293a929b6ba2",
+          "L8": {},
+          "L11": false
+        }
+      ],
+      "FK7": true,
+      "FK12": "#839DC3",
+      "FK16": true
+    }
+  }
+}

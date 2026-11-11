@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Resources Culture="en-US">
+	<Group Type="String">
+		<Items>
+			<Item Name="Caption" Value="Order" />
+			<Item Name="Columns.UsrAmount.Caption" Value="Amount" />
+			<Item Name="Columns.UsrContact.Caption" Value="Contact" />
+			<Item Name="Columns.UsrDescription.Caption" Value="Description" />
+			<Item Name="Columns.UsrDueDate.Caption" Value="Due date" />
+			<Item Name="Columns.UsrEmail.Caption" Value="Email" />
+			<Item Name="Columns.UsrIsUrgent.Caption" Value="Urgent" />
+			<Item Name="Columns.UsrManager.Caption" Value="Manager" />
+			<Item Name="Columns.UsrName.Caption" Value="Name" />
+			<Item Name="Columns.UsrNotes.Caption" Value="Notes" />
+			<Item Name="Columns.UsrPhone.Caption" Value="Phone" />
+			<Item Name="Columns.UsrPickupTime.Caption" Value="Pickup time" />
+			<Item Name="Columns.UsrQuantity.Caption" Value="Quantity" />
+			<Item Name="Columns.UsrRichNotes.Caption" Value="Rich notes" />
+			<Item Name="Columns.UsrShipDate.Caption" Value="Ship date" />
+			<Item Name="Columns.UsrStatus.Caption" Value="Status" />
+			<Item Name="Columns.UsrWebsite.Caption" Value="Website" />
+			<Item Name="Columns.UsrWeight.Caption" Value="Weight" />
+		</Items>
+	</Group>
+</Resources>

@@ -176,7 +176,7 @@ def describe_schema(package: Path | str, name: str, limit: int = DEFAULT_LIMIT) 
 
 
 def parse_query(query: str) -> tuple[str, str | None, dict[str, str]]:
-    """`"elements type=crt.Input parent=X"` -> ("elements", None, {...}); `"element iaName"` -> ("element", "iaName", {})."""
+    """`"elements type=crt.Input parent=X"` -> ("elements", None, {...}); `"element UsrName"` -> ("element", "UsrName", {})."""
     tokens = shlex.split(query or "")
     if not tokens:
         return "topics", None, {}

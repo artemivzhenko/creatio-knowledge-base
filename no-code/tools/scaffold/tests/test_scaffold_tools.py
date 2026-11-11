@@ -21,7 +21,7 @@ from creatio_schemas.entity import EntitySchema  # noqa: E402
 from creatio_schemas.page import PageSchema  # noqa: E402
 from scaffold import caption_of, main, parse_column, parse_lookup  # noqa: E402
 
-PAGES = TOOLS / "pages" / "tests" / "fixtures" / "iaTest"
+PAGES = TOOLS / "pages" / "tests" / "fixtures" / "UsrPkg"
 SPEC = ["--caption", "Shipment", "--column", "UsrNumber:Integer:required", "--column", "UsrNotes:MediumText",
         "--column", "UsrContact:Lookup:Contact", "--lookup", "UsrStatus:UsrShipmentStatus:New,In progress,Done", "--pages", "--cultures", "en-US,ru-RU"]
 
@@ -34,9 +34,9 @@ def read(path: Path) -> str:
 @contextlib.contextmanager
 def package():
     tmp = Path(tempfile.mkdtemp()) / "packages"
-    shutil.copytree(PAGES, tmp / "iaTest")
+    shutil.copytree(PAGES, tmp / "UsrPkg")
     try:
-        yield tmp / "iaTest"
+        yield tmp / "UsrPkg"
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
 
@@ -57,7 +57,7 @@ def test_spec_grammar():
     assert parse_column("UsrContact:Lookup:Contact:required") == {"name": "UsrContact", "type": "Lookup", "ref": "Contact", "flags": ["required"]}
     assert parse_lookup("UsrStatus:UsrShipmentStatus:New, In progress ,Done")["rows"] == ["New", "In progress", "Done"]
     assert parse_lookup("UsrKind:UsrKindLookup") == {"column": "UsrKind", "object": "UsrKindLookup", "rows": []}
-    assert [caption_of(n) for n in ("UsrShipDate", "UsrURLLink", "iaOrderStatus", "Name")] == ["Ship date", "URL link", "Order status", "Name"]
+    assert [caption_of(n) for n in ("UsrShipDate", "UsrURLLink", "UsrOrderStatus", "Name")] == ["Ship date", "URL link", "Order status", "Name"]
     for bad in ("UsrX", ":Integer", "UsrC:Lookup"):
         try:
             parse_column(bad)
@@ -81,7 +81,7 @@ def test_dry_run_then_build_then_refuse():
         assert "+++ b/Schemas/UsrShipment/metadata.json" in out and "+++ b/Data/UsrShipmentStatus/data.json" in out and "(dry run: nothing written)" in out
 
         code, out = run("entity", str(pkg), "UsrShipment", *SPEC)
-        assert code == 0 and "29 file(s) written to iaTest" in out, out
+        assert code == 0 and "29 file(s) written to UsrPkg" in out, out
         listing = describe_package(pkg)
         for line in ("object    UsrShipment ", "object    UsrShipmentStatus ", "page      UsrShipment_FormPage ", "page      UsrShipment_ListPage "):
             assert line in listing, listing
@@ -109,17 +109,17 @@ def test_dry_run_then_build_then_refuse():
 
 def test_existing_lookup_is_reused_and_errors_write_nothing():
     with package() as pkg:
-        code, out = run("entity", str(pkg), "UsrParcel", "--caption", "Parcel", "--lookup", "UsrState:iaOrderStatus")
+        code, out = run("entity", str(pkg), "UsrParcel", "--caption", "Parcel", "--lookup", "UsrState:UsrOrderStatus")
         assert code == 0 and "lookup object" not in out and "data binding" not in out and "page " not in out, out
-        assert EntitySchema(pkg, "UsrParcel").column("UsrState")["S4"] == EntitySchema(pkg, "iaOrderStatus").uid
+        assert EntitySchema(pkg, "UsrParcel").column("UsrState")["S4"] == EntitySchema(pkg, "UsrOrderStatus").uid
         before = files(pkg)
         for argv in (("--column", "UsrX:NoSuchType"), ("--column", "UsrX:Integer:no-such-flag"), ("--column", "UsrX"),
-                     ("--lookup", "UsrS:iaOrderStatus:A,B", "--column", "UsrX:Integer"), ("--pages", "--column", "UsrX:Lookup:NoSuchObject")):
+                     ("--lookup", "UsrS:UsrOrderStatus:A,B", "--column", "UsrX:Integer"), ("--pages", "--column", "UsrX:Lookup:NoSuchObject")):
             code, out = run("entity", str(pkg), "UsrBox", "--caption", "Box", *argv)
-            if any("iaOrderStatus:A,B" in x for x in argv):  # a binding of an existing lookup is made when it has rows and no binding yet
-                assert code == 0 and DataBinding(pkg, "iaOrderStatus").rows() and EntitySchema(pkg, "UsrBox")
+            if any("UsrOrderStatus:A,B" in x for x in argv):  # a binding of an existing lookup is made when it has rows and no binding yet
+                assert code == 0 and DataBinding(pkg, "UsrOrderStatus").rows() and EntitySchema(pkg, "UsrBox")
                 shutil.rmtree(pkg / "Schemas" / "UsrBox")
-                shutil.rmtree(pkg / "Data" / "iaOrderStatus")
+                shutil.rmtree(pkg / "Data" / "UsrOrderStatus")
                 shutil.rmtree(pkg / "Resources" / "UsrBox.Entity")
                 continue
             assert code == 2 and files(pkg) == before, (argv, out)

@@ -27,6 +27,7 @@ Topics: every schema - files, resources [culture=], resource <key>, missing [cul
     python describe.py impact  <workspace|package> <Schema>... [--tasks <folder>] [--current <task>] [--md]  # dependents + locks
     python describe.py layers  <Schema> -e <env> [--rule <UId>] [--json]  # the SysSchema copies on an environment, Custom detected
     python describe.py export  <workspace|package> [--out <folder>]    # a text file per schema and per package (default <workspace>/.creatio-export)
+    python describe.py diff    <package> [<Schema>...] [--against HEAD|<rev>|<folder>]  # what changed, in schema terms: + - ~ lines
 
 The same calls are MCP tools of the creatio-kb server (describe_package, describe_schema, describe_item, index_workspace, find_schema, list_lookups).
 The index checks itself against the disk on every call: after `clio pull-pkg` the next call sees the new schemas.
@@ -109,6 +110,10 @@ def main(argv=None) -> int:
     x = sub.add_parser("export", help="a snapshot for reading without the tools: one text file per schema, one per package")
     x.add_argument("path")
     x.add_argument("--out", help="the folder (default <workspace>/.creatio-export; elsewhere for a client workspace)")
+    y = sub.add_parser("diff", help="the working copy against git HEAD, a revision or a folder, in schema terms: + added, - removed, ~ changed lines")
+    y.add_argument("package")
+    y.add_argument("schemas", nargs="*", metavar="Schema", help="only these items (default: the whole package)")
+    y.add_argument("--against", help="a git revision (default HEAD) or a folder holding the package (a pulled copy)")
     args = p.parse_args(argv)
     if args.command == "layers":
         return layers_command(args)
@@ -130,6 +135,9 @@ def main(argv=None) -> int:
         elif args.command == "export":
             from creatio_schemas.describe.export import export
             print(export(args.path, args.out))
+        elif args.command == "diff":
+            from creatio_schemas.describe.diff import schema_diff
+            print(schema_diff(args.package, args.schemas, args.against))
         elif args.command == "index":
             print(index_workspace(args.path, args.rebuild))
         elif args.command == "find":

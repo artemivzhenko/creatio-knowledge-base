@@ -15,7 +15,7 @@ ask, do not read.
 | `describe_item(<package>, <Schema>, "<query>")` | one part, chosen by the query; nothing else |
 | `index_workspace(<path>, rebuild=False)` | builds or refreshes the index of every package under a workspace root, a packages folder or one package; reports added / changed / removed |
 | `find_schema(<path>, <Schema>)` | the package, kind, summary, every file (absolute paths), the schemas it refers to, the schemas and data bindings that refer to it |
-| `schema_diff(...)` | a change in schema terms (S13-T07, pending) |
+| `schema_diff(<package>[, schemas, against])` | the working copy against git HEAD, a revision or a folder, in schema terms: `+` `-` `~` lines per item (see "Schema diff") |
 
 The same calls are MCP tools of the `creatio-kb` server and the CLI `describe.py package |
 schema | item`. `<package>` is the package folder (`packages/UsrPkg` in a clio workspace).
@@ -26,6 +26,33 @@ schema opens and answers its summary and queries - objects, processes, rules, Fr
 bodies, read-only), DCM cases and user tasks; a package of 579 schemas lists in ~1.5 s from the
 index. C# - source code schemas and Files/cs - answers by signatures (see below). Classic UI
 client schemas and data bindings are listed with their files until their topics land.
+
+## Commands
+
+<!-- commands:start -->
+```
+python describe.py package <package> [--kind object|process|rules|page|sql|client|addon|source|csharp|dcm|user-task]
+python describe.py schema  <package> <Schema>
+python describe.py item    <package> <Schema> "<topic> [<name>] [key=value ...]"
+python describe.py item    <package> <Schema> topics                 # what this schema can answer
+python describe.py index   <workspace|package> [--rebuild]           # build/refresh the index (.creatio-index/<Package>.json)
+python describe.py find    <workspace|package> <Schema>              # package, files, refers to, used by
+```
+
+| command | what it does |
+| --- | --- |
+| `package` | one line per schema |
+| `schema` | the summary of one schema |
+| `item` | one part of a schema |
+| `index` | build or refresh the package index |
+| `find` | where a schema lives and what touches it |
+| `lookups` | every lookup object (parent chain reaches BaseLookup) with bindings and users |
+| `deps` | typed dependencies of a schema over the workspace: what it builds on and who builds on it |
+| `impact` | the dependents of the schemas a task changes, and the other active tasks that change or affect them; exit 1 on a conflict |
+| `layers` | the copies of a schema on an environment, applied first to last; exit 1 when the Custom layer has one |
+| `export` | a snapshot for reading without the tools: one text file per schema, one per package |
+| `diff` | the working copy against git HEAD, a revision or a folder, in schema terms: + added, - removed, ~ changed lines |
+<!-- commands:end -->
 
 ## The package index
 
@@ -126,6 +153,28 @@ dependents, and - with the loop's tasks folder - the other active task folders (
 exit 1) or depend on it (`affects`: a heads-up). `--md` prints the `## Impact` table the author
 pastes into `plan.md` and the `affects:` line that fills `schemas.json`; the tester reads the
 table to pick what to regression-test. What the task changes is never listed as what it affects.
+
+## Schema diff
+
+`describe.py diff <package> [<Schema>...] [--against HEAD|<rev>|<folder>]` (MCP `schema_diff`) is the change in
+schema terms: the working copy against git HEAD (default), another revision, or a folder holding the package
+(a pulled copy of the environment, a workspace, a folder of packages). Per item the lines the describe layer
+prints - the summary and every list topic of its kind, unlimited - compared by their first word:
+
+```
+UsrOrder  object
+  columns
+    ~ UsrStatus  Lookup -> UsrOrderStatus 'Status' -> Lookup -> c59697c2-... 'Status'
+    + UsrWeight Float 'Weight'
+- UsrOrderStatus  object (removed)
+UsrPkg against HEAD: 1 changed, 0 new, 1 removed; lines +1 -0 ~1
+```
+
+`+` added, `-` removed, `~ key  old -> new` changed; a key that repeats on a side (flows, rows) is compared by
+whole lines. The summary adds only what the lists did not say; header lines, `files`, the index topics, `keys`
+and the count-only `resources` are left out (a changed caption shows through its column's or element's line).
+Nothing is written: the revision is extracted to a temporary folder and removed. The tester reads it to know
+what the author changed before mapping the regression rows; the author, to check a pull did what it should.
 
 ## Lookups
 

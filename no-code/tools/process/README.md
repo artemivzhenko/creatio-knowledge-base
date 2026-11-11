@@ -10,7 +10,7 @@ CrtProcessBuilder and do not work on Creatio 8.x). Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `proc.py` | CLI: inspect, create, captions, parameters, elements, flows, formulas, scripts, validate, test-config |
+| `proc.py` | CLI (the commands are listed under Commands) |
 | `refactor.py` | `rename-schema`: rename any schema across a workspace and fix every reference |
 | [`../creatio_schemas/process/`](../creatio_schemas/README.md) | the library behind both (`ProcessSchema`, element kinds, expression codec); import it for anything the CLI does not cover |
 | `../creatio_schemas/process/assets/keymap.json` | the 569 obfuscated metadata keys (`BK4` = FlowElements, `CI2` = TargetRefUId ...) |
@@ -22,6 +22,43 @@ Verified on Creatio 8.2.3 (the test environment): processes built only with thes
 branching on an input (`Counter=-100` → "small"), a Read data task counting a table (→ 1),
 and a schema rename that kept its UId. 235 designer-made processes (8.2.3 and 8.3.x)
 round-trip through the library byte-for-byte.
+
+## Commands
+
+<!-- commands:start -->
+```
+python proc.py inspect   <package> <Process>
+python proc.py new       <package> <Process> --caption "..." [--cultures en-US ru-RU]
+python proc.py caption   <package> <Process> <target> en-US="..." [ru-RU="..."]   target: Process | Element | Element.Param | Parameter:Name
+python proc.py captions  <package> <Process> [--missing] [--from en-US]
+python proc.py fill-captions <package> <Process> [--from en-US]
+python proc.py param     <package> <Process> add <Name> --type Text [--direction In|Out|Variable] [--caption ..] [--default ..] [--ref-schema Contact]
+python proc.py param     <package> <Process> rename <Old> <New> | remove <Name>
+python proc.py element   <package> <Process> add <Name> --kind readData --after X [--before Y] [--caption ..] [--entity UsrOrder] [--set Param=value ..]
+python proc.py element   <package> <Process> rename <Old> <New> | remove <Name> | set <Name> Param=value .. [--expr]
+python proc.py element   <package> <Process> formula <Name> "<expression>" --result <ProcessParam>
+python proc.py element   <package> <Process> values <Name> Column=value .. [--expr]     Add / Modify data: the columns it writes
+python proc.py element   <package> <Process> map <Name> Param=value .. [--expr]        sub-process: the called process's parameters
+python proc.py flow      <package> <Process> add <Src> <Dst> [--condition "{Parameter:X} > 0"] [--name ..] [--caption ..]
+python proc.py flow      <package> <Process> remove <Name> | condition <Name> "<expr>"
+python proc.py script    <package> <Process> get <Element> [--out file] | set <Element> --file body.cs
+python proc.py validate  <package> <Process>
+```
+
+| command | what it does |
+| --- | --- |
+| `new` | create a process: one lane, start -> terminate |
+| `inspect` | elements, parameters, flows and problems, with decoded names |
+| `validate` | problems only; exit code 1 when there are any |
+| `test-config` | write the process's parameters as a Configuration/processes file of the UI test utility |
+| `caption` | set a caption: Process | Element | Element.Param | Parameter:Name | a raw key |
+| `captions` | list captions of a culture, or those missing in the others |
+| `fill-captions` | copy captions missing in a culture from --from |
+| `param` | process parameters |
+| `element` | process elements |
+| `flow` | sequence and conditional flows |
+| `script` | script task bodies |
+<!-- commands:end -->
 
 ## The loop
 
@@ -41,26 +78,7 @@ scripted ones install. Run the result through `ProcessEngineService.svc/<Name>/E
 reader, not the platform, cannot parse it. The run log is `SysProcessLog` /
 `SysProcessElementLog` (`ErrorDescription` holds the stack trace).
 
-## Commands
-
-```
-inspect       <pkg> <Process>                       elements, parameters, flows, captions, problems
-new           <pkg> <Process> --caption ".." [--cultures en-US ru-RU]
-caption       <pkg> <Process> <target> en-US=".." ru-RU=".."     target: Process | Element | Element.Param | Parameter:Name
-captions      <pkg> <Process> [--missing] [--from en-US]
-fill-captions <pkg> <Process> [--from en-US]        copy missing keys from one culture into the others
-param         <pkg> <Process> add <Name> --type Integer [--direction In|Out|Variable] [--caption ..] [--default ..]
-param         <pkg> <Process> rename <Old> <New> | remove <Name>
-element       <pkg> <Process> add <Name> --kind <kind> [--after X] [--before Y] [--caption ..] [--entity UsrOrder] [--set P=v ..]
-element       <pkg> <Process> rename <Old> <New> | remove <Name> | set <Name> P=v .. [--expr]
-element       <pkg> <Process> formula <Name> "<expression>" --result <ProcessParam>
-element       <pkg> <Process> values <Name> Column=value .. [--expr]     Add / Modify data: the columns it writes
-element       <pkg> <Process> map <Name> Param=value .. [--expr]         sub-process: the called process's parameters
-flow          <pkg> <Process> add <Src> <Dst> [--condition ".."] [--name ..] [--caption ..]
-flow          <pkg> <Process> remove <Name> | condition <Name> ".."    (a plain flow is promoted to a conditional one)
-script        <pkg> <Process> get <Element> [--out f] | set <Element> --file body.cs
-validate      <pkg> <Process>
-```
+## Element kinds, expressions and rename
 
 `--kind`: events `start startSignal startTimer startMessage end terminate catchTimer
 catchMessage catchSignal throwMessage throwSignal`; gateways `exclusiveGateway
@@ -109,7 +127,7 @@ runtime's (`dataSourceFilters`, the bare tree). `creatio_schemas/filters.py` bui
 `Column op value` conditions (`=`, `!=`, `>`, `>=`, `<`, `<=`, `starts with`, `contains`,
 `ends with`, `is null`, `is not null`; `;` between conditions means AND; values are typed by
 the column: Boolean, Integer, Money/Float, a lookup takes the record id) and summarises either
-back into one line (`iaOrder where iaAmount > 100`), the same line DCM cases use.
+back into one line (`UsrOrder where UsrAmount > 100`), the same line DCM cases use.
 
 ```bash
 python proc.py element UsrPkg UsrOrder_Process add OnBigAmount --kind startSignal --entity UsrOrder \

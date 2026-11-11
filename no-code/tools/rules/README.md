@@ -10,7 +10,7 @@ engine. Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `rules.py` | CLI: inspect, new, add, replace, remove, enable/disable, remove-base, caption, validate, probe |
+| `rules.py` | CLI (the commands are listed under Commands) |
 | [`../creatio_schemas/rules/`](../creatio_schemas/README.md) | the library behind it (`RuleSchema`, spec builder, action registry, both storage forms, `RuleEngine`); import it for anything the CLI does not cover |
 | `tests/` | `python tests/test_rules_tools.py` - round trip and build checks on a real 8.2.3 export |
 
@@ -20,6 +20,38 @@ engine with the expected actions, and pulled back byte-identical (only the descr
 loses its milliseconds). The metadata of 134 rule schemas from real packages (8.2, 8.3, 10.0)
 round-trips byte-for-byte; so do their resources, except one third-party repo whose git
 checkout had turned them into LF.
+
+## Commands
+
+<!-- commands:start -->
+```
+python rules.py inspect  <package> <Target>
+python rules.py new      <package> <Target> [--parent-uid U] [--target-uid U --kind entity|page] [--version 8.3.2.4199]
+python rules.py add      <package> <Target> --spec rule.json        (one rule or a list; see README for the spec)
+python rules.py replace  <package> <Target> <Rule> --spec rule.json (rebuild keeping UId, name and caption key)
+python rules.py remove   <package> <Target> <Rule>
+python rules.py enable   <package> <Target> <Rule> | disable <package> <Target> <Rule>
+python rules.py remove-base <package> <Target> <BaseRuleUId>        (replacing addon only)
+python rules.py caption  <package> <Target> <Rule> en-US=".." [ru-RU=".."]
+python rules.py validate <package> <Target>
+python rules.py probe    <package> <Target> Attr[:Type]=value .. --env dev [--trigger Attr ..] [--state Create]
+                         entity: run the deployed rules in the platform engine; page: list the rules served to it
+```
+
+| command | what it does |
+| --- | --- |
+| `new` | create the addon <Target>BusinessRule (own, or replacing with --parent-uid) |
+| `inspect` | the rules, decoded, and the changes to base rules |
+| `validate` | problems; exit code 1 on errors (warnings do not count) |
+| `add` | add rules from a spec file |
+| `replace` | rebuild a rule from a spec keeping its UId, name and caption |
+| `remove` | remove a rule with its generated rules |
+| `enable` | enable a rule (a base rule by UId) |
+| `disable` | disable a rule (a base rule by UId) |
+| `remove-base` | replacing addon: delete a base rule by UId |
+| `caption` | set a rule caption |
+| `probe` | prove deployed rules on an environment |
+<!-- commands:end -->
 
 ## Where rules live
 

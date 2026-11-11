@@ -61,6 +61,9 @@ body or a process body first. The order is:
 5. `schema_deps(path, Name[, direction, kind, via])` - the typed graph: which objects a page or
    process builds on (and through which columns), and every process, rule, page, DCM, binding or
    listener that builds on an object. Run it before changing an object or page; never grep for users.
+6. `schema_diff(package[, schemas, against])` - what changed against git HEAD, a revision or a pulled
+   copy, as `+` / `-` / `~` lines per item (a column, an element, a rule). Read it instead of a git diff
+   of metadata files, after your own edits as much as after a pull.
 
 A tail line `... N more` means the answer was cut: ask for the part, do not raise the limit
 to read everything.

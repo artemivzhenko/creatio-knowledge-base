@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE.parent))
 
 import creatio  # noqa: E402
 
-PAGES = HERE.parent / "pages" / "tests" / "fixtures" / "iaTest"
+PAGES = HERE.parent / "pages" / "tests" / "fixtures" / "UsrPkg"
 
 
 def test_listing_names_every_tool_with_its_purpose():
@@ -29,7 +29,7 @@ def test_dispatch_runs_the_tool_with_the_rest_of_the_arguments():
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         assert creatio.main(["describe", "package", str(PAGES), "--kind", "object"]) == 0
-    assert "  object    iaOrder " in out.getvalue()
+    assert "  object    UsrOrder " in out.getvalue()
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
         assert creatio.main(["nope"]) == 2

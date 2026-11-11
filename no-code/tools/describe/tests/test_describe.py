@@ -13,15 +13,15 @@ sys.path.insert(0, str(HERE.parent))
 from creatio_schemas.describe import PackageIndex, QueryError, describe_item, describe_package, describe_schema, find_schema, index_workspace, parse_query  # noqa: E402
 from describe import main  # noqa: E402
 
-PAGES = TOOLS / "pages" / "tests" / "fixtures" / "iaTest"
-RULES = TOOLS / "rules" / "tests" / "fixtures" / "iaTest"
-PROCS = TOOLS / "process" / "tests" / "fixtures" / "iaTest"
-SQL = TOOLS / "sqlscripts" / "tests" / "fixtures" / "iaTest"
+PAGES = TOOLS / "pages" / "tests" / "fixtures" / "UsrPkg"
+RULES = TOOLS / "rules" / "tests" / "fixtures" / "UsrPkg"
+PROCS = TOOLS / "process" / "tests" / "fixtures" / "UsrPkg"
+SQL = TOOLS / "sqlscripts" / "tests" / "fixtures" / "UsrPkg"
 
 
 def test_parse_query():
     assert parse_query("elements type=crt.Input parent=X") == ("elements", None, {"type": "crt.Input", "parent": "X"})
-    assert parse_query("element iaName") == ("element", "iaName", {})
+    assert parse_query("element UsrName") == ("element", "UsrName", {})
     assert parse_query('find "Order bed"') == ("find", "Order bed", {})
     assert parse_query("") == ("topics", None, {})
 
@@ -29,9 +29,9 @@ def test_parse_query():
 def test_package_level_lists_every_kind():
     out = describe_package(PAGES)
     lines = out.splitlines()
-    assert lines[0].startswith("iaTest") and "5 items" in lines[0]
-    assert any(l.startswith("  object ") and "iaOrder " in l and "columns" in l for l in lines)
-    assert any(l.startswith("  page ") and "iaTests_FormPage" in l and "page of iaTest" in l for l in lines)
+    assert lines[0].startswith("UsrPkg") and "5 items" in lines[0]
+    assert any(l.startswith("  object ") and "UsrOrder " in l and "columns" in l for l in lines)
+    assert any(l.startswith("  page ") and "UsrTests_FormPage" in l and "page of UsrPkg" in l for l in lines)
     only = describe_package(PAGES, "object").splitlines()
     assert len(only) == 4 and all(l.startswith("  object") for l in only[1:])
     assert "sql " in describe_package(SQL, "sql")
@@ -40,51 +40,51 @@ def test_package_level_lists_every_kind():
 
 
 def test_schema_summaries_are_the_inspect_output():
-    assert describe_schema(PAGES, "iaOrder").startswith("iaOrder:")
-    assert "rule(s)" in describe_schema(RULES, "iaTestBusinessRule")
-    assert "elements:" in describe_schema(PROCS, "iaProcess_0d4c445")
+    assert describe_schema(PAGES, "UsrOrder").startswith("UsrOrder:")
+    assert "rule(s)" in describe_schema(RULES, "UsrPkgBusinessRule")
+    assert "elements:" in describe_schema(PROCS, "UsrProcess_0d4c445")
 
 
 def test_a_kind_is_one_registry_entry():
     from creatio_schemas.describe import registry
     from creatio_schemas.entity import EntitySchema
-    demo = registry.Kind("demo", EntitySchema, lambda p, n, d: n == "iaOrderStatus", EntitySchema, lambda e: "a demo lookup",
+    demo = registry.Kind("demo", EntitySchema, lambda p, n, d: n == "UsrOrderStatus", EntitySchema, lambda e: "a demo lookup",
                          {"hello": lambda item, name, f: f"world from {item.name}"})
     registry.register(demo)
     try:
         # the index caches kind and summary, but carries a fingerprint of the registry: a new kind rebuilds it by itself
-        assert "  demo      iaOrderStatus" in describe_package(PAGES) and "a demo lookup" in describe_package(PAGES, "demo")
-        assert describe_item(PAGES, "iaOrderStatus", "hello") == "world from iaOrderStatus"
-        assert "columns" not in describe_item(PAGES, "iaOrderStatus", "topics") and "files" in describe_item(PAGES, "iaOrderStatus", "topics")
-        assert "  object    iaOrder " in describe_package(PAGES)  # other objects keep their kind
+        assert "  demo      UsrOrderStatus" in describe_package(PAGES) and "a demo lookup" in describe_package(PAGES, "demo")
+        assert describe_item(PAGES, "UsrOrderStatus", "hello") == "world from UsrOrderStatus"
+        assert "columns" not in describe_item(PAGES, "UsrOrderStatus", "topics") and "files" in describe_item(PAGES, "UsrOrderStatus", "topics")
+        assert "  object    UsrOrder " in describe_package(PAGES)  # other objects keep their kind
     finally:
         registry.unregister("demo")
         PackageIndex(PAGES).refresh(rebuild=True)
-    assert "  object    iaOrderStatus" in describe_package(PAGES) and "columns" in describe_item(PAGES, "iaOrderStatus", "topics")
+    assert "  object    UsrOrderStatus" in describe_package(PAGES) and "columns" in describe_item(PAGES, "UsrOrderStatus", "topics")
 
 
 def test_output_contract_cuts_long_answers():
     from creatio_schemas.describe import DEFAULT_LIMIT, TAIL, cut
     assert DEFAULT_LIMIT == 40 and TAIL.format(more=3) == "  ... 3 more; add limit=0 for all"
     assert cut(["a", "b", "c"], 2) == ["a", "b", "  ... 1 more; add limit=0 for all"] and cut(["a", "b"], 2) == ["a", "b"] and cut(["a"] * 99, 0) == ["a"] * 99
-    DCM = TOOLS / "dcm" / "tests" / "fixtures" / "iaTest"
-    full = describe_schema(DCM, "iaRequestCases", limit=0)
-    short = describe_schema(DCM, "iaRequestCases", limit=10)
+    DCM = TOOLS / "dcm" / "tests" / "fixtures" / "UsrPkg"
+    full = describe_schema(DCM, "UsrRequestCases", limit=0)
+    short = describe_schema(DCM, "UsrRequestCases", limit=10)
     assert len(full.splitlines()) > 10 and len(short.splitlines()) == 11
     assert short.splitlines()[-1].startswith(f"  ... {len(full.splitlines()) - 10} more; add limit=0 for all; this is the summary - ask describe_item for one part (topics: ")
-    assert "stages" in short.splitlines()[-1] and describe_schema(DCM, "iaRequestCases") == full  # 28 lines: under the default
+    assert "stages" in short.splitlines()[-1] and describe_schema(DCM, "UsrRequestCases") == full  # 28 lines: under the default
 
 
 def test_list_limits_and_unlimited():
-    full = describe_item(PAGES, "iaTests_FormPage", "elements limit=0").splitlines()
-    short = describe_item(PAGES, "iaTests_FormPage", "elements limit=2").splitlines()
+    full = describe_item(PAGES, "UsrTests_FormPage", "elements limit=0").splitlines()
+    short = describe_item(PAGES, "UsrTests_FormPage", "elements limit=2").splitlines()
     assert len(full) > 2 and short == full[:2] + [f"  ... {len(full) - 2} more; add limit=0 for all"]
     package_full = describe_package(PAGES, limit=0).splitlines()
     package_short = describe_package(PAGES, limit=2).splitlines()
     assert package_short == package_full[:3] + [f"  ... {len(package_full) - 3} more; add limit=0 for all"]
     for query in ("elements limit=-1", "elements limit=bad"):
         try:
-            describe_item(PAGES, "iaTests_FormPage", query)
+            describe_item(PAGES, "UsrTests_FormPage", query)
             assert False, query
         except QueryError as e:
             assert "non-negative integer" in str(e)
@@ -132,29 +132,29 @@ def test_find_and_lookup_limits():
 
 
 def test_object_queries():
-    lookups = describe_item(PAGES, "iaOrder", "columns type=Lookup")
-    assert "iaStatus" in lookups and "iaName" not in lookups
-    assert "base" in describe_item(PAGES, "iaOrder", "columns own=false")
-    one = describe_item(PAGES, "iaOrder", "column iaQuantity")
-    assert one.startswith("iaQuantity") and '"A2": "iaQuantity"' in one
-    assert "flags:" in describe_item(PAGES, "iaOrder", "flags")
-    assert "columns" in describe_item(PAGES, "iaOrder", "topics")
+    lookups = describe_item(PAGES, "UsrOrder", "columns type=Lookup")
+    assert "UsrStatus" in lookups and "UsrName" not in lookups
+    assert "base" in describe_item(PAGES, "UsrOrder", "columns own=false")
+    one = describe_item(PAGES, "UsrOrder", "column UsrQuantity")
+    assert one.startswith("UsrQuantity") and '"A2": "UsrQuantity"' in one
+    assert "flags:" in describe_item(PAGES, "UsrOrder", "flags")
+    assert "columns" in describe_item(PAGES, "UsrOrder", "topics")
 
 
 def test_page_queries_return_only_the_part_asked():
-    sections = describe_item(PAGES, "iaTests_FormPage", "sections")
+    sections = describe_item(PAGES, "UsrTests_FormPage", "sections")
     assert "view-config-diff" in sections and "handlers" in sections
-    elements = describe_item(PAGES, "iaTests_FormPage", "elements type=crt.DateTimePicker")
-    assert elements.count("\n") == 2 and "iaDate" in elements and "iaName" not in elements
-    assert '"name": "iaName"' in describe_item(PAGES, "iaTests_FormPage", "element iaName")
-    assert "PDS.iaName" in describe_item(PAGES, "iaTests_FormPage", "attributes bound=true")
-    assert "iaTest" in describe_item(PAGES, "iaTests_FormPage", "data-sources")
-    assert "SideAreaProfileContainer:" in describe_item(PAGES, "iaTests_FormPage", "containers")
-    assert "view_config_diff" in describe_item(PAGES, "iaTests_FormPage", "find iaIsActive").lower().replace("-", "_")
-    assert describe_item(PAGES, "iaTests_FormPage", "handlers") == "(no handlers)"
-    assert describe_item(PAGES, "iaOrder_FormPage", "elements") == "(no matching element)"  # the template form has no fields yet
+    elements = describe_item(PAGES, "UsrTests_FormPage", "elements type=crt.DateTimePicker")
+    assert elements.count("\n") == 2 and "UsrDate" in elements and "UsrName" not in elements
+    assert '"name": "UsrName"' in describe_item(PAGES, "UsrTests_FormPage", "element UsrName")
+    assert "PDS.UsrName" in describe_item(PAGES, "UsrTests_FormPage", "attributes bound=true")
+    assert "UsrPkg" in describe_item(PAGES, "UsrTests_FormPage", "data-sources")
+    assert "SideAreaProfileContainer:" in describe_item(PAGES, "UsrTests_FormPage", "containers")
+    assert "view_config_diff" in describe_item(PAGES, "UsrTests_FormPage", "find UsrIsActive").lower().replace("-", "_")
+    assert describe_item(PAGES, "UsrTests_FormPage", "handlers") == "(no handlers)"
+    assert describe_item(PAGES, "UsrOrder_FormPage", "elements") == "(no matching element)"  # the template form has no fields yet
     try:
-        describe_item(PAGES, "iaTests_FormPage", "attribute Nope")
+        describe_item(PAGES, "UsrTests_FormPage", "attribute Nope")
     except QueryError as e:
         assert "no attribute Nope" in str(e)
     else:
@@ -163,7 +163,7 @@ def test_page_queries_return_only_the_part_asked():
 
 def test_handlers_are_split_by_brace_matching():
     from creatio_schemas.page import PageSchema
-    page = PageSchema(PAGES, "iaTests_FormPage")
+    page = PageSchema(PAGES, "UsrTests_FormPage")
     page.body = page.body.replace("handlers: /**SCHEMA_HANDLERS*/[]/**SCHEMA_HANDLERS*/",
                                   'handlers: /**SCHEMA_HANDLERS*/[\n{ request: "crt.SaveRecordRequest", handler: async (request, next) => { const s = "}"; return await next?.handle(request); } },\n'
                                   "{ request: 'crt.HandleViewModelInitRequest', handler: async (request, next) => { return next?.handle(request); } }\n]/**SCHEMA_HANDLERS*/")
@@ -173,43 +173,43 @@ def test_handlers_are_split_by_brace_matching():
 
 
 def test_process_rules_sql_queries():
-    assert "FormulaTask" in describe_item(PROCS, "iaProcess_0d4c445", "elements") or "elements" in describe_item(PROCS, "iaProcess_0d4c445", "topics")
-    assert "->" in describe_item(PROCS, "iaProcess_0d4c445", "flows")
-    assert "In" in describe_item(PROCS, "iaProcess_0d4c445", "params") or "(no parameters)" in describe_item(PROCS, "iaProcess_0d4c445", "params")
-    rules = describe_item(RULES, "iaTestBusinessRule", "rules")
-    assert rules.count("\n") + 1 == len(describe_item(RULES, "iaTestBusinessRule", "rules").splitlines())
+    assert "FormulaTask" in describe_item(PROCS, "UsrProcess_0d4c445", "elements") or "elements" in describe_item(PROCS, "UsrProcess_0d4c445", "topics")
+    assert "->" in describe_item(PROCS, "UsrProcess_0d4c445", "flows")
+    assert "In" in describe_item(PROCS, "UsrProcess_0d4c445", "params") or "(no parameters)" in describe_item(PROCS, "UsrProcess_0d4c445", "params")
+    rules = describe_item(RULES, "UsrPkgBusinessRule", "rules")
+    assert rules.count("\n") + 1 == len(describe_item(RULES, "UsrPkgBusinessRule", "rules").splitlines())
     first = rules.splitlines()[0].split()[0]
-    assert "when" in describe_item(RULES, "iaTestBusinessRule", f"rule {first}")
+    assert "when" in describe_item(RULES, "UsrPkgBusinessRule", f"rule {first}")
     scripts = describe_package(SQL, "sql").splitlines()[1:]
     name = scripts[0].split()[1]
     assert len(describe_item(SQL, name, "body")) > 10
-    assert "cultures:" in describe_item(PAGES, "iaOrder", "resources")
+    assert "cultures:" in describe_item(PAGES, "UsrOrder", "resources")
 
 
 def test_index_follows_the_disk():
     import shutil
     import tempfile
     tmp = Path(tempfile.mkdtemp()) / "packages"
-    shutil.copytree(PAGES, tmp / "iaTest")
+    shutil.copytree(PAGES, tmp / "UsrPkg")
     try:
         first = index_workspace(tmp)
-        assert "iaTest: 5 schemas" in first and "+5 added" in first
-        assert (tmp.parent / ".creatio-index" / "iaTest.json").is_file()
+        assert "UsrPkg: 5 schemas" in first and "+5 added" in first
+        assert (tmp.parent / ".creatio-index" / "UsrPkg.json").is_file()
         assert "up to date" in index_workspace(tmp)
         # a pulled schema appears: the next call indexes it, nothing else is re-read
-        shutil.copytree(RULES / "Schemas" / "iaTestBusinessRule", tmp / "iaTest" / "Schemas" / "iaTestBusinessRule")
+        shutil.copytree(RULES / "Schemas" / "UsrPkgBusinessRule", tmp / "UsrPkg" / "Schemas" / "UsrPkgBusinessRule")
         again = index_workspace(tmp)
-        assert "+1 added" in again and "iaTestBusinessRule" in again
+        assert "+1 added" in again and "UsrPkgBusinessRule" in again
         # a changed file is noticed by size/mtime
-        meta = tmp / "iaTest" / "Schemas" / "iaOrder" / "metadata.json"
+        meta = tmp / "UsrPkg" / "Schemas" / "UsrOrder" / "metadata.json"
         meta.write_text(meta.read_text(encoding="utf-8") + " ", encoding="utf-8")
         assert "~1 changed" in index_workspace(tmp)
-        where = find_schema(tmp, "iaTest")
-        assert "object in iaTest" in where and "Schemas/iaTest/metadata.json" in where
-        assert "iaTests_FormPage (page)" in where and "iaTestBusinessRule (rules)" in where
+        where = find_schema(tmp, "UsrPkg")
+        assert "object in UsrPkg" in where and "Schemas/UsrPkg/metadata.json" in where
+        assert "UsrTests_FormPage (page)" in where and "UsrPkgBusinessRule (rules)" in where
         assert "cultures" in where  # resource files folded into one line
-        idx = PackageIndex(tmp / "iaTest")
-        assert "iaOrderStatus" in idx.schemas["iaOrder"]["refs"]  # a lookup column refers by UId
+        idx = PackageIndex(tmp / "UsrPkg")
+        assert "UsrOrderStatus" in idx.schemas["UsrOrder"]["refs"]  # a lookup column refers by UId
         assert "no schema named Nope" in find_schema(tmp, "Nope")
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
@@ -219,6 +219,7 @@ CS = HERE / "fixtures" / "UsrPkg"
 
 
 DATA = TOOLS / "data" / "tests" / "fixtures" / "UsrPkg"
+OBJECTS = TOOLS / "objects" / "tests" / "fixtures" / "UsrPkg"
 
 
 def test_index_binding_resources_and_format_rebuild():
@@ -313,21 +314,21 @@ def test_classic_ui_schemas_answer_diff_and_methods():
 def test_keys_topic_names_the_metadata_keys():
     full = describe_item(CS, "UsrOrderService", "keys")  # a source code schema made as full JSON
     assert "A2           Name" in full and "B6           PackageUId" in full and "B8           CreatedInVersion" in full
-    diff = describe_item(PAGES, "iaOrder", "keys")  # an object made in the designer: a diff against its parent
+    diff = describe_item(PAGES, "UsrOrder", "keys")  # an object made in the designer: a diff against its parent
     assert diff.startswith("diff form against the parent's metadata") and "= A5                     CreatedInPackageId" in diff and "+ D2 " in diff
-    assert describe_item(TOOLS / "sqlscripts" / "tests" / "fixtures" / "iaTest", describe_package(TOOLS / "sqlscripts" / "tests" / "fixtures" / "iaTest", "sql").splitlines()[1].split()[1], "keys") == "(no metadata.json)"
+    assert describe_item(TOOLS / "sqlscripts" / "tests" / "fixtures" / "UsrPkg", describe_package(TOOLS / "sqlscripts" / "tests" / "fixtures" / "UsrPkg", "sql").splitlines()[1].split()[1], "keys") == "(no metadata.json)"
 
 
 def test_lookups_follow_the_parent_chain():
     from creatio_schemas.describe import lookups
     out = lookups(PAGES)
-    assert out.splitlines()[0].startswith("1 lookups in iaTest")
-    assert "  iaOrderStatus" in out and "parent BaseLookup" in out and "0 own columns" in out and "bindings: none" in out and "used by 1" in out
+    assert out.splitlines()[0].startswith("1 lookups in UsrPkg")
+    assert "  UsrOrderStatus" in out and "parent BaseLookup" in out and "0 own columns" in out and "bindings: none" in out and "used by 1" in out
     assert "not decided" not in out
     cli = io.StringIO()
     with contextlib.redirect_stdout(cli):
         assert main(["lookups", str(PAGES)]) == 0
-    assert "iaOrderStatus" in cli.getvalue()
+    assert "UsrOrderStatus" in cli.getvalue()
 
 
 def test_csharp_by_signatures():
@@ -514,25 +515,25 @@ def test_layers_order_rule_states_and_the_custom_layer():
 def test_typed_dependencies_resolve_by_uid_and_context():
     from creatio_schemas.describe.deps import Edge, dependencies
     # an object: parent and lookups by UId (the stock asset names Contact and BaseEntity), merged per target
-    out = dependencies(PAGES, "iaOrder")
-    assert "  object BaseEntity  parent" in out and "  object Contact  lookup: CreatedBy, ModifiedBy, iaContact, iaManager" in out
-    assert "  object iaOrderStatus  lookup: iaStatus" in out and "  page iaOrder_FormPage  data-source: PDS  [name]" in out
+    out = dependencies(PAGES, "UsrOrder")
+    assert "  object BaseEntity  parent" in out and "  object Contact  lookup: CreatedBy, ModifiedBy, UsrContact, UsrManager" in out
+    assert "  object UsrOrderStatus  lookup: UsrStatus" in out and "  page UsrOrder_FormPage  data-source: PDS  [name]" in out
     # a page: every data source by name, its attribute columns proved on that object's effective columns
-    out = dependencies(PAGES, "iaTests_FormPage", "out")
-    assert "  object iaTest  data-source: PDS, iaName, iaComment" in out and "iaName?" not in out and "  page PageWithTabsFreedomTemplate  parent" in out
+    out = dependencies(PAGES, "UsrTests_FormPage", "out")
+    assert "  object UsrPkg  data-source: PDS, UsrName, UsrComment" in out and "UsrName?" not in out and "  page PageWithTabsFreedomTemplate  parent" in out
     assert "  object SysFile  data-source: AttachmentListDS, Name  [name]" in out and "dependents" not in out  # a stock object: its columns from the stock catalogue
-    assert "  object iaOrder  data-source: iaOrderListDS, iaName, iaQuantity  [name]" in out  # the data source's own attributes are columns too
+    assert "  object UsrOrder  data-source: UsrOrderListDS, UsrName, UsrQuantity  [name]" in out  # the data source's own attributes are columns too
     from creatio_schemas.describe.deps import Resolver
     from creatio_schemas.workspace import Workspace
     r = Resolver(Workspace(PAGES))
-    assert r.column_names("iaOrder", ["iaStatusId", "iaStatus.Name", "Nope", "null", "ModifiedById"]) == ["iaStatusId", "iaStatus.Name", "Nope?", "ModifiedById"]
+    assert r.column_names("UsrOrder", ["UsrStatusId", "UsrStatus.Name", "Nope", "null", "ModifiedById"]) == ["UsrStatusId", "UsrStatus.Name", "Nope?", "ModifiedById"]
     # filters, direction and the topic form
-    assert dependencies(PAGES, "iaOrderStatus", "in", kind="object").splitlines() == ["iaOrderStatus  object in iaTest", "dependents:", "  object iaOrder  lookup: iaStatus"]
-    assert "dependents: nothing typed in the workspace of kind process" in dependencies(PAGES, "iaOrderStatus", "in", kind="process")
-    assert describe_item(PAGES, "iaOrder_FormPage", "uses via=data-source").endswith("  object iaOrder  data-source: PDS  [name]")
+    assert dependencies(PAGES, "UsrOrderStatus", "in", kind="object").splitlines() == ["UsrOrderStatus  object in UsrPkg", "dependents:", "  object UsrOrder  lookup: UsrStatus"]
+    assert "dependents: nothing typed in the workspace of kind process" in dependencies(PAGES, "UsrOrderStatus", "in", kind="process")
+    assert describe_item(PAGES, "UsrOrder_FormPage", "uses via=data-source").endswith("  object UsrOrder  data-source: PDS  [name]")
     assert dependencies(PAGES, "Nope").startswith("no schema named Nope")
     # other kinds: a process data element, a Classic page's details and mixin, a data binding, a C# listener
-    assert "  object 368340c2-dddc-46fe-ac7f-d3485b497f95  delete-data: DeleteDataUserTask1" in dependencies(PROCS, "iaDeleteOldLogs_Process", "out")
+    assert "  object 368340c2-dddc-46fe-ac7f-d3485b497f95  delete-data: DeleteDataUserTask1" in dependencies(PROCS, "UsrDeleteOldLogs_Process", "out")
     classic = dependencies(TOOLS / "classicui" / "tests" / "fixtures" / "UsrPkg", "UsrOrderPage", "out")
     assert "  page UsrOrderProductDetailV2  detail: UsrOrderProductDetail  [name]" in classic and "  page UsrPrintMixin  mixin: UsrPrintMixin  [name]" in classic
     assert "  object UsrOrder  entity  [name]" in classic and "  page BasePageV2  parent  [name]" in classic
@@ -541,36 +542,36 @@ def test_typed_dependencies_resolve_by_uid_and_context():
     # the edges live in the index and find_schema shows both directions
     idx = PackageIndex(PAGES)
     idx.refresh()
-    assert idx.data["format"] == 4 and {d["via"] for d in idx.schemas["iaOrder"]["deps"]} == {"parent", "lookup"}
-    assert idx.dependents("iaOrder")[0][:2] == ("page", "iaOrder_FormPage")
-    assert Edge.from_dict(idx.schemas["iaOrder"]["deps"][1]).line().startswith("object ")
-    found = find_schema(PAGES, "iaOrder")
-    assert "  depends on: object BaseEntity  parent; object Contact  lookup" in found and "  dependents: page iaOrder_FormPage (data-source); page iaTests_FormPage (data-source)" in found
+    assert idx.data["format"] == 4 and {d["via"] for d in idx.schemas["UsrOrder"]["deps"]} == {"parent", "lookup"}
+    assert idx.dependents("UsrOrder")[0][:2] == ("page", "UsrOrder_FormPage")
+    assert Edge.from_dict(idx.schemas["UsrOrder"]["deps"][1]).line().startswith("object ")
+    found = find_schema(PAGES, "UsrOrder")
+    assert "  depends on: object BaseEntity  parent; object Contact  lookup" in found and "  dependents: page UsrOrder_FormPage (data-source); page UsrTests_FormPage (data-source)" in found
 
 
 TEXT_CS = """namespace Terrasoft.Configuration
 {
-	[EntityEventListener(SchemaName = "iaOrder")]
+	[EntityEventListener(SchemaName = "UsrOrder")]
 	public class UsrOrderListener : BaseEntityEventListener
 	{
 		public override void OnSaving(object sender, EntityBeforeEventArgs e) {
 			var order = (Entity)sender;
-			Guid status = order.GetTypedColumnValue<Guid>("iaStatusId");
-			order.SetColumnValue("iaNope", 1);
+			Guid status = order.GetTypedColumnValue<Guid>("UsrStatusId");
+			order.SetColumnValue("UsrNope", 1);
 		}
 	}
 
 	public class UsrQueries
 	{
 		public void Run(UserConnection uc) {
-			var esq = new EntitySchemaQuery(uc.EntitySchemaManager, "iaTest");
-			esq.AddColumn("iaName");
-			esq.AddColumn("iaContactLookup.Name");
-			var update = new Update(uc, "iaOrderStatus").Set("Name", Column.Parameter("x")).Set("iaMissing", Column.Parameter(1));
-			var joined = new Select(uc).Column("Id").From("iaOrder").InnerJoin("iaTest").On("iaTest", "Id").IsEqual("iaOrder", "Id");
-			var process = uc.ProcessSchemaManager.GetInstanceByName("iaTest_Process");
-			string again = "iaOrderStatus";
-			// "iaOrder" in a comment is no word of the code
+			var esq = new EntitySchemaQuery(uc.EntitySchemaManager, "UsrPkg");
+			esq.AddColumn("UsrName");
+			esq.AddColumn("UsrContactLookup.Name");
+			var update = new Update(uc, "UsrOrderStatus").Set("Name", Column.Parameter("x")).Set("UsrMissing", Column.Parameter(1));
+			var joined = new Select(uc).Column("Id").From("UsrOrder").InnerJoin("UsrPkg").On("UsrPkg", "Id").IsEqual("UsrOrder", "Id");
+			var process = uc.ProcessSchemaManager.GetInstanceByName("UsrTest_Process");
+			string again = "UsrOrderStatus";
+			// "UsrOrder" in a comment is no word of the code
 		}
 	}
 }
@@ -587,47 +588,47 @@ def test_text_extractors_add_words_of_code_sql_and_rules():
     assert [e.ref for e in _merge([Edge("object", "A", None, "x", "text"), Edge("object", "a", "u1", "x", "name"), Edge("object", "A", None, "x", "text")])] == ["name"]
     assert _merge([Edge("object", "A", None, "x", "text"), Edge("object", "A", "u1", "x", "uid")])[0].to_uid == "u1"
     with tempfile.TemporaryDirectory() as tmp:
-        pkg = Path(tmp) / "packages" / "iaTest"
+        pkg = Path(tmp) / "packages" / "UsrPkg"
         shutil.copytree(PAGES, pkg)
         (pkg / "Files" / "cs").mkdir(parents=True)
         (pkg / "Files" / "cs" / "UsrText.cs").write_text(TEXT_CS, encoding="utf-8")
         out = dependencies_out(pkg, "Files/cs/UsrText.cs")
-        assert "  object iaOrder  listener: UsrOrderListener, iaStatus, iaNope?  [name]" in out, out  # iaStatusId is the lookup iaStatus
-        assert "  object iaTest  esq: iaName, iaContactLookup.Name  [name]" in out  # a path: its first part is checked
-        assert "  object iaOrderStatus  query: Name, iaMissing?  [name]" in out
-        assert "  object iaOrder  query  [name]" in out and "  object iaTest  query  [name]" in out  # a join: two tables, no columns
-        assert "iaTest_Process" not in out and "string" not in out  # another manager's schema; a word already reached
-        (pkg / "Files" / "cs" / "UsrText.cs").write_text(TEXT_CS.replace('"iaOrderStatus";', '"iaTests_FormPage"; string w = "iaOrderStatus" + "x";')
-                                                       .replace('new Update(uc, "iaOrderStatus")', 'new Update(uc, "iaOther")'), encoding="utf-8")
+        assert "  object UsrOrder  listener: UsrOrderListener, UsrStatus, UsrNope?  [name]" in out, out  # UsrStatusId is the lookup UsrStatus
+        assert "  object UsrPkg  esq: UsrName, UsrContactLookup.Name  [name]" in out  # a path: its first part is checked
+        assert "  object UsrOrderStatus  query: Name, UsrMissing?  [name]" in out
+        assert "  object UsrOrder  query  [name]" in out and "  object UsrPkg  query  [name]" in out  # a join: two tables, no columns
+        assert "UsrTest_Process" not in out and "string" not in out  # another manager's schema; a word already reached
+        (pkg / "Files" / "cs" / "UsrText.cs").write_text(TEXT_CS.replace('"UsrOrderStatus";', '"UsrTests_FormPage"; string w = "UsrOrderStatus" + "x";')
+                                                       .replace('new Update(uc, "UsrOrderStatus")', 'new Update(uc, "UsrOther")'), encoding="utf-8")
         out = dependencies_out(pkg, "Files/cs/UsrText.cs")
-        assert "  object iaOrderStatus  string  [text]" in out and "iaTests_FormPage" not in out, out  # a page name is no object
+        assert "  object UsrOrderStatus  string  [text]" in out and "UsrTests_FormPage" not in out, out  # a page name is no object
         # SQL: tables of every statement form, quoted or not; a comment, a string and a CTE are not tables
         r = Resolver(Workspace(pkg))
-        sql = ('-- update "iaTest"\nwith cte as (select 1)\ninsert into "iaOrder" ("Name") select "Name" from cte join iaorderstatus s on true;\n'
-               "update [dbo].[iaTest] set x = 'from \"Contact\"';\ndelete from public.\"Contact\";\nalter table if exists \"iaNoSuch\" add y int;\n")
-        assert [e.line() for e in _sql_tables(sql, r)] == ["object iaOrder  table  [text]", "object iaOrderStatus  table  [text]",
-                                                           "object iaTest  table  [text]", "object Contact  table  [text]"]
+        sql = ('-- update "UsrPkg"\nwith cte as (select 1)\ninsert into "UsrOrder" ("Name") select "Name" from cte join usrorderstatus s on true;\n'
+               "update [dbo].[UsrPkg] set x = 'from \"Contact\"';\ndelete from public.\"Contact\";\nalter table if exists \"UsrNoSuch\" add y int;\n")
+        assert [e.line() for e in _sql_tables(sql, r)] == ["object UsrOrder  table  [text]", "object UsrOrderStatus  table  [text]",
+                                                           "object UsrPkg  table  [text]", "object Contact  table  [text]"]
         # Freedom page: a workspace client schema in SCHEMA_DEPS is a module; a package of the devkit is not
-        page = pkg / "Schemas" / "iaTests_FormPage" / "iaTests_FormPage.js"
-        page.write_text(page.read_text(encoding="utf-8").replace("/**SCHEMA_DEPS*/[]", '/**SCHEMA_DEPS*/["@creatio-devkit/common", "iaOrder_FormPage"]', 1), encoding="utf-8")
-        assert "  page iaOrder_FormPage  module  [name]" in dependencies_out(pkg, "iaTests_FormPage")
+        page = pkg / "Schemas" / "UsrTests_FormPage" / "UsrTests_FormPage.js"
+        page.write_text(page.read_text(encoding="utf-8").replace("/**SCHEMA_DEPS*/[]", '/**SCHEMA_DEPS*/["@creatio-devkit/common", "UsrOrder_FormPage"]', 1), encoding="utf-8")
+        assert "  page UsrOrder_FormPage  module  [name]" in dependencies_out(pkg, "UsrTests_FormPage")
     # a process script task: the same words, the element first
     with tempfile.TemporaryDirectory() as tmp:
-        pkg = Path(tmp) / "packages" / "iaTest"
+        pkg = Path(tmp) / "packages" / "UsrPkg"
         shutil.copytree(PROCS, pkg)
-        proc = ProcessSchema(pkg, "iaProcess_0d4c445")
+        proc = ProcessSchema(pkg, "UsrProcess_0d4c445")
         proc.add_element("script", "ScriptTask1")
         proc.set_script("ScriptTask1", 'var esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "Contact");\nesq.AddColumn("Name");\nesq.AddColumn("UsrNope");\nreturn true;')
         proc.save()
-        contact = next(l for l in dependencies_out(pkg, "iaProcess_0d4c445").splitlines() if l.startswith("  object Contact  esq:"))
+        contact = next(l for l in dependencies_out(pkg, "UsrProcess_0d4c445").splitlines() if l.startswith("  object Contact  esq:"))
         assert contact == "  object Contact  esq: ScriptTask1, Name, UsrNope?  [name]", contact  # a stock object: the stock catalogue's columns (S20-T04)
     # rules: an object's rule names its columns; a page rule's attributes reach the data source's object
     with tempfile.TemporaryDirectory() as tmp:
-        pkg = Path(tmp) / "packages" / "iaTest"
+        pkg = Path(tmp) / "packages" / "UsrPkg"
         shutil.copytree(RULES, pkg)
-        assert "  object iaTest  column: iaNumber, iaIsActive, iaName, iaComment, iaContactLookup, iaAccount, iaContactLookup.Account, iaAmount  [name]" in dependencies_out(pkg, "iaTestBusinessRule")
-        out = dependencies_out(pkg, "iaTests_FormPageBusinessRule")
-        assert "  page iaTests_FormPage  target" in out and "  object iaTest  column: iaIsActive, iaNumber  [name]" in out
+        assert "  object UsrPkg  column: UsrNumber, UsrIsActive, UsrName, UsrComment, UsrContactLookup, UsrAccount, UsrContactLookup.Account, UsrAmount  [name]" in dependencies_out(pkg, "UsrPkgBusinessRule")
+        out = dependencies_out(pkg, "UsrTests_FormPageBusinessRule")
+        assert "  page UsrTests_FormPage  target" in out and "  object UsrPkg  column: UsrIsActive, UsrNumber  [name]" in out
     # Classic: the columns rules bind, a lookup attribute's object; messages give nothing
     with tempfile.TemporaryDirectory() as tmp:
         pkg = Path(tmp) / "packages" / "UsrPkg"
@@ -650,21 +651,21 @@ def test_export_writes_a_file_per_item_and_removes_the_gone_ones():
     assert default_out(PAGES) == PAGES.resolve().parent / ".creatio-export"  # a package folder outside `packages/`: next to it
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "export"
-        (out / "iaTest").mkdir(parents=True)
-        (out / "iaTest" / "iaGone.md").write_text("an item that no longer exists", encoding="utf-8")
-        (out / "iaTest" / "notes.txt").write_text("not ours", encoding="utf-8")
+        (out / "UsrPkg").mkdir(parents=True)
+        (out / "UsrPkg" / "UsrGone.md").write_text("an item that no longer exists", encoding="utf-8")
+        (out / "UsrPkg" / "notes.txt").write_text("not ours", encoding="utf-8")
         (out / "OtherPkg").mkdir()
         (out / "OtherPkg" / "X.md").write_text("another package's file", encoding="utf-8")
         assert export(PAGES, out) == f"6 files written, 1 removed, 1 package(s) -> {out}"
         files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
-        assert files == ["OtherPkg/X.md", "iaTest/_package.md", "iaTest/iaOrder.md", "iaTest/iaOrderStatus.md", "iaTest/iaOrder_FormPage.md",
-                         "iaTest/iaTest.md", "iaTest/iaTests_FormPage.md", "iaTest/notes.txt"], files
-        text = (out / "iaTest" / "iaOrder.md").read_bytes().decode("utf-8")
-        assert "\r" not in text and text.startswith("# iaOrder\n\n```text\niaOrder: 'Order'  own object")
+        assert files == ["OtherPkg/X.md", "UsrPkg/UsrOrder.md", "UsrPkg/UsrOrderStatus.md", "UsrPkg/UsrOrder_FormPage.md",
+                         "UsrPkg/UsrPkg.md", "UsrPkg/UsrTests_FormPage.md", "UsrPkg/_package.md", "UsrPkg/notes.txt"], files
+        text = (out / "UsrPkg" / "UsrOrder.md").read_bytes().decode("utf-8")
+        assert "\r" not in text and text.startswith("# UsrOrder\n\n```text\nUsrOrder: 'Order'  own object")
         assert "\n## Depends on\n\n```text\nobject BaseEntity  parent\n" in text
-        assert "\n## Dependents\n\n```text\npage iaOrder_FormPage  data-source: PDS  [name]\n" in text
-        assert f"\n## Files\n\n```text\n{PAGES.resolve() / 'Resources' / 'iaOrder.Entity' / 'resource.en-US.xml'}  (" in text
-        assert "  page      iaTests_FormPage" in (out / "iaTest" / "_package.md").read_text(encoding="utf-8")
+        assert "\n## Dependents\n\n```text\npage UsrOrder_FormPage  data-source: PDS  [name]\n" in text
+        assert f"\n## Files\n\n```text\n{PAGES.resolve() / 'Resources' / 'UsrOrder.Entity' / 'resource.en-US.xml'}  (" in text
+        assert "  page      UsrTests_FormPage" in (out / "UsrPkg" / "_package.md").read_text(encoding="utf-8")
     # a data binding goes to Data/, an unreadable item is one line, the package file lists it; a gone binding's folder goes
     with tempfile.TemporaryDirectory() as tmp:
         pkg = Path(tmp) / "packages" / "UsrPkg"
@@ -700,44 +701,92 @@ def test_impact_lists_dependents_and_the_locks_of_other_active_tasks():
     from creatio_schemas.describe.deps import impact
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
-        for folder, data, done in (("013-other", {"schemas": ["iaOrder_FormPage"], "affects": ["iaOrderStatus"]}, False),
-                                   ("011-done", {"schemas": ["iaOrder"]}, True), ("012-this", {"schemas": ["iaOrder"]}, False)):
+        for folder, data, done in (("013-other", {"schemas": ["UsrOrder_FormPage"], "affects": ["UsrOrderStatus"]}, False),
+                                   ("011-done", {"schemas": ["UsrOrder"]}, True), ("012-this", {"schemas": ["UsrOrder"]}, False)):
             (t / folder).mkdir()
             (t / folder / "schemas.json").write_text(json.dumps(data), encoding="utf-8")
             if done:
                 (t / folder / "success-report.md").write_text("ok", encoding="utf-8")
-        text, conflicts = impact(PAGES, ["iaOrder", "iaOrderStatus"], t, "012-this")
-        assert conflicts == 1 and "    page iaOrder_FormPage (data-source) - task 013-other changes it" in text
-        assert "iaOrderStatus  object in iaTest  [task 013-other depends on it]" in text and "    object iaOrder (lookup)" in text
-        assert "affects: iaOrder_FormPage, iaTests_FormPage" in text and "011-done" not in text  # a finished task locks nothing; what the task changes is not what it affects
+        text, conflicts = impact(PAGES, ["UsrOrder", "UsrOrderStatus"], t, "012-this")
+        assert conflicts == 1 and "    page UsrOrder_FormPage (data-source) - task 013-other changes it" in text
+        assert "UsrOrderStatus  object in UsrPkg  [task 013-other depends on it]" in text and "    object UsrOrder (lookup)" in text
+        assert "affects: UsrOrder_FormPage, UsrTests_FormPage" in text and "011-done" not in text  # a finished task locks nothing; what the task changes is not what it affects
         assert text.endswith("2 dependents of 2 schema(s); 1 conflict(s) with other active tasks")
-        md, _ = impact(PAGES, ["iaOrder"], t, "012-this", md=True)
+        md, _ = impact(PAGES, ["UsrOrder"], t, "012-this", md=True)
         assert md.splitlines()[:4] == ["## Impact", "", "| Schema | Dependents | Other active tasks |", "|---|---|---|"]
-        assert "| `iaOrder` | page iaOrder_FormPage (data-source), page iaTests_FormPage (data-source) | task 013-other changes it (page iaOrder_FormPage) |" in md
+        assert "| `UsrOrder` | page UsrOrder_FormPage (data-source), page UsrTests_FormPage (data-source) | task 013-other changes it (page UsrOrder_FormPage) |" in md
         # the current task's own lock is not a conflict; a schema another task changes is
-        assert impact(PAGES, ["iaOrder"], t, "012-this")[1] == 1 and impact(PAGES, ["iaOrder_FormPage"], t, "012-this")[1] == 1
-        assert impact(PAGES, ["iaOrder_FormPage"], t, "013-other")[1] == 0
+        assert impact(PAGES, ["UsrOrder"], t, "012-this")[1] == 1 and impact(PAGES, ["UsrOrder_FormPage"], t, "012-this")[1] == 1
+        assert impact(PAGES, ["UsrOrder_FormPage"], t, "013-other")[1] == 0
     text, conflicts = impact(PAGES, ["Nope"])
     assert text.startswith("Nope  (not in the workspace)") and conflicts == 0 and "locks not checked" in text
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        assert main(["impact", str(PAGES), "iaOrderStatus", "--md"]) == 0
+        assert main(["impact", str(PAGES), "UsrOrderStatus", "--md"]) == 0
     assert out.getvalue().startswith("## Impact")
 
 
 def test_cli():
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        assert main(["deps", str(PAGES), "iaOrder", "--in", "--kind", "page"]) == 0
-    assert out.getvalue().splitlines()[:3] == ["iaOrder  object in iaTest", "dependents:", "  page iaOrder_FormPage  data-source: PDS  [name]"]
+        assert main(["deps", str(PAGES), "UsrOrder", "--in", "--kind", "page"]) == 0
+    assert out.getvalue().splitlines()[:3] == ["UsrOrder  object in UsrPkg", "dependents:", "  page UsrOrder_FormPage  data-source: PDS  [name]"]
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         assert main(["package", str(PAGES), "--kind", "page"]) == 0
-        assert main(["find", str(PAGES), "iaOrder"]) == 0
-        assert main(["item", str(PAGES), "iaOrder", "columns type=Lookup"]) == 0
-    assert "iaTests_FormPage" in out.getvalue() and "iaStatus" in out.getvalue()
+        assert main(["find", str(PAGES), "UsrOrder"]) == 0
+        assert main(["item", str(PAGES), "UsrOrder", "columns type=Lookup"]) == 0
+    assert "UsrTests_FormPage" in out.getvalue() and "UsrStatus" in out.getvalue()
     with contextlib.redirect_stderr(io.StringIO()):
-        assert main(["item", str(PAGES), "iaOrder", "nonsense"]) == 2
+        assert main(["item", str(PAGES), "UsrOrder", "nonsense"]) == 2
+
+
+
+
+def test_schema_diff_names_the_added_column_against_head_and_a_folder():
+    import shutil
+    import subprocess
+    import tempfile
+
+    from creatio_schemas.describe.diff import diff_lines, schema_diff
+    from creatio_schemas.entity import EntitySchema
+
+    assert diff_lines(["UsrA  Text 'A'", "UsrB  Text 'B'", "flows:"], ["UsrA  Text 'A2'", "UsrC  Int 'C'", "flows:"]) == [
+        "~ UsrA  Text 'A' -> Text 'A2'", "- UsrB Text 'B'", "+ UsrC Int 'C'"]
+    assert diff_lines(["x -> y", "x -> z"], ["x -> z", "x -> w"]) == ["- x -> y", "+ x -> w"]  # a repeated key: whole lines
+    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    with tempfile.TemporaryDirectory() as tmp:
+        pkg = Path(tmp) / "packages" / "UsrPkg"
+        shutil.copytree(OBJECTS, pkg)
+        subprocess.run(git + ["init", "-q"], cwd=tmp, check=True)
+        subprocess.run(git + ["add", "."], cwd=tmp, check=True)
+        subprocess.run(git + ["commit", "-q", "-m", "base"], cwd=tmp, check=True)
+        assert schema_diff(pkg) == "UsrPkg: no differences against HEAD"
+        entity = EntitySchema(pkg, "UsrOrder")
+        entity.add_column("UsrWeight", "Float", "Weight")
+        entity.save()
+        shutil.rmtree(pkg / "Schemas" / "UsrOrderStatus")
+        text = schema_diff(pkg)
+        lines = text.splitlines()
+        assert lines[0] == "UsrOrder  object" and lines[1] == "  columns" and "    + UsrWeight Float 'Weight'" in lines
+        assert "- UsrOrderStatus  object (removed)" in lines and text.count("+ UsrWeight") == 1  # the summary does not repeat it
+        assert any(l.startswith("    ~ UsrStatus  Lookup -> UsrOrderStatus") and "Lookup -> c59697c2" in l for l in lines)  # its lookup lost its name
+        assert lines[-1] == "UsrPkg against HEAD: 1 changed, 0 new, 1 removed; lines +1 -0 ~1"
+        only = schema_diff(pkg, ["UsrOrder"], str(OBJECTS.parent))  # a folder of packages instead of git
+        assert only.splitlines()[0] == "UsrOrder  object" and "(removed)" not in only
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            assert main(["diff", str(pkg), "UsrOrder", "--against", str(OBJECTS)]) == 0
+        assert "+ UsrWeight Float 'Weight'" in out.getvalue()
+        try:
+            schema_diff(pkg, ["UsrNoSuch"])
+            raise AssertionError("an unknown item must be refused")
+        except FileNotFoundError as e:
+            assert "UsrNoSuch" in str(e)
+        try:
+            schema_diff(pkg, against="no-such-rev")
+            raise AssertionError("an unknown revision must be refused")
+        except QueryError as e:
+            assert "no-such-rev" in str(e)
 
 
 if __name__ == "__main__":

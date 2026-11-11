@@ -10,7 +10,7 @@ Decimal0, captions in en-US only). Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `objects.py` | CLI: inspect, new (also `--replace`), base, column add/set/default/type/caption/remove, set (object flags), caption, display, validate, probe |
+| `objects.py` | CLI (the commands are listed under Commands) |
 | [`../creatio_schemas/entity/`](../creatio_schemas/README.md) | the library (`EntitySchema`, flag catalog, parents and designer templates of 8.2.3, `database.check`) |
 | `tests/` | `python tests/test_objects_tools.py` - round trip and edit checks on a real 8.2.3 export |
 
@@ -21,6 +21,40 @@ indexes, foreign keys with the right delete rule, the `Sys<Object>Right` table, 
 - `probe` matched every item, a date-only column came back as Date through DataService, and a
 pull returned the same bytes. All 344 objects of the real packages in the workspaces (8.1-10.0,
 own and replacing) round-trip byte-for-byte.
+
+## Commands
+
+<!-- commands:start -->
+```
+python objects.py inspect  <package> <Object>
+python objects.py new      <package> <Object> --caption "Order" [--parent BaseEntity|BaseLookup]
+python objects.py base     <package> <Object> --env dev                                fetch the base (replacing objects, other parents)
+python objects.py new      <package> <Object> --replace                                a replacing copy of a base object (after `base`)
+python objects.py column   <package> <Object> add <Name> --type ShortText [--ref Contact] [--caption ..] [--default ..] [--on required indexed ..] [--off ..]
+python objects.py column   <package> <Object> set <Name> [--on flag ..] [--off flag ..]
+python objects.py column   <package> <Object> default <Name> <value | ->
+python objects.py column   <package> <Object> type <Name> MediumText                  widen a text column only
+python objects.py column   <package> <Object> caption <Name> en-US=".." [uk-UA=".."]
+python objects.py column   <package> <Object> remove <Name>
+python objects.py set      <package> <Object> [--on flag ..] [--off flag ..]          object flags
+python objects.py caption  <package> <Object> en-US=".." [uk-UA=".."] | *=".."       (* = every culture)
+python objects.py display  <package> <Object> <Column>
+python objects.py validate <package> <Object>
+python objects.py probe    <package> <Object> --env dev                                metadata vs the table (PostgreSQL)
+```
+
+| command | what it does |
+| --- | --- |
+| `new` | create an object (no columns yet) the way the 8.2.3 designer does |
+| `base` | fetch the base of an object from an environment and cache it |
+| `inspect` | flags, columns and problems |
+| `validate` | problems; exit code 1 on errors (warnings do not count) |
+| `column` | columns |
+| `set` | change object flags |
+| `caption` | set the object caption |
+| `display` | set the display (primary) column |
+| `probe` | compare the metadata with the table on an environment (PostgreSQL) |
+<!-- commands:end -->
 
 ## The loop
 

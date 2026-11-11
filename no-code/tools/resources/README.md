@@ -11,7 +11,7 @@ library.
 
 | File | What it does |
 | --- | --- |
-| `resources.py` | CLI: cultures, missing, fill, set, rename-key, remove-key |
+| `resources.py` | CLI (the commands are listed under Commands) |
 | `../creatio_schemas/resources.py` | `Resources` (one folder) and `package_resources(package)` (every folder, `.kind` the suffix) |
 | `tests/test_resources_tools.py` | checks on copies of the process and user-task fixtures |
 
@@ -23,6 +23,28 @@ python resources.py fill     UsrPkg --to ru-RU
 python resources.py set      UsrPkg UsrOrder Caption en-US="Order" ru-RU="Заказ"
 python resources.py rename-key UsrPkg UsrOrder_FormPage LocalizableStrings.OldText LocalizableStrings.NewText
 ```
+
+## Commands
+
+<!-- commands:start -->
+```
+python resources.py cultures   <package>
+python resources.py missing    <package> [--culture ru-RU] [--kind page] [--from en-US] [--keys]
+python resources.py fill       <package> --to ru-RU [--from en-US] [--schema X] [--dry-run]
+python resources.py set        <package> <Schema> <Key> en-US="..." [ru-RU="..."] [--dry-run]
+python resources.py rename-key <package> <Schema> <Old> <New> [--dry-run]
+python resources.py remove-key <package> <Schema> <Key> [--dry-run]
+```
+
+| command | what it does |
+| --- | --- |
+| `cultures` | the package's cultures and which schemas carry which |
+| `missing` | keys of --from absent in the other cultures, one line per schema |
+| `fill` | copy missing values from --from into --to |
+| `set` | set a key in cultures |
+| `rename-key` | rename a key and its subkeys |
+| `remove-key` | remove a key and its subkeys |
+<!-- commands:end -->
 
 ## How it is stored
 

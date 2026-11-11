@@ -10,7 +10,7 @@ Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `classicui.py` | CLI: inspect, validate, methods, method, diff; replace, adopt, add-string, set-rule, add-mixin, add-method, set-message |
+| `classicui.py` | CLI (the commands are listed under Commands) |
 | `../creatio_schemas/classicui/schema.py` | `ClassicSchema`: the library the CLI uses |
 | `../creatio_schemas/classicui/write.py` | its writers (`ClassicWriter`, mixed in) |
 | `../creatio_schemas/text.py` | `mask`: comments and string, template and regex literals blanked (shared with the C# reader) |
@@ -25,6 +25,41 @@ python classicui.py replace    UsrPkg ContactPageV2 --parent-uid <uid> --entity 
 python classicui.py set-rule   UsrPkg ContactPageV2 <rule uid> --enabled false --column Owner --dry-run
 python classicui.py add-string UsrPkg ContactPageV2 UsrHint en-US="Fill in the owner"
 ```
+
+## Commands
+
+<!-- commands:start -->
+```
+python classicui.py inspect  <package> <Schema>
+python classicui.py validate <package> <Schema>
+python classicui.py methods  <package> <Schema>
+python classicui.py method   <package> <Schema> <name>
+python classicui.py diff     <package> <Schema> [--op insert] [--parent Header]
+
+python classicui.py replace     <package> <Schema> [--parent-uid U] [--entity Contact] [--caption ..] [--cultures en-US,ru-RU]
+python classicui.py adopt       <package> <Schema> --from <pulled package or schema folder>
+python classicui.py add-string  <package> <Schema> <Key> en-US="Text" [ru-RU="..."]          [--dry-run]
+python classicui.py set-rule    <package> <Schema> <RuleUId> [--enabled false] [--removed true] [--column Owner]
+python classicui.py add-mixin   <package> <Schema> <Name> [--class Terrasoft.<Name>] [--module <Name>]
+python classicui.py add-method  <package> <Schema> <name> --file method.js [--replace]
+python classicui.py set-message <package> <Schema> <Name> --mode PTP|BROADCAST --direction SUBSCRIBE|PUBLISH|BIDIRECTIONAL
+```
+
+| command | what it does |
+| --- | --- |
+| `inspect` | kind, object, parent, sections with sizes, diff elements, warnings |
+| `validate` | warnings; exit code 0 (nothing here blocks) |
+| `methods` | one line per method: name, line, size |
+| `method` | one method's source |
+| `diff` | one line per diff operation |
+| `replace` | a replacing schema of a client schema: descriptor, diff metadata, empty body, resources |
+| `adopt` | move a client schema pulled from another package into this one (new UId, A5, B6) |
+| `add-string` | a localizable string: B2 metadata + resources |
+| `set-rule` | override a business rule by UId in businessRules (enabled / removed) |
+| `add-mixin` | a mixin in mixins + its module in define() |
+| `add-method` | a method from a file (`function(...) {...}`); --replace for an existing one |
+| `set-message` | a message: mode and direction |
+<!-- commands:end -->
 
 ## How it is stored
 

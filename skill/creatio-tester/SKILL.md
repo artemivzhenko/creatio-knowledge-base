@@ -25,6 +25,8 @@ say so in chat and stop.
    regression row `REG-nn` per dependent - a page runs its existing `.act` cases (`cases`) or at
    least `validate` of its page file, a process its process case, a rule or DCM `rules.py probe` /
    `dcm.py inspect`; a dependent you cannot exercise is a `not tested` row with its name, never silence.
+   `describe.py diff <package>` (MCP `schema_diff`) shows what the author changed in schema terms - a `+`
+   column or element the plan does not mention is a criterion to ask about, not to skip.
 3. **Write the tests.** Any tier, every tool: `.act` cases in the test framework (`Cases/`,
    `ProcessCases/`; `get_recipe("tools/uitests")`, the `creatio-tests` MCP: `dsl`, `cases`,
    `validate`, `run`, `analyse`, `schemas`, `last_report`). A page file comes from the package first - `pages.py from-schema <pkg> <Page> --out

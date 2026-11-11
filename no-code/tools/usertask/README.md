@@ -9,9 +9,37 @@ Scripts that read and change user tasks as **package files** (`Schemas/<Task>/me
 
 | File | What it does |
 | --- | --- |
-| `usertask.py` | CLI: inspect, validate, method, new, add-param, remove-param, rename-param, set-caption, set-source |
+| `usertask.py` | CLI (the commands are listed under Commands) |
 | `../creatio_schemas/usertask/schema.py` | `UserTaskSchema`: the library the CLI and the describe layer use |
 | `tests/test_usertask_tools.py` | checks on a real task with generic names |
+
+## Commands
+
+<!-- commands:start -->
+```
+python usertask.py inspect      <package> <Task>
+python usertask.py validate     <package> <Task>
+python usertask.py method       <package> <Task> <Method>                      # one method's C#
+python usertask.py new          <package> <Task> --caption "Notify owner" [--param RecordId:Guid:In:required] [--param Note:Text] [--interactive] [--cultures en-US]
+python usertask.py add-param    <package> <Task> <Name> <Type> [--direction In|Out|Variable] [--caption C] [--required] [--ref UsrOrder]
+python usertask.py remove-param <package> <Task> <Name>
+python usertask.py rename-param <package> <Task> <Old> <New>
+python usertask.py set-caption  <package> <Task> <value>
+python usertask.py set-source   <package> <Task> <file.cs>                     # replace the C# half
+```
+
+| command | what it does |
+| --- | --- |
+| `inspect` | parameters, C# methods and problems |
+| `validate` | problems; exit code 1 on errors |
+| `method` | one method's C# text |
+| `new` | a user task with a C# skeleton |
+| `add-param` | a parameter |
+| `remove-param` | drop a parameter and its caption |
+| `rename-param` | rename a parameter (captions follow) |
+| `set-caption` | the task caption |
+| `set-source` | replace the .cs file with the given file |
+<!-- commands:end -->
 
 ## How a task is stored
 

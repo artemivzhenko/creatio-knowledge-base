@@ -9,7 +9,7 @@ not do, it only chains them and checks the result. Pure Python standard library.
 
 | File | What it does |
 | --- | --- |
-| `scaffold.py` | CLI: `entity`, `source`, `module` |
+| `scaffold.py` | CLI (the commands are listed under Commands) |
 | `tests/test_scaffold_tools.py` | checks on temp copies of the pages fixture |
 
 ```bash
@@ -17,6 +17,25 @@ python scaffold.py entity UsrPkg UsrShipment --caption "Shipment" \
     --column "UsrNumber:Integer:required" --column "UsrNotes:MediumText" --column "UsrContact:Lookup:Contact" \
     --lookup "UsrStatus:UsrShipmentStatus:New,In progress,Done" --pages --dry-run
 ```
+
+## Commands
+
+<!-- commands:start -->
+```
+python scaffold.py entity <package> <Object> --caption "Shipment"
+    [--column "UsrNumber:Integer:required" ..]                 Name:Type[:flag,..]; a lookup: Name:Lookup:<Object>[:flag,..]
+    [--lookup "UsrStatus:UsrShipmentStatus:New,In progress,Done" ..]   column : lookup object : rows of its binding
+    [--pages] [--cultures en-US,ru-RU] [--dry-run]
+python scaffold.py source <package> <Name> --caption "Order service" [--service] [--cultures ..]
+python scaffold.py module <package> <Name> [--caption ..] [--mixin] [--cultures ..]
+```
+
+| command | what it does |
+| --- | --- |
+| `entity` | an object with its columns, lookups with seed rows, form and list pages |
+| `source` | an empty source code schema (a class, or --service the web service skeleton) |
+| `module` | an empty client module (--mixin: the Ext.define mixin a Classic page lists) |
+<!-- commands:end -->
 
 ## A source code schema and a client module
 

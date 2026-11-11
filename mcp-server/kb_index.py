@@ -34,6 +34,8 @@ AREAS = {
     # clio CLI: one SKILL.md per functional block plus a generated reference per command.
     "Clio": ("no-code", (".md",)),
 }
+# "Tools" has no root of its own: the READMEs under no-code/tools/<name>/ are found by the Clio walk
+# and re-labelled in _add, so the file toolkits do not count as clio commands.
 
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "how",
@@ -314,6 +316,8 @@ class KnowledgeBase:
             stem = path.parent.name
             rel = path.parent.relative_to(self.root).as_posix() + ".md"
             topic = ""
+            if stem != "SKILL" and rel.startswith("no-code/tools/"):
+                area = "Tools"  # a toolkit is not a clio command: no damping, own filter
 
         # The file name carries real intent here - every recipe is named
         # HowToDoTheThing - and the words in it are not always repeated in the

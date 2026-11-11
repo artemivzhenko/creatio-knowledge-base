@@ -62,8 +62,13 @@ def test_tool_readmes_are_their_folders():
     assert KB.get("no-code/README") is not None  # the area's own README keeps its name
     for q, want in (("add a column to an object as package files", "tools/objects"), ("rename a schema", "tools/process"),
                     ("create a package sql script view", "tools/sqlscripts"), ("business rule required field page", "tools/rules")):
-        ids = [r.id for r, _ in KB.search(q, area="Clio", limit=3)]
+        ids = [r.id for r, _ in KB.search(q, area="Tools", limit=3)]
         assert any(i.endswith(want) for i in ids), (q, ids)
+    assert KB.get("tools/objects").area == "Tools" and "Tools" in KB.areas() and not KB.list(area="Clio", topic="tools")
+    # Unfiltered, the toolkit README comes first (they used to be damped as clio pages).
+    for q, want in (("scaffold entity", "tools/scaffold"), ("data binding rows", "tools/data"), ("push package", "tools/push"),
+                    ("describe schema", "tools/describe")):
+        assert top(q).endswith(want), (q, top(q))
 
 
 def test_get_tolerates_ext_and_bare_name_but_not_ambiguity():
