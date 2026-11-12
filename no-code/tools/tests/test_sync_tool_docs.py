@@ -35,7 +35,7 @@ def test_block_is_written_and_a_second_run_changes_nothing():
         run(root)
         assert bare.read_bytes().decode("utf-8") == text
         # a README without the markers gets them under `## Commands`, before its first `##`
-        bare.write_bytes(text[:text.index("## Commands")].encode("utf-8") + text[text.index("## How a case is stored"):].encode("utf-8"))
+        bare.write_bytes(text[:text.index("## Commands")].encode("utf-8") + text[text.index("## Conditions"):].encode("utf-8"))
         run(root)
         assert bare.read_bytes().decode("utf-8") == text
 

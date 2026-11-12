@@ -8,8 +8,11 @@ The runner is what `project.json` `tests.runner` names (or `--runner`): a proces
 through ProcessEngineService, its result parameter `tests.resultParameter`, default `Result`) or a service
 path containing `.svc/` or `rest/` (POSTed). `tests.categoryParameter` (default `Category`) and
 `tests.classParameter` (default `Class`) name the parameter that selects the tests. The answer is JSON,
-often inside a WCF `<string>`; `--evidence` keeps it whole. Exit 2 when no runner is configured or the
-answer has no list of tests.
+often inside a WCF `<string>`; `--evidence` keeps it whole. The failed tests print first, with their messages, then the
+passed ones and `N passed, M failed`. With `tests.package` (or `--package`, the package holding the tests) a warning
+says when that package changed on the site after its last successful compilation (`SysPackage.ModifiedOn` newer than
+`CompilationHistory.CreatedOn`): the tests ran on the old dll. Exit 2 when no runner is configured or the answer has no
+list of tests.
 """
 
 from __future__ import annotations
@@ -88,6 +91,39 @@ def run(env, tests: dict, category: str | None, cls: str | None):
     return answer["results"].get(result_name)
 
 
+STALE_SQL = ('select p."ModifiedOn" as "changed", (select max(h."CreatedOn") from "CompilationHistory" h '
+             "where h.\"ProjectName\" like '%{name}%' and h.\"Result\" = {true}) as \"compiled\" from \"SysPackage\" p where p.\"Name\" = '{name}'")
+
+
+def stale_dll(env, package: str) -> str | None:
+    """A warning when the test package changed on the site after its last successful compilation, else None."""
+    from creatio_schemas.records import ident
+    name = ident(package)
+    rows = []
+    for true in ("true", "1"):  # PostgreSQL booleans, then MS SQL bits
+        try:
+            rows = env.sql(STALE_SQL.format(name=name, true=true))
+            break
+        except RuntimeError:
+            if true == "1":
+                raise
+    if not rows:
+        return f"warning: no package {name} on the site"
+    changed, compiled = rows[0].get("changed"), rows[0].get("compiled")
+    if not compiled:
+        return f"warning: no successful compilation of {name} in CompilationHistory; the dll may be older than the package"
+    return (f"warning: the test package's dll is older than its last push ({name} changed {changed}, compiled {compiled})"
+            if str(changed) > str(compiled) else None)
+
+
+def report(rows: list[dict]) -> list[str]:
+    """The failed tests first, with their messages, then the passed ones, then `N passed, M failed`."""
+    failed = [r for r in rows if not r["passed"]]
+    lines = [f"FAIL  {r['name']}" + (f"  - {r['message']}" if r["message"] else "") for r in failed]
+    lines += [f"ok    {r['name']}" for r in rows if r["passed"]]
+    return lines + [f"{len(rows) - len(failed)} passed, {len(failed)} failed"]
+
+
 def cmd_run(a, env_kw) -> int:
     tests = {}
     if a.project:
@@ -109,11 +145,16 @@ def cmd_run(a, env_kw) -> int:
     if rows is None:
         print(f"error: the runner's answer holds no list of tests: {json.dumps(answer, ensure_ascii=False)[:300]}", file=sys.stderr)
         return 2
-    for r in rows:
-        print(f"{'ok  ' if r['passed'] else 'FAIL'}  {r['name']}" + (f"  - {r['message']}" if r["message"] and not r["passed"] else ""))
-    failed = sum(not r["passed"] for r in rows)
-    print(f"{len(rows)} test(s), {failed} failed")
-    return 1 if failed else 0
+    print("\n".join(report(rows)))
+    package = a.package or tests.get("package")
+    if package:
+        try:
+            warning = stale_dll(env, package)
+        except (ValueError, RuntimeError) as e:
+            warning = f"warning: the dll age was not checked - {e.args[0] if e.args else e}"
+        if warning:
+            print(warning)
+    return 1 if any(not r["passed"] for r in rows) else 0
 
 
 def main(argv=None, **env_kw) -> int:
@@ -127,6 +168,7 @@ def main(argv=None, **env_kw) -> int:
     r.add_argument("--project", help="project.json: the environment and tests.runner")
     r.add_argument("--runner", help="override tests.runner: a process name or a service path")
     r.add_argument("--evidence", help="write the runner's whole answer to this file")
+    r.add_argument("--package", help="the package holding the tests (default project.json tests.package): warn when its dll is stale")
     a = p.parse_args(argv)
     return cmd_run(a, env_kw)
 

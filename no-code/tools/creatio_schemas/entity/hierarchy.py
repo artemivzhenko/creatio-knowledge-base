@@ -28,8 +28,7 @@ def cache_path(package: Path, obj: str) -> Path:
     return root / ".creatio-bases" / package.name / f"{obj}.json"
 
 
-def _quote(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
+from ..records import quote as _quote  # noqa: E402
 
 
 def merge_order(rows: list[dict]) -> list[dict]:

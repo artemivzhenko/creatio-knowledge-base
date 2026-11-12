@@ -39,6 +39,7 @@ python proc.py element   <package> <Process> rename <Old> <New> | remove <Name> 
 python proc.py element   <package> <Process> formula <Name> "<expression>" --result <ProcessParam>
 python proc.py element   <package> <Process> values <Name> Column=value .. [--expr]     Add / Modify data: the columns it writes
 python proc.py element   <package> <Process> map <Name> Param=value .. [--expr]        sub-process: the called process's parameters
+python proc.py element   <package> <Process> filter <Name> "<Column> = {Parameter:X}; <Column> is not null"   Read / Modify / Delete data
 python proc.py flow      <package> <Process> add <Src> <Dst> [--condition "{Parameter:X} > 0"] [--name ..] [--caption ..]
 python proc.py flow      <package> <Process> remove <Name> | condition <Name> "<expr>"
 python proc.py script    <package> <Process> get <Element> [--out file] | set <Element> --file body.cs
@@ -97,12 +98,26 @@ through the designer's own `ProcessSchemaRequest` service with every type recogn
 re-pointed to X→new, and new→Y is added); `--after X` alone just adds X→new.
 
 Expressions (conditions, formulas, `--set --expr`) use `{Parameter:Name}` for a process
-parameter and `{Element:El.Parameter:P}` for an element output; the rest is passed
-through. `inspect` shows the stored meta paths in the same notation.
+parameter, `{Element:El.Parameter:P}` for an element output and
+`{Element:El.Parameter:P.EntityColumn:<Column or uid>}` for a column of the record an element
+read (the column name resolves through the parameter's entity in the workspace); the rest is
+passed through. A `{...}` reference in any other form is refused, never written: the platform
+reads an unencoded one as "Expression expected" at run time. `validate` checks every stored
+expression the same way - flow conditions, formulas, parameter values of the expression kind -
+and flags a reference left as text or a meta path to an element or parameter the process does
+not have. `inspect` shows the stored meta paths in the same notation.
 
 `rename-schema <workspace-or-package> <Old> <New> [--apply]` moves the schema and resource
 folders, rewrites the name in descriptor and metadata, and replaces whole-word occurrences
 in every text file under the root (page JS, C#, data). Dry run by default.
+
+## Conditions
+
+A filter written as text (a signal's or a data element's, `--filter`) follows the shared grammar, and so does the
+meta-path codec behind `{Parameter:X}` in a formula:
+[creatio_schemas/expressions/README.md](../creatio_schemas/expressions/README.md). Every spelling of an operator works
+(`=` / `==` / `equal`, `is not null` / `filled`, `not contains`); the codec is `expressions.metapath`, and
+`ExpressionCodec` is its `Names` for one process.
 
 ## Signals
 
@@ -178,6 +193,26 @@ column the object no longer has (when the workspace holds the whole object). Rea
 processes: 434 Add / Modify elements with 1065 values, 87 sub-process calls; every value list
 re-serialises byte for byte. Not yet run on an environment.
 
+**Record filters** of Read data, Modify data and Delete data are the `DataSourceFilters` parameter: the same outer
+filter object a signal stores (designer form + runtime form, compact JSON). `element filter` writes it from ANDed
+conditions over the element's object (`--entity` first); a right side that is one `{Parameter:X}` or
+`{Element:E.Parameter:P[.EntityColumn:C]}` reference becomes the designer's parameter form - `dataValueType` 26, the
+value `{"value": "<meta path without [# #]>", "displayValue": "X"}` (runtime form: `{"value": ...}` only), as 1200 of
+1200 designer-written filters of the local workspaces hold it. Modify data also gets `IsMatchConditions` true (318 of
+318 designer ones have it). `inspect` prints `filter: UsrOrder where Id = OrderId and UsrAmount > 100`.
+
+```bash
+python proc.py element UsrPkg UsrOrder_Process filter ReadOrder "Id = {Parameter:OrderId}; UsrStatus is not null"
+```
+
+**Value and mapping agree.** An element parameter's value (`L8`) and its mapping row (`BK15`, matched by `GT3` = the
+parameter UId) hold the same source; the runtime reads the mapping. Every command here writes both. `validate` reports
+`element <El> parameter <P>: value and mapping differ (the platform reads the mapping)` when both carry a value and the
+values differ - a filter or a value edited by hand in `L8` only. One side empty is the designer's own form and is not
+reported (a localizable text lives in the mapping only; a mapping row without a value; the text of a localizable item in
+a value list is in the mapping only, and is ignored in the comparison). Over the 244 processes of the local workspaces
+the rule finds 9 parameters, in 2 processes, whose value is `false` and mapping `true`.
+
 ## Testing a process
 
 A process is tested by the **process cases** of the UI test utility
@@ -249,8 +284,8 @@ survive every push.
 ## Not covered yet
 
 Date and localizable-text constants in Add/Modify data values, sub-processes that run per
-record of a collection, OR groups and nested groups in signal filters (only ANDed conditions
-are built; any filter is read), script tasks on an environment whose
+record of a collection, OR groups and nested groups in signal and data element filters (only
+ANDed conditions are built; any filter is read), script tasks on an environment whose
 configuration does not compile, lanes beyond the first, diagram layout (positions are a
 plain left-to-right row; the designer re-arranges on save). Each is a `set` with a raw
 value today.

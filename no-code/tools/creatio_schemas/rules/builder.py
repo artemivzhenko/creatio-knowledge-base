@@ -6,10 +6,50 @@ workspace); a spec may give "type" / "ref" for a target the workspace cannot see
 
 from __future__ import annotations
 
+import re
+
+from ..expressions import Column, Const, Null, Param, Setting, Sys, parse
 from ..files import EMPTY_GUID, GUID_RE, new_uid
 from .actions import ACTIONS
 from .model import DATA_LOADED, LOGIC, OPS, SYS_VALUE_TYPES, T_ATTR, T_CASE, T_COND, T_EMPTY, T_GROUP, T_RULE, T_SETTING, T_SYS, \
-    T_TRIGGER, T_VALUE, UNARY, RuleContext, node, rule_short_name
+    T_TRIGGER, T_VALUE, UNARY, RuleContext, node, rule_short_name, SPEC_OP
+
+
+def when_conditions(text: str) -> list[dict]:
+    """`"UsrAmount > 100; UsrOwner = sys:CurrentUserContact"` (the shared grammar) -> the spec's condition dicts."""
+    out = []
+    for c in parse(text):
+        if c.op not in SPEC_OP:
+            raise ValueError(f"{c.left}: a rule has no {c.op!r} comparison; use {', '.join(SPEC_OP)}")
+        spec = {"left": c.left, "op": SPEC_OP[c.op]}
+        r = c.right
+        if isinstance(r, Param):
+            raise ValueError(f"{c.left}: a rule compares with a constant, attr:<attribute>, sys:<value> or setting:<code>, not {{Parameter:{r.name}}}")
+        if isinstance(r, Column):
+            spec["attr"] = r.path
+        elif isinstance(r, Sys):
+            spec["sys"] = r.name
+        elif isinstance(r, Setting):
+            spec["setting"] = r.code
+        elif isinstance(r, Const):  # an unquoted number or true/false is a number or a boolean, as in the JSON spec
+            spec["value"] = (r.text if r.quoted else int(r.text) if re.fullmatch(r"-?\d+", r.text)
+                             else r.text.lower() == "true" if r.text.lower() in ("true", "false") else r.text)
+        elif not isinstance(r, Null):
+            raise ValueError(f"{c.left}: cannot read {r!r}")
+        out.append(spec)
+    return out
+
+
+def spec_op(op) -> int:
+    """The comparison code of a spec's `op`: a rule name (`equal`), a number, or any spelling of the grammar (`=`, `is not null`)."""
+    if not isinstance(op, str):
+        return int(op)
+    if op in OPS:
+        return OPS[op]
+    (c,) = parse(f"x {op} y") if op.strip() not in ("empty", "filled", "is null", "is not null") else parse(f"x {op}")
+    if c.op not in SPEC_OP:
+        raise ValueError(f"a rule has no {op!r} comparison; use {', '.join(OPS)}")
+    return OPS[SPEC_OP[c.op]]
 
 
 class RuleBuilder:
@@ -61,7 +101,7 @@ class RuleBuilder:
         return node(T_VALUE, BRE1=t, BRE3=ref if t == "Lookup" else None, BVE1=value)
 
     def condition(self, cond: dict, scope: str | None) -> dict:
-        op = OPS[cond["op"]] if isinstance(cond["op"], str) else int(cond["op"])
+        op = spec_op(cond["op"])
         left = self.attr_name(cond["left"])
         out = node(T_COND, BCO1=self.attr(left, scope))
         if op not in UNARY:
@@ -76,7 +116,7 @@ class RuleBuilder:
         scope = spec.get("scope")
         uid = new_uid()
         case = {"JI0": T_CASE, "UId": new_uid()}
-        conds = [self.condition(c, scope) for c in spec.get("conditions", [])]
+        conds = [self.condition(c, scope) for c in spec.get("conditions", []) + when_conditions(spec.get("when", ""))]
         if conds:
             case["BRC1"] = node(T_GROUP, BGC1=LOGIC[spec.get("logic", "and")], BGC2=conds)
         trigger_names = [e["BRX1"].split(".")[0] for c in conds for e in (c["BCO1"], c.get("BCO2")) if e and e["JI0"] == T_ATTR]

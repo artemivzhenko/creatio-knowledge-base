@@ -267,7 +267,7 @@ def test_record_values_and_sub_process_mappings():
         # a value list that names a column the object no longer has
         stale = json.loads(values["L8"]["GS2"])
         stale["$values"][0]["columnMetaPath"]["value"] = "11111111-1111-1111-1111-111111111111"
-        values["L8"]["GS2"] = json.dumps(stale)
+        q._set_source(values, dict(values["L8"], GS2=json.dumps(stale)))  # value and mapping together: only the column is wrong
         assert q.validate() == ["element AddTest: column 11111111-1111-1111-1111-111111111111 is not a column of UsrPkg"]
         # collection mode and an unknown called process are refused
         sub["BP2"].append({"A2": "InputRecordCollection"})
@@ -297,6 +297,121 @@ def test_record_values_and_sub_process_mappings():
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
 
+
+def test_expressions_refuse_unencoded_references_and_encode_entity_columns():
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        pkg = tmp / "UsrPkg"
+        shutil.copytree(FIXTURES, pkg)
+        p = ProcessSchema.create(pkg, "UsrExpr_Process", "Expr", ["en-US"])
+        p.add_param("Counter", "Integer", "Variable", "Counter", 1)
+        read_el = p.add_element("readData", "ReadTests", "Read tests", after="StartEvent1", before="TerminateEvent1")
+        p.set_entity(read_el, "UsrPkg")
+        column, uid = next(iter(p.workspace.column_uids("UsrPkg").items()))
+        # a column of the read entity, by name or by UId: the designer's third meta path segment
+        encoded = p.expressions.encode(f"{{Element:ReadTests.Parameter:ResultEntity.EntityColumn:{column}}} == 1")
+        assert encoded.endswith(f".[EntityColumn:{{{uid}}}]#] == 1") and "[Element:{" in encoded and "[Parameter:{" in encoded, encoded
+        assert p.expressions.encode(f"{{Element:ReadTests.Parameter:ResultEntity.EntityColumn:{uid}}}") == encoded[: -len(" == 1")]
+        assert p.expressions.decode(encoded) == f"{{Element:ReadTests.Parameter:ResultEntity.EntityColumn:{uid}}} == 1"
+        # what reached the platform as text before: an unknown form, a column that is not there - refused, never written
+        for text, kind, msg in (("{Element:ReadTests.Parameter:ResultEntity.Column:X}", ValueError, "cannot encode"),
+                                ("{Element:ReadTests.Parameter:ResultEntity.EntityColumn:NoSuch}", KeyError, "no column 'NoSuch' on UsrPkg"),
+                                ("{Record:Name} > 1", ValueError, "cannot encode {Record:Name}")):
+            try:
+                p.expressions.encode(text)
+                raise AssertionError(text)
+            except kind as e:
+                assert msg in str(e), str(e)
+        # validate reads what is stored: a reference left as text, a meta path to nothing
+        flow = next(f for f in p.flows() if f["CI1"] == p.element("ReadTests")["UId"])
+        flow["CI3"] = "{Parameter:Counter} > 1"
+        p.element("ReadTests")["BP2"][0]["L8"] = {"GS1": 3, "GS2": "[#[IsOwnerSchema:false].[IsSchema:false].[Parameter:{deadbeef-0000-0000-0000-000000000000}]#]"}
+        problems = p.validate()
+        assert any(f"flow {flow['A2']} condition: {{Parameter:Counter}} is not encoded" in x for x in problems), problems
+        assert any("parameter" in x and "[Parameter:deadbeef-0000-0000-0000-000000000000] is not in the process" in x for x in problems), problems
+        flow["CI3"] = p.expressions.encode("{Parameter:Counter} > 1")
+        p._set_source(p.element("ReadTests")["BP2"][0], {"GS1": 3, "GS2": flow["CI3"]})  # the value and its mapping row together
+        assert p.validate() == []
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_mapping_agreement_and_data_element_filters():
+    import contextlib
+    import io
+    sys.path.insert(0, str(HERE.parent))
+    import proc
+    from creatio_schemas import filters
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        pkg = tmp / "UsrPkg"
+        shutil.copytree(FIXTURES, pkg)
+        # the designer's own fixture: a date macro on the right side reads back, and nothing disagrees
+        designer = ProcessSchema(pkg, "UsrDeleteOldLogs_Process")
+        assert designer.describe_filter(designer.element("DeleteDataUserTask1")) == "UsrSQLConsole where CreatedOn = (macro 6)"
+        p = ProcessSchema.create(pkg, "UsrFilter_Process", "Filter")
+        p.add_param("OrderId", "Guid", "In", "Order")
+        read_el = p.add_element("readData", "ReadOrder", "Read order", after="StartEvent1", before="TerminateEvent1")
+        p.set_entity(read_el, "UsrPkg")
+        change = p.add_element("changeData", "MarkOrder", "Mark order", after="ReadOrder", before="TerminateEvent1")
+        p.set_entity(change, "UsrPkg")
+        delete = p.add_element("deleteData", "DropOrder", "Drop order", after="MarkOrder", before="TerminateEvent1")
+        p.set_entity(delete, "UsrPkg")
+        p.save()
+        before = {e["A2"]: json.dumps(e, sort_keys=True) for e in ProcessSchema(pkg, "UsrFilter_Process").elements}
+        p.set_filter(read_el, 'Id = {Parameter:OrderId}; UsrAmount > 100; UsrComment is not null')
+        p.set_filter(change, "UsrContactLookup = {Element:ReadOrder.Parameter:ResultEntity.EntityColumn:UsrContactLookup}")
+        p.set_filter(delete, "UsrIsActive = false")
+        p.save()
+
+        q = ProcessSchema(pkg, "UsrFilter_Process")
+        assert q.validate() == [], q.validate()
+        assert q.describe_filter(q.element("ReadOrder")) == "UsrPkg where Id = OrderId and UsrAmount > 100.0 and UsrComment is not null", q.describe_filter(q.element("ReadOrder"))
+        assert q.describe_filter(q.element("MarkOrder")) == "UsrPkg where UsrContactLookup = ReadOrder.ResultEntity.UsrContactLookup"
+        assert q.describe_filter(q.element("DropOrder")) == "UsrPkg where UsrIsActive = False"
+        assert "filter: UsrPkg where Id = OrderId" in q.describe()
+        stored = q.element_param(q.element("ReadOrder"), "DataSourceFilters")
+        right = next(iter(filters.load(stored["L8"]["GS2"])["items"].values()))["rightExpression"]["parameter"]
+        assert right["dataValueType"] == 26 and right["value"] == {"value": f"[IsOwnerSchema:false].[IsSchema:false].[Parameter:{{{q.param('OrderId')['UId']}}}]",
+                                                                    "displayValue": "OrderId"}, right
+        run = json.loads(json.loads(stored["L8"]["GS2"])["dataSourceFilters"])
+        assert next(iter(run["items"].values()))["rightExpression"]["parameter"]["value"] == {"value": right["value"]["value"]}
+        assert next(m for m in q.mappings if m["GT3"] == stored["UId"])["GT1"] == stored["L8"]  # L8 and BK15 written together
+        assert q.element_param(q.element("MarkOrder"), "IsMatchConditions")["L8"]["GS2"] == "true"
+        after = {e["A2"]: json.dumps(e, sort_keys=True) for e in q.elements}
+        assert [n for n in before if before[n] != after[n]] == ["ReadOrder", "MarkOrder", "DropOrder"]  # nothing else was touched
+
+        # the incident: the filter edited by hand in L8 only - the platform runs the old mapping
+        stored["L8"] = dict(stored["L8"], GS2=filters.build("UsrPkg", [("UsrAmount", ">", "1")], q.workspace.columns("UsrPkg")))
+        assert q.validate() == ["element ReadOrder parameter DataSourceFilters: value and mapping differ (the platform reads the mapping)"]
+        q._set_source(stored, stored["L8"])
+        assert q.validate() == []
+        # the designer's own forms are not reported: a localizable text kept in the mapping only, a mapping row without a value
+        assert not proc_disagree({"GS1": 1}, {"GS1": 1, "GS2": "Fill in"}) and not proc_disagree({"GS1": 1, "GS2": "x"}, {"GS5": "u"})
+        lcz = '{"$values":[{"value":{"isLczValue":true%s}}]}'
+        assert not proc_disagree({"GS1": 1, "GS2": lcz % ""}, {"GS1": "1", "GS2": lcz % ',"value":"Profile"'})
+        assert proc_disagree({"GS1": 3, "GS2": "false"}, {"GS1": 3, "GS2": "true"}) and proc_disagree({"GS1": 1, "GS2": "a"}, {"GS1": 3, "GS2": "a"})
+
+        for bad, error, text in ((lambda: q.set_filter(q.element("StartEvent1"), "Id = 1"), ValueError, "no record filter"),
+                                 (lambda: q.set_filter(q.element("ReadOrder"), "Nope = 1"), KeyError, "no column Nope"),
+                                 (lambda: q.set_filter(q.element("ReadOrder"), "Id = {Parameter:Nope}"), KeyError, "Nope")):
+            try:
+                bad()
+                raise AssertionError(text)
+            except error as e:
+                assert text in str(e), str(e)
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert proc.main(["element", str(pkg), "UsrFilter_Process", "filter", "DropOrder", "UsrNumber >= 3"]) == 0
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert proc.main(["element", str(pkg), "UsrFilter_Process", "filter", "DropOrder", "Nope = 3"]) == 2
+        assert ProcessSchema(pkg, "UsrFilter_Process").describe_filter(ProcessSchema(pkg, "UsrFilter_Process").element("DropOrder")) == "UsrPkg where UsrNumber >= 3"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def proc_disagree(value, mapping):
+    from creatio_schemas.process.schema import _disagree
+    return _disagree(value, mapping)
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

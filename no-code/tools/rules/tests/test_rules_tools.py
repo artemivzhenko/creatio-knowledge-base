@@ -47,7 +47,7 @@ def test_inspect_decodes_all_three_forms():
     assert entity.kind == "entity" and not entity.replacing and entity.target == "UsrPkg"
     text = entity.describe()
     assert "then filter UsrContactLookup by UsrContactLookup.Account = UsrAccount" in text
-    assert "when UsrNumber empty or UsrAmount empty" in text
+    assert "when UsrNumber is null or UsrAmount is null" in text
     assert "UsrContactLookup = sys:CurrentUserContact" in text
     page = RuleSchema(FIXTURES, "UsrTests_FormPageBusinessRule")
     assert page.kind == "page" and "then hide: UsrDate,UsrDateTime" in page.describe()
@@ -56,6 +56,25 @@ def test_inspect_decodes_all_three_forms():
     assert repl.base_edits() == ['+ MetaData.Schema.AD4.BRS1.["34a9fedf-e4d8-f6e1-cb04-2e74816d4502"].BR4 false']
     for name in SCHEMAS:
         assert [p for p in RuleSchema(FIXTURES, name).validate() if not p.startswith("warning:")] == [], name
+
+
+def test_a_spec_may_state_its_conditions_in_the_shared_grammar():
+    tmp = copy()
+    try:
+        rs = RuleSchema(tmp / "UsrPkg", "UsrPkgBusinessRule")
+        actions = [{"type": "required", "items": ["UsrAmount"]}]
+        by_json = rs.add({"conditions": [{"left": "UsrNumber", "op": "greater", "value": 100}, {"left": "UsrIsActive", "op": "empty"}], "actions": actions})[0]
+        by_text = rs.add({"when": "UsrNumber > 100; UsrIsActive is null", "actions": actions})[0]
+        both = rs.add({"conditions": [{"left": "UsrNumber", "op": ">", "value": 100}], "when": "UsrIsActive filled", "actions": actions})[0]
+
+        def shape(rule):  # the conditions without their UIds
+            return [(c["BCO1"]["BRX1"], c["BCO3"], c.get("BCO2", {}).get("BVE1")) for c in rule["BR1"][0]["BRC1"]["BGC2"]]
+        assert shape(by_json) == shape(by_text) == [("UsrNumber", OPS["greater"], 100), ("UsrIsActive", OPS["empty"], None)]
+        assert shape(both) == [("UsrNumber", OPS["greater"], 100), ("UsrIsActive", OPS["filled"], None)]  # "conditions" first, then "when"
+        text = rs.describe()
+        assert "when UsrNumber > 100 and UsrIsActive is null" in text
+    finally:
+        shutil.rmtree(tmp.parent, ignore_errors=True)
 
 
 def test_build_entity_rules_and_edit_them():

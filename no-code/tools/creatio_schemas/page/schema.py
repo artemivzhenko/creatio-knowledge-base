@@ -442,9 +442,26 @@ class PageSchema(Schema):
         entity = ((self.data_sources.get(ds) or {}).get("config") or {}).get("entitySchemaName")
         return self.workspace.columns(entity).get(column, (None,))[0] if entity and column else None
 
+    def rule_toggled(self) -> set[str]:
+        """Element names a business rule of this page shows or hides (the `show` / `hide` actions of `<Page>BusinessRule`)."""
+        from ..rules import RuleSchema  # local: the rules kit reads page models, this module is read by it
+        name = RuleSchema.name_for(self.package, self.name)
+        if not (self.package / "Schemas" / name / "properties.json").is_file():
+            return set()
+        from ..rules.actions import ACTION_BY_CLASS
+        names: set[str] = set()
+        for rule in RuleSchema(self.package, name).rules:
+            for case in rule["BR1"]:
+                for action in case["BRC2"]:
+                    if getattr(ACTION_BY_CLASS.get(action["JI0"]), "name", None) in ("show", "hide"):
+                        names.update(n for n in action.get("BRA4", "").split(",") if n)
+        return names
+
     def page_file(self, name: str | None = None) -> tuple[dict, list[str]]:
-        """The UI test utility's page file for this page (Configuration/pages/<name>.json) and notes on what was left out."""
+        """The UI test utility's page file for this page (Configuration/pages/<name>.json) and notes on what was left out.
+        An element a business rule shows or hides carries `"conditional": true` (it may be absent from the DOM)."""
         from .catalog import FRAMEWORK_TYPE, PICKER_TYPE, TEMPLATE_ELEMENTS
+        toggled = self.rule_toggled()
         parent = (self.descriptor.data.get("Parent") or {}).get("Name")
         entries = {e["code"]: copy.deepcopy(e) for e in TEMPLATE_ELEMENTS.get(parent, [])}
         unknown: dict[str, list[str]] = {}
@@ -456,7 +473,7 @@ class PageSchema(Schema):
             if operation == "remove":
                 entries.pop(code, None)
                 continue
-            if values.get("visible") is False:
+            if values.get("visible") is False and code not in toggled:  # a rule may show it: the catalog lists what the page can show
                 entries.pop(code, None)
                 hidden.append(code)
                 continue
@@ -485,6 +502,8 @@ class PageSchema(Schema):
             if kind == "crt.DataGrid":
                 entry["columns"] = [self._text(c.get("caption")) or "" for c in values.get("columns", [])]
             entries[code] = entry
+        for code in toggled & entries.keys():
+            entries[code]["conditional"] = True
         page = {"name": name or (self.name[:-len("_FormPage")] + "Form" if self.name.endswith("_FormPage") else self.name),
                 "url": f"/0/Shell/#Card/{self.name}", "type": "FreedomUI",
                 "elements": sorted(entries.values(), key=lambda e: (e["type"], e["code"]))}

@@ -12,11 +12,12 @@ from pathlib import Path
 
 from ..files import dump_json, is_uid, new_uid, read_text, write_text
 from ..resources import Resources
+from ..expressions import Group, describe
 from ..schema import WARNING, Descriptor, Schema
 from ..workspace import Package, Workspace
 from .actions import ACTION_BY_CLASS, ENTITY, PAGE
 from .builder import RuleBuilder
-from .model import BASE_ADDON_UID, OP_NAMES, RELATIONAL, T_ATTR, T_GROUP, T_RULES, TRIGGER_TYPES, RuleContext, caption_key, format_expr, \
+from .model import BASE_ADDON_UID, OP_NAMES, RELATIONAL, T_ATTR, T_GROUP, T_RULES, TRIGGER_TYPES, RuleContext, caption_key, condition_of, \
     short_type, walk
 from .storage import DEFAULT_VERSION, load_storage
 
@@ -201,9 +202,7 @@ class RuleSchema(Schema):
             c = case.get("BRC1")
             if c:
                 parts = c["BGC2"] if c.get("JI0") == T_GROUP else [c]
-                logic = " or " if c.get("BGC1") == 2 else " and "
-                out.append("    when " + logic.join(f"{format_expr(p['BCO1'])} {OP_NAMES.get(p.get('BCO3'), p.get('BCO3'))}"
-                                                    + (f" {format_expr(p.get('BCO2'))}" if p.get("BCO2") else "") for p in parts))
+                out.append("    when " + describe(Group(tuple(condition_of(p) for p in parts), "or" if c.get("BGC1") == 2 else "and")))
             for a in case["BRC2"]:
                 action = ACTION_BY_CLASS.get(a["JI0"])
                 out.append(f"    then {action.describe(a) if action else short_type(a['JI0'])}")

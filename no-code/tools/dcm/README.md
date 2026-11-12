@@ -49,6 +49,12 @@ python dcm.py disable      <package> <Case>
 | `disable` | clear Enabled |
 <!-- commands:end -->
 
+## Conditions
+
+A step's result condition is `Param op value` in the shared grammar ([creatio_schemas/expressions/README.md](../creatio_schemas/expressions/README.md)):
+`==`, `=` and `equal` are one operator, as are `!=`/`<>`; `<`, `<=`, `>`, `>=` work; the value is a literal or a stage name for a lookup
+parameter. `inspect` prints the stored condition back the same way (`NextStage = Stage4`), so what it prints is what `add_step` reads.
+
 ## How a case is stored
 
 - `EntitySchemaUId` and `StageColumnUId`: the object and its lookup column that holds the stage;

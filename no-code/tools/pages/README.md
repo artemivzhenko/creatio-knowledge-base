@@ -102,6 +102,10 @@ python pages.py from-schema UsrPkg UsrOrder_FormPage --out <testFramework>/Confi
 python pages.py from-schema UsrPkg UsrOrder_FormPage --compare <testFramework>/Configuration/pages/UsrOrderForm.json
 ```
 
+- `"conditional": true` marks an element a business rule of the page (`<Page>BusinessRule`) shows or hides with a
+  `show` / `hide` action: Freedom UI drops a hidden control from the DOM, so a case asserts it with
+  `check X is [not] shown`, and the validator warns on `exists` for it. An element the page itself hides
+  (`visible: false`) is still written when a rule shows it. `analyse` keeps the key; `--compare` ignores it.
 - `code` is the element's `name`: the utility addresses an element by `element-name`, which is that
   name (all 11 own controls of the designer-made test page, and all 18 of the tool-made order page,
   matched what `analyse` wrote).

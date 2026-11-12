@@ -5,6 +5,7 @@
     env.odata("Contact", select=["Id", "Name"], top=5)
     env.call_service("ServiceModel/UsrOrderService.svc/Recalc", {"orderId": "..."})
     env.run_process("UsrOrder_Process", {"OrderId": "..."}, results=["Total"])
+    env.process_log(run["processId"])               # its SysProcessLog row: status, error, start, end (through SQL)
     env.sql('select "Name" from "SysPackage"')
 
 Every request carries `ForceUseSession: true` and the `BPMCSRF` cookie as a header. A non-2xx answer
@@ -63,6 +64,16 @@ def reduce_fault(text: str) -> str:
                 return str(data[key]).strip()
         if info.get("message"):
             return str(info["message"]).strip()
+        err = data.get("error") if isinstance(data.get("error"), dict) else None
+        if err:  # OData: {"error": {"message", "innererror": {"message", "internalexception": {"message", ...}}}}
+            messages, node = [], err
+            while isinstance(node, dict):
+                text = str(node.get("message") or "").strip()
+                if text and text not in messages:
+                    messages.append(text)
+                node = node.get("innererror") or node.get("internalexception")
+            if messages:
+                return " <- ".join(messages)
     m = re.search(r"The exception message is '(.+?)'\.", text, re.S)
     if m:
         return " ".join(html.unescape(m.group(1)).split())
@@ -70,7 +81,8 @@ def reduce_fault(text: str) -> str:
     if m and m.group(1).strip():
         return " ".join(html.unescape(m.group(1)).split())
     plain = html.unescape(re.sub(r"<[^>]+>", " ", text))
-    return next((" ".join(line.split()) for line in plain.splitlines() if line.strip()), "")[:300]
+    first = next((" ".join(line.split()) for line in plain.splitlines() if line.strip()), "")[:500]
+    return re.sub(r"\\u[0-9a-fA-F]{0,3}$", "", first)  # never cut inside a JSON escape
 
 
 def unwrap_xml_string(text: str) -> str:
@@ -157,7 +169,9 @@ class Environment:
         return path
 
     def _send(self, method: str, path: str, body: Any = None, params: dict | None = None, literal: bool = False) -> Response:
-        url = self.url + (path if literal else self._path(path)) + ("?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote) if params else "")
+        # a path typed by hand may hold spaces (`$filter=Name eq 'x'`); what is already percent-encoded stays as it is
+        where = urllib.parse.quote(path if literal else self._path(path), safe="/?=&$'(),:;@+%#!*")
+        url = self.url + where + ("?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote) if params else "")
         data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode("utf-8"))
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Content-Type", "application/json; charset=utf-8")
@@ -251,6 +265,11 @@ class Environment:
                 "error": None if answer.get("success") is True else (info.get("message") or json.dumps(info) if info else "not started"),
                 "results": answer.get("resultParameterValues") or {}}
 
+    def process_log(self, process_id: str, zone: str | None = None) -> dict | None:
+        """The `SysProcessLog` row of a run (`processId` of `run_process`): {status, state, error, start, end, ...} or None."""
+        from .runs import process_log
+        return process_log(self, process_id, zone)
+
     # -- SQL through clio ------------------------------------------------------------ #
 
     def _need_clio(self) -> str:
@@ -266,22 +285,35 @@ class Environment:
                 src, out = Path(tmp) / "q.sql", Path(tmp) / "out.json"
                 src.write_text(statement, encoding="utf-8")
                 code, output = self._clio_run(["execute-sql-script", "-e", name, "-f", str(src), "-v", "json", "-d", str(out)])
-                if "[ERR]" in output or code:
-                    raise RuntimeError(f"sql: {_err_line(output)}")
+                if sql_failed(code, output):
+                    raise RuntimeError(f"sql: {err_line(output)}")
                 result = out.read_text(encoding="utf-8-sig").strip() if out.is_file() else ""
-            rows.extend(json.loads(result) if result else [])
+            parsed = json.loads(result) if result else []
+            rows.extend(parsed if isinstance(parsed, list) else [])  # an update: clio writes the affected row count
         return rows
 
     def sql_exec(self, text: str) -> None:
         """A statement without a result (update, insert); `[ERR]` in clio's output raises."""
         code, output = self._clio_run(["execute-sql-script", text, "-e", self._need_clio()])
-        if "[ERR]" in output or code:
-            raise RuntimeError(f"sql: {_err_line(output)}")
+        if sql_failed(code, output):
+            raise RuntimeError(f"sql: {err_line(output)}")
 
 
-def _err_line(output: str) -> str:
+# a database error as some clio builds print it: the SQLSTATE and the message, then `Done` and exit 0 - no `[ERR]`
+_SQLSTATE_RE = re.compile(r"^[0-9A-Z]{5}: \S")
+
+
+def _is_error(line: str) -> bool:
+    return "[ERR]" in line or bool(_SQLSTATE_RE.match(line.strip()))
+
+
+def sql_failed(code: int, output: str) -> bool:
+    return bool(code) or any(_is_error(l) for l in output.splitlines())
+
+
+def err_line(output: str) -> str:
     lines = [l.strip() for l in output.splitlines() if l.strip()]
-    return next((l for l in lines if "[ERR]" in l), lines[-1] if lines else "clio failed")[:500]
+    return next((l for l in lines if _is_error(l)), lines[-1] if lines else "clio failed")[:500]
 
 
 def open_environment(env: str | None = None, project: str | None = None, **kw) -> Environment:

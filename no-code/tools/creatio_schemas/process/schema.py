@@ -61,6 +61,29 @@ def copy_called_params(owner_uid: str, element: dict, called: "ProcessSchema", m
     return added
 
 
+def _without_lcz_text(value):
+    """A value list with the text of its localizable items dropped: the designer keeps that text in the mapping only."""
+    if isinstance(value, dict):
+        return {k: _without_lcz_text(v) for k, v in value.items() if not (k == "value" and value.get("isLczValue"))}
+    return [_without_lcz_text(v) for v in value] if isinstance(value, list) else value
+
+
+def _disagree(value: dict | None, mapping: dict | None) -> bool:
+    """Both carry a value and the values differ. One side empty is the designer's own form (localizable texts live in the
+    mapping only; a mapping row without a value leaves the parameter's), so it is not reported."""
+    a, b = (value or {}).get("GS2"), (mapping or {}).get("GS2")
+    if a in (None, "") or b in (None, ""):
+        return False
+    if str((value or {}).get("GS1")) != str((mapping or {}).get("GS1")):
+        return True
+    if a == b:
+        return False
+    try:
+        return _without_lcz_text(json.loads(a)) != _without_lcz_text(json.loads(b))
+    except (TypeError, ValueError):
+        return True
+
+
 class ProcessSchema(Schema):
     RESOURCE_SUFFIX = "Process"
 
@@ -303,6 +326,29 @@ class ProcessSchema(Schema):
                 p["L16"] = name
         if "DataSourceFilters" in names:
             self.set_value(element, "DataSourceFilters", self.empty_filter(name))
+
+    def set_filter(self, element: dict, conditions: str) -> None:
+        """Read / Modify / Delete data: which records, as `"<Column> = {Parameter:X}; <Column> is not null"` (ANDed; empty =
+        every record). A `{Parameter:X}` / `{Element:..}` right side is stored as the designer's meta path; L8 and the
+        element's mapping row get the same value."""
+        names = {p["A2"] for p in self.element_params(element)}
+        if short_type(element) != "ProcessSchemaUserTask" or "DataSourceFilters" not in names:
+            raise ValueError(f"{element['A2']} has no record filter: Read data, Modify data and Delete data have one")
+        uid = next(((self.element_param(element, n).get("L8") or {}).get("GS2") for n in ("EntitySchemaId", "EntitySchemaUId") if n in names), None)
+        uid = uid or (self.element_param(element, "ResultEntity").get("L9") if "ResultEntity" in names else None)
+        entity = self.workspace.name_of(uid) if is_uid(uid) else None
+        if not entity:
+            raise ValueError(f"{element['A2']} has no entity the workspace knows" + ("" if is_uid(uid) else "; set it first (--entity)"))
+        text = filters.build(entity, filters.parse_conditions(conditions), self.workspace.columns(entity), self.expressions.encode)
+        self._set_source(self.element_param(element, "DataSourceFilters"), {"GS1": 1, "GS2": text, "GS5": self.uid})
+        if "IsMatchConditions" in names:  # Modify data applies the filter only with it (the designer sets it on every one)
+            self.set_value(element, "IsMatchConditions", True)
+
+    def describe_filter(self, element: dict) -> str | None:
+        """`UsrOrder where Id = OrderId`, or None when the element has no filter parameter with a value."""
+        p = next((x for x in self.element_params(element) if x["A2"] == "DataSourceFilters"), None)
+        raw = ((p or {}).get("L8") or {}).get("GS2")
+        return filters.summarize(filters.load(raw)) if raw else None
 
     def set_calls(self, element: dict, process: str) -> None:
         """Sub-process: the process to call, by name (from the workspace) or UId."""
@@ -578,6 +624,12 @@ class ProcessSchema(Schema):
         for m in self.mappings:
             if m.get("GT3") not in pids:
                 problems.append(f"mapping for {m.get('A2')} targets a missing parameter")
+        mapped = {m.get("GT3"): m for m in self.mappings}
+        for e in self.elements:
+            for p in self.element_params(e):
+                m = mapped.get(p.get("UId"))
+                if m and _disagree(p.get("L8"), m.get("GT1")):
+                    problems.append(f"element {e['A2']} parameter {p['A2']}: value and mapping differ (the platform reads the mapping)")
         for p in self.params:
             if not self.resources.get(f"Parameters.{p['A2']}.Caption"):
                 problems.append(f"parameter {p['A2']} has no en-US caption")
@@ -590,6 +642,18 @@ class ProcessSchema(Schema):
                 except (ValueError, KeyError):
                     continue  # no entity yet, or a value list this reader does not know: nothing to check against
                 problems += [f"element {e['A2']}: column {c} is not a column of {entity}" for c, _ in values if c not in columns]
+        codec = self.expressions  # a reference left as text, or to nothing: "Expression expected" at run time
+        for f in self.flows():
+            problems += codec.check(f.get("CI3"), f"flow {f['A2']} condition")
+        for e in self.nodes():
+            if short_type(e) == "ProcessSchemaFormulaTask":
+                problems += codec.check(e.get("CH1"), f"element {e['A2']} formula")
+            for p in self.element_params(e):
+                if (p.get("L8") or {}).get("GS1") == 3:
+                    problems += codec.check(p["L8"].get("GS2"), f"element {e['A2']} parameter {p['A2']}")
+        for p in self.params:
+            if (p.get("L8") or {}).get("GS1") == 3:
+                problems += codec.check(p["L8"].get("GS2"), f"parameter {p['A2']}")
         if not self.resources.get("Caption"):
             problems.append("process has no en-US caption")
         return problems
@@ -628,6 +692,9 @@ class ProcessSchema(Schema):
                         continue
                     except ValueError:
                         pass
+                if p["A2"] == "DataSourceFilters" and (p.get("L8") or {}).get("GS2"):
+                    lines.append(f"        filter: {self.describe_filter(e)}")
+                    continue
                 if p.get("L8"):
                     lines.append(f"        {p['A2']} = {self.describe_value(p['L8'])}")
             if cls == "ProcessSchemaScriptTask":

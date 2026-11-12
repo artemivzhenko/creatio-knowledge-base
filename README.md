@@ -6,7 +6,7 @@ modules, a C# style guide, **a no-code layer** (13 clio block skills with a refe
 each of its 261 commands, and 17 Python toolkits that build business processes, rules, objects,
 pages, cases, data bindings and SQL scripts as package files), **a describe layer** that answers
 questions about a package - what it holds, what a schema is, who depends on it, what changed -
-without reading the files, and an MCP server that gives an AI assistant all of it as 20 tools.
+without reading the files, and an MCP server that gives an AI assistant all of it as 37 tools.
 Four Claude Code skills turn the tools into roles: an **author** that builds a task and a
 **tester** that proves it, under one task-folder contract.
 
@@ -147,7 +147,7 @@ section at a time.
 
 ## Using it with an AI assistant
 
-The MCP server gives the assistant 20 tools in three groups.
+The MCP server gives the assistant 37 tools in three groups.
 
 Recipes:
 
@@ -172,6 +172,9 @@ The describe layer, over a package folder or a clio workspace (`no-code/tools/de
 | `schema_impact(path, schemas, tasks?, current?, md?)` | the dependents of the schemas a task changes and the locks of the other active tasks |
 | `schema_diff(package, schemas?, against?)` | what changed against git HEAD, a revision or a pulled copy, as `+` / `-` / `~` lines per item |
 | `schema_layers(env or project.json, Name)` | the copies of a schema on an environment in the order the platform applies them; a Custom-layer copy is flagged |
+| `schema_snapshot(Name, env?, workspace?)`, `snapshot_compare(before, after)` | an object before / after a layer merge as lines (disk: effective columns; site: table, rows, checksums, copies) and their `+ - ~` comparison |
+| `merge_plan(path, schemas?, env?)` | collapsing the replacing layers of a schema into one: the target package, what each layer adds, the conflicts, the dependencies the target gains; writes nothing |
+| `merge_layers(path, Object, target?, env?)` | the layers of one object as one layer of the target: the files it would write and delete, or why it stops; prints only |
 | `list_lookups(path)` | every lookup object with its parent chain, bindings and users |
 | `index_workspace(path, rebuild?)` | build or refresh the index the answers come from |
 
@@ -182,6 +185,10 @@ The environment, through a clio environment name, never a private script:
 | `env_sql(env, sql)` | rows as JSON |
 | `env_odata(env, Entity, select?, filter?, top?)` | records over OData |
 | `env_call(env, method, path, body?)` | a service or OData call with login and CSRF |
+| `find_record(env, id, ...)`, `record_context(env, entity, id, ...)` | which table holds an Id; a record with its lookups named and its details |
+| `run_process(env, process, params?, results?)`, `process_runs(env, process?, record?, ...)`, `process_error(env, log_id)` | start a process and read its log; what ran around a record's changes; one run's error without stack frames |
+| `run_tests(env, category?, test?)`, `review_download(package, keep?)`, `precommit_check(workspace)` | the in-Creatio tests with counts and the stale-dll warning; a pulled package sorted against HEAD; staged files that must not be committed |
+| `role_members`, `user_roles`, `role_diff`, `sys_setting` | role membership (nested roles included) and a setting across environments and bindings |
 | `push_package(package, env, ...)` | install in one command: IsChanged cleared, push-pkg, compilation log, probes of the changed items |
 
 `area` is one of `ClassicUI`, `FreedomUI`, `RemoteModule`, `Mobile`, `Backend`, `SQL`,

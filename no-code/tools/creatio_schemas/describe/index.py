@@ -15,6 +15,7 @@ import json
 import os
 import re
 import time
+import traceback
 from pathlib import Path
 
 from ..csharp import csharp_files
@@ -25,7 +26,7 @@ from .core import DEFAULT_LIMIT, _caption, cut, kind_of, open_item, summary
 from .deps import Edge, Resolver, deps_of
 
 INDEX_DIR = ".creatio-index"
-INDEX_FORMAT = 4  # 3: typed `deps` edges per item (describe/deps.py); 4: the text extractors (S20-T02)
+INDEX_FORMAT = 5  # 3: typed `deps` edges per item (describe/deps.py); 4: the text extractors (S20-T02); 5: parse_diff forms, located errors (S22-T03)
 TYPE_NAME_RE = re.compile(r"\b(?:class|interface|struct|enum|record)\s+(\w+)")
 # Identifiers and GUIDs: the two ways a file names another schema.
 TOKEN_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z_][A-Za-z0-9_]{2,}")  # GUID first: one may start with a letter
@@ -50,6 +51,31 @@ def packages_of(path: Path | str) -> list[Path]:
     if not pkgs:
         raise FileNotFoundError(f"{path} is neither a package nor a folder with packages")
     return pkgs
+
+
+def located(package: Path, files, e: Exception) -> str:
+    """`<file>:<byte offset>: <Type>: <message>` for an item that cannot be read: a decoding error or a JSON error is found
+    again in the item's files (a JSON value inside a diff file too); any other error names the reader line that raised."""
+    reason = f"{type(e).__name__}: {e}"
+    doc, pos = getattr(e, "doc", None), getattr(e, "pos", None)
+    for rel in files:
+        try:
+            raw = (package / rel).read_bytes()
+        except OSError:
+            continue
+        if isinstance(e, UnicodeDecodeError):
+            try:
+                read_text(package / rel)
+            except UnicodeDecodeError as again:
+                return f"{rel}:{again.start}: {reason}"
+            continue
+        if isinstance(doc, str) and doc and isinstance(pos, int):
+            text = raw.decode("utf-8", errors="replace")
+            at = text.find(doc)
+            if at >= 0:
+                return f"{rel}:{len(text[:at + pos].encode('utf-8'))}: {reason}"
+    frame = traceback.extract_tb(e.__traceback__)[-1] if e.__traceback__ else None
+    return reason + (f" (raised at {Path(frame.filename).name}:{frame.lineno})" if frame else "")
 
 
 def _stat(path: Path) -> list[int]:
@@ -177,7 +203,7 @@ class PackageIndex:
                     "missing": {culture: len(set(base) - set(values)) for culture, values in cultures.items() if culture != "en-US"},
                 }
         except Exception as e:  # one broken schema must not stop the index
-            entry["error"] = f"{type(e).__name__}: {e}"
+            entry["error"] = located(self.package, files, e)
         return entry
 
     def _json(self, path: Path):

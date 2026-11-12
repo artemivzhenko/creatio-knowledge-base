@@ -431,7 +431,7 @@ def schema_deps(path: str, schema: str, direction: str = "both", kind: str = "",
 
 
 @mcp.tool()
-def schema_impact(path: str, schemas: str, tasks: str = "", current: str = "", md: bool = False, limit: int = DEFAULT_LIMIT) -> str:
+def schema_impact(path: str, schemas: str, tasks: str = "", current: str = "", md: bool = False, limit: int = DEFAULT_LIMIT, kind: str = "") -> str:
     """
     What a change to these schemas touches: every typed dependent (pages, processes, rules, DCM,
     bindings, listeners) of each schema, and - with `tasks` (the loop's tasks folder from
@@ -441,6 +441,7 @@ def schema_impact(path: str, schemas: str, tasks: str = "", current: str = "", m
     changes a schema of this plan or one of its dependents - stop and ask the human. The tester
     reads `## Impact` to pick what to regression-test. `schemas` comma-separated; `current` this
     task's folder name (left out of the lock check). Ends with the counts.
+    `kind` keeps only dependents of that kind (page, process, rules ...) when a lookup has too many.
     """
     _tools_path()
     from creatio_schemas.describe.deps import impact
@@ -448,10 +449,49 @@ def schema_impact(path: str, schemas: str, tasks: str = "", current: str = "", m
     if not names:
         return "error: name at least one schema"
     try:
-        text, conflicts = impact(path, names, tasks or None, current or None, md, limit)
+        text, conflicts = impact(path, names, tasks or None, current or None, md, limit, kind)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
     return text + f"\nexit code {1 if conflicts else 0}"
+
+
+@mcp.tool()
+def merge_plan(path: str, schemas: str = "", env: str = "", limit: int = DEFAULT_LIMIT) -> str:
+    """What collapsing the replacing layers of a schema into one would do, without writing anything: per schema
+    `<Schema> <kind>: <N> layers, target <package>` (the lowest package, every other layer's package depends on it),
+    `layer <pkg>: +n columns / elements / methods` in the order the platform applies them, `siblings: ... (order
+    guessed)` when two layers have no dependency between them, `conflict ...` lines (one column name with two UIds,
+    one UId with two types, two layers changing one page element, one method overridden in two layers, a callParent
+    in a callback or with its value used, a lookup to an object of a package above the target), `depends: <target>
+    gains ...`; then `<M> schemas, <L> layers to remove, <C> conflicts` and the exit code (1 on a conflict).
+    `schemas` comma-separated (default: every schema replaced by more than one package of the workspace); `env`
+    (a clio environment) takes the layer order from the site instead of guessing it from DependsOn. Run it before
+    planning a layer merge; safe on a client workspace (no index is written)."""
+    _tools_path()
+    from creatio_schemas.describe.merge import merge_plan as _plan
+    try:
+        text, conflicts = _plan(path, [s.strip() for s in schemas.split(",") if s.strip()] or None, _env(env) if env else None, limit)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    return text + f"\nexit code {1 if conflicts else 0}"
+
+
+@mcp.tool()
+def merge_layers(path: str, schema: str, target: str = "", env: str = "") -> str:
+    """The replacing layers of one OBJECT collapsed into one layer of the target package - printed, NEVER written: the
+    merge plan lines, then `write <file>` / `delete <folder>` for each file, or `stopped: ... - nothing written` (a
+    conflict, siblings whose order only the site knows, a site row that still points at a layer to remove). `target`:
+    the package to merge into (default the lowest layer's; every layer's package must depend on it). `env` (a clio
+    environment) gives the site's layer order and runs the references check. To apply, the author runs
+    `describe.py merge <workspace> <Object> -e <env> --apply` and pushes the packages; prove it with schema_snapshot
+    before and after."""
+    _tools_path()
+    from creatio_schemas.describe.merge import merge_object
+    try:
+        text, code = merge_object(path, schema, target or None, _env(env) if env else None, apply=False)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    return text + f"\nexit code {code}"
 
 
 @mcp.tool()
@@ -460,11 +500,14 @@ def push_package(package: str, env: str, probe: bool = False, dry_run: bool = Fa
                  baseline: str = "", skip_drift: bool = False, skip_foreign_files: bool = False,
                  skip_sql_dates: bool = False, skip_compile_package: bool = False) -> str:
     """
-    Install a package using push v2: check drift and task ownership, update changed SQL
-    dates, clear IsChanged, push-pkg and check compilation. Assembly packages are compiled
+    Install a package using push v2: check drift (schemas of the package modified on the
+    environment after the package's last git commit, found through SysPackage) and dropped
+    dependencies (DependsOn and csproj references present in git HEAD and gone now), check
+    task ownership, update changed SQL dates, clear IsChanged (SysSchema, SysPackageSchemaData,
+    SysPackageSqlScript), push-pkg and check compilation. Assembly packages are compiled
     with compile-package --wait. compile-configuration runs only for processes with script
     or user tasks and may take minutes. probe also checks objects and SQL scripts; dry_run
-    prints commands without launching processes or writing files.
+    prints commands without launching processes or writing files: it sends nothing to the environment.
 
     project and task select the current task for ownership checks; tasks overrides the
     project tasks folder. Without either tasks or project the ownership check is skipped.
@@ -519,10 +562,11 @@ def env_call(env: str, method: str, path: str, body: str = "") -> str:
     `odata/<Entity>`, `ServiceModel/ProcessEngineService.svc/RunProcess`. `method` GET/POST/PATCH/DELETE, `body` a JSON
     text. Returns `status: N` and the JSON answer (a JSON string inside an XML answer is unwrapped), or
     `error: <status>: <reason>` with the reason taken from the WCF fault page. Writes whatever the call writes."""
+    import http.client
     import json
     try:
         r = _env(env).request(method.upper(), path.lstrip("/"), json.loads(body) if body.strip() else None)
-    except (OSError, KeyError, ValueError, RuntimeError) as e:
+    except (OSError, KeyError, ValueError, RuntimeError, http.client.HTTPException) as e:
         return f"error: {e.args[0] if e.args else e}"
     if not r.ok:
         return f"error: {r.error}"
@@ -542,6 +586,142 @@ def env_odata(env: str, entity: str, select: str = "", filter: str = "", top: in
     return "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) or "(no rows)"
 
 
+def _answer(env: str, work, limit: int = DEFAULT_LIMIT) -> str:
+    """`work(Environment)` -> text, cut to `limit` lines; a failure is `error: ...`."""
+    from creatio_schemas.describe import cut
+    _tools_path()
+    try:
+        text = work(_env(env))
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    return "\n".join(cut(text.splitlines(), limit, "lines")) or "(nothing)"
+
+
+@mcp.tool()
+def run_process(env: str, process: str, params: str = "", results: str = "") -> str:
+    """Start a business process on a clio environment (ProcessEngineService.svc/RunProcess) and read its run back in one
+    answer: `ok` or `FAILED <reason>` with the process id, each result parameter, then the run's `SysProcessLog` row -
+    status, start, end and the first line of the error (`process_error` gives the whole error and the element it stopped
+    on). `params` is a JSON object (`{"OrderId": "<guid>", "Quantity": 3}`), `results` a comma list of result parameter
+    names. Ends with `exit code 1` when the engine refused it or the run is not completed (failed, or still waiting).
+    Runs the process: whatever it writes is written."""
+    import json
+    from creatio_schemas.runs import render_log
+    try:
+        values = json.loads(params) if params.strip() else {}
+        if not isinstance(values, dict):
+            raise ValueError("params must be a JSON object")
+    except ValueError as e:
+        return f"error: params: {e.args[0] if e.args else e}"
+    names = [r.strip() for r in results.split(",") if r.strip()]
+
+    def work(e):
+        run = e.run_process(process.strip(), values, names)
+        lines = [f"{process}: {'ok' if run['success'] else 'FAILED ' + str(run['error'])}  processId {run['processId'] or '-'}"]
+        lines += [f"  {n} = {json.dumps(run['results'].get(n), ensure_ascii=False)}" for n in names]
+        log = None
+        if run["processId"]:
+            try:
+                log = e.process_log(run["processId"])
+                lines.append(render_log(log, run["processId"]))
+            except (ValueError, RuntimeError) as err:
+                lines.append(f"log: not read - {err.args[0] if err.args else err}")
+        return "\n".join(lines + [f"exit code {0 if run['success'] and (log is None or log['state'] == 'completed') else 1}"])
+
+    return _answer(env, work)
+
+
+@mcp.tool()
+def process_runs(env: str, process: str = "", record: str = "", since: str = "", until: str = "", limit: int = 20,
+                 window: int = 30, time_zone: str = "", noise: str = "") -> str:
+    """What ran: the business-process runs of `SysProcessLog`, each with its start (UTC and `time_zone`), process, status,
+    log id, owner and the first line of its error. `process` (name or UId - every copy of that schema) gives its newest
+    `limit` runs; `record` (`<Entity>:<Id>`) gives every run that started within `window` seconds of a change of that
+    record or of a row pointing at it (its details), oldest first - "what ran when the manager pressed the button".
+    `since` / `until` (`2026-11-11T08:00`, UTC unless a zone is written) bound the start. `noise` (comma list of names or
+    prefixes, as `project.json` `environment.noiseProcesses`) hides those processes with a line saying how many. Read-only."""
+    from creatio_schemas.runs import process_runs as _runs, render_runs
+    return _answer(env, lambda e: render_runs(_runs(e, process.strip() or None, record.strip() or None, since.strip() or None,
+                                                    until.strip() or None, max(1, min(limit, 200)), max(0, window),
+                                                    [n.strip() for n in noise.split(",") if n.strip()], time_zone or None)))
+
+
+@mcp.tool()
+def process_error(env: str, log_id: str, time_zone: str = "") -> str:
+    """One run's error in full (`SysProcessLog.ErrorDescription` without the platform's stack frames, the message chain
+    kept) and the element it stopped on (`SysProcessElementLog`: caption, status, start). `log_id` is the id
+    `process_runs` or `run_process` printed. Read-only."""
+    from creatio_schemas.runs import process_error as _error, render_error
+    return _answer(env, lambda e: render_error(_error(e, log_id.strip(), time_zone or None)))
+
+
+@mcp.tool()
+def find_record(env: str, id: str, objects: str = "", everywhere: bool = False, time_zone: str = "") -> str:
+    """Which table holds this Id? Scans the base tables that have a uuid `Id` (`objects`, comma-separated names, first;
+    the workspace's objects are the usual hint) in unions of 50 and stops at the first batch that holds it unless
+    `everywhere`. Answers the table, the record's caption (Name, Caption, Title...), and the dates and authors of its
+    creation and last change in UTC and `time_zone` (`+03:00` or an IANA name). Read-only."""
+    from creatio_schemas.records import find_record as _find, render_hits
+    return _answer(env, lambda e: render_hits(_find(e, id, [o.strip() for o in objects.split(",") if o.strip()], everywhere, time_zone or None)))
+
+
+@mcp.tool()
+def record_context(env: str, entity: str, id: str, columns: str = "", depth: int = 1, time_zone: str = "", limit: int = DEFAULT_LIMIT) -> str:
+    """One record as the database holds it: its columns with every lookup named (`Name` of the referenced row, found
+    through the foreign keys), then the tables that have a row pointing at it with the count and the first 20 rows.
+    `columns` is a comma list with `*` wildcards (default: every column with a value); `depth` 0 the record only,
+    1 + the rows pointing at it, 2 + their lookups named. Read-only."""
+    from creatio_schemas.records import record_context as _context, render_context
+    return _answer(env, lambda e: render_context(_context(e, entity, id, columns, max(0, min(depth, 2)), time_zone or None)), limit)
+
+
+@mcp.tool()
+def role_members(env: str, role: str, units: bool = False) -> str:
+    """The users a role reaches through `SysAdminUnitInRole` - the closure, nested roles and the org structure included,
+    not only the direct members `SysUserInRole` lists - each with the unit the membership came through. `units` adds
+    organization units and roles. Read-only."""
+    from creatio_schemas.access import render_members, role_members as _members
+    return _answer(env, lambda e: render_members(_members(e, role, units)))
+
+
+@mcp.tool()
+def user_roles(env: str, user: str) -> str:
+    """The roles of a user (login or contact name) through `SysAdminUnitInRole`, each direct or through another unit. Read-only."""
+    from creatio_schemas.access import render_roles, user_roles as _roles
+    return _answer(env, lambda e: render_roles(_roles(e, user)))
+
+
+@mcp.tool()
+def role_diff(env: str, role: str, users: str) -> str:
+    """Which of these users (comma-separated logins or contact names) are not in the role: `in <role>: ...` and
+    `not in <role>: ...`, then `exit code 1` when anyone is missing. Read-only."""
+    from creatio_schemas.access import role_diff as _diff
+    missing = []
+
+    def work(e):
+        result = _diff(e, [u.strip() for u in users.split(",") if u.strip()], role)
+        missing.extend(result["missing"])
+        return f"in {role}: {', '.join(result['present']) or '-'}\nnot in {role}: {', '.join(result['missing']) or '-'}"
+
+    text = _answer(env, work)
+    return text if text.startswith("error:") else text + f"\nexit code {1 if missing else 0}"
+
+
+@mcp.tool()
+def sys_setting(code: str, envs: str, workspace: str = "", time_zone: str = "") -> str:
+    """A system setting's value on each clio environment of the comma list `envs` - per value row who it is for, the value
+    (a lookup by name), the date and the author - and, with `workspace` (a folder with `packages/`), every data binding of
+    the workspace that sets it and the value a push would write. Read-only."""
+    from creatio_schemas.access import render_setting, sys_setting as _setting
+    from creatio_schemas.environment import Environment
+    _tools_path()
+    try:
+        answer = _setting(code, {n.strip(): Environment.from_clio(n.strip()) for n in envs.split(",") if n.strip()}, workspace or None, time_zone or None)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    return render_setting(answer)
+
+
 @mcp.tool()
 def schema_diff(package: str, schemas: str = "", against: str = "") -> str:
     """
@@ -556,6 +736,81 @@ def schema_diff(package: str, schemas: str = "", against: str = "") -> str:
     from creatio_schemas.describe.diff import schema_diff as _sd
     try:
         return _sd(package, schemas.split() or None, against or None)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def review_download(package: str, keep: str = "") -> str:
+    """A pulled package (a folder that holds it, or its path) sorted against git HEAD before anything is committed:
+    files that differ only in line endings or a BOM (nothing changed), the items changed in content (`schema_diff`'s
+    lines, renames by UId), dependencies dropped or added (descriptor.json, csproj), resource folders with no schema,
+    files git does not track. `keep` (space-separated items) adds the `git checkout HEAD -- <path>` lines that would
+    restore every other changed file; this tool only prints them - `describe.py review --keep ... --apply` runs them."""
+    _tools_path()
+    from creatio_schemas.describe.review import render, review
+    try:
+        return render(review(package, keep.split() if keep.strip() else None))
+    except (FileNotFoundError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool()
+def precommit_check(workspace: str) -> str:
+    """The staged files of a workspace that must not be committed - over 5 MB, an archive (.rar .zip .7z .gz .bak),
+    a binary (.dll .exe .pdb) outside Files/Bin of an assembly package, a file outside packages/ and the known roots -
+    one line each, then `exit code 1`; `ok` when there is none. Read-only (git is only read)."""
+    _tools_path()
+    from creatio_schemas.describe.review import precommit
+    try:
+        problems = precommit(workspace)
+    except (FileNotFoundError, RuntimeError) as e:
+        return f"error: {e}"
+    return "\n".join(problems + ["exit code 1"]) if problems else "ok"
+
+
+@mcp.tool()
+def run_tests(env: str = "", project: str = "", category: str = "", test: str = "", package: str = "") -> str:
+    """The in-Creatio tests of a project (the integration tier) through the runner `project.json` `tests.runner` names:
+    the failed tests first with their messages, the passed ones, `N passed, M failed`, then a warning when the test
+    package (`package`, default `tests.package`) changed on the site after its last successful compilation - the tests
+    then ran on the old dll. `category` or `test` (a test class) selects; `env` a clio name, or `project` a project.json.
+    Ends with `exit code 1` when a test failed, 2 when nothing could be run. Runs the tests: whatever they write is written."""
+    import importlib.util
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+    _tools_path()
+    spec = importlib.util.spec_from_file_location("env_unit", _ROOT / "no-code" / "tools" / "env" / "unit.py")
+    unit = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(unit)
+    if bool(category.strip()) == bool(test.strip()):
+        return "error: give category or test (a test class), one of them"
+    argv = ["run", "--category", category.strip()] if category.strip() else ["run", "--class", test.strip()]
+    argv += ["--project", project] if project.strip() else ["-e", env.strip()]
+    argv += ["--package", package.strip()] if package.strip() else []
+    out = io.StringIO()
+    try:
+        with redirect_stdout(out), redirect_stderr(out):
+            code = unit.main(argv)
+    except SystemExit as e:  # argparse refused the arguments
+        code = e.code if isinstance(e.code, int) else 2
+    return out.getvalue().rstrip() + f"\nexit code {code}"
+
+
+@mcp.tool()
+def resolve_uid(path: str, text: str) -> str:
+    """
+    What a UId names in the workspace - a schema, a column (`column UsrOrder.UsrAmount`), a process
+    element or parameter - or the UId of a dotted name (`UsrOrder.UsrAmount`,
+    `UsrOrder_Process.ReadData.ResultEntity`). Given a text with UIds in it (a meta path from
+    SysSchema metadata, a filter, a stack of them), every UId is named and the text comes back with
+    the names in place: the reverse of what the designer stores. A UId that is not in the
+    workspace (a lookup row, a system record) says so - env_sql finds those.
+    """
+    _tools_path()
+    from creatio_schemas.describe.uids import resolve
+    try:
+        return resolve(path, text)
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 
@@ -579,6 +834,41 @@ def schema_layers(path_or_env: str, schema: str, rule: str = "") -> str:
         return render(_layers(env, schema, rule or None, custom or CUSTOM_LAYER), env.clio_name or env.url)
     except (OSError, KeyError, ValueError, RuntimeError) as e:
         return f"error: {e.args[0] if e.args else e}"
+
+
+@mcp.tool()
+def schema_snapshot(schema: str, env: str = "", workspace: str = "", columns: str = "", out: str = "", limit: int = 0) -> str:
+    """An OBJECT as text lines, to prove a layer merge changed nothing. `workspace`: the effective schema over every layer
+    on disk (`layers: a > b`, `column <Name> <uid> <type> [lookup X] [required] [default v]`, `index ...`; the site's layer
+    order when `env` is also given). `env`: what the site holds (`table T column <col> <type>`, `rows <n>`,
+    `checksum <col> <md5>` of every column's values ordered by Id, `copy <package> extendParent=<bool>` per layer).
+    Take it BEFORE and AFTER, then `snapshot_compare`. `columns`: a comma list to checksum (default every column but Id;
+    name them on a big table). `out`: a file to write the lines to (the evidence). Reads with SELECTs and files, writes
+    nothing to the site or the workspace."""
+    from creatio_schemas.describe import cut
+    from creatio_schemas.integrity import snapshot
+    _tools_path()
+    try:
+        if not workspace and not env:
+            return "error: give a workspace (disk lines), an env (site lines), or both"
+        lines = snapshot(workspace or None, schema, _env(env) if env else None, [c.strip() for c in columns.split(",") if c.strip()] or None)
+    except (OSError, KeyError, ValueError, RuntimeError) as e:
+        return f"error: {e.args[0] if e.args else e}"
+    if out:
+        Path(out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(cut(lines, limit, "lines")) or "(nothing)"
+
+
+@mcp.tool()
+def snapshot_compare(before: str, after: str) -> str:
+    """Two snapshot files (`schema_snapshot` out=...) compared: `+ - ~` lines, or `same` when nothing differs.
+    A difference ends with `exit code 1` - after a layer merge it is the bug report."""
+    from creatio_schemas.integrity import compare
+    try:
+        diff = compare(Path(before).read_text(encoding="utf-8").splitlines(), Path(after).read_text(encoding="utf-8").splitlines())
+    except OSError as e:
+        return f"error: {e}"
+    return "\n".join(diff + ["exit code 1"]) if diff else "same"
 
 
 def main() -> None:

@@ -11,6 +11,7 @@ extraction of the git revision.
 from __future__ import annotations
 
 import io
+import json
 import subprocess
 import tarfile
 import tempfile
@@ -129,6 +130,18 @@ def schema_diff(package: Path | str, names: list[str] | None = None, against: st
             tmp.cleanup()
 
 
+def _uid(package: Path, name: str) -> str | None:
+    """The UId of an item's descriptor (a schema, a SQL script, a data binding); None for a plain C# file."""
+    folder = "Data" if name.startswith("Data/") else "SqlScripts" if (package / "SqlScripts" / name).is_dir() else "Schemas"
+    path = package / folder / name.removeprefix("Data/") / "descriptor.json"
+    if not path.is_file():
+        return None
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8-sig"))["Descriptor"]["UId"]).lower()
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def _diff_packages(old_pkg: Path, new_pkg: Path, names: list[str] | None, label: str) -> str:
     old_names, new_names = items_of(old_pkg), items_of(new_pkg)
     wanted = {n.lower() for n in names} if names else None
@@ -137,18 +150,20 @@ def _diff_packages(old_pkg: Path, new_pkg: Path, names: list[str] | None, label:
         missing = [n for n in names if n.lower() not in lower]
         if missing:
             raise FileNotFoundError(f"{new_pkg.name} has no item named {', '.join(missing)} in either state")
+    gone = {u: n for n in old_names if n not in new_names for u in [_uid(old_pkg, n)] if u}
+    renamed = {n: gone[u] for n in new_names if n not in old_names for u in [_uid(new_pkg, n)] if u in gone}  # new -> old, same UId
     out, changed, added, removed, lines = [], 0, 0, 0, [0, 0, 0]
     for name in sorted(set(old_names) | set(new_names), key=str.lower):
-        if wanted and name.lower() not in wanted:
+        if (wanted and name.lower() not in wanted and renamed.get(name, "").lower() not in wanted) or name in renamed.values():
             continue
-        in_old, in_new = name in old_names, name in new_names
+        in_old, in_new, old_name = name in old_names, name in new_names, renamed.get(name, name)
         try:
             kind, new_sec = sections_of(new_pkg, name) if in_new else sections_of(old_pkg, name)
-            old_sec = sections_of(old_pkg, name)[1] if in_old and in_new else {}
+            old_sec = sections_of(old_pkg, old_name)[1] if (in_old or name in renamed) and in_new else {}
         except (OSError, ValueError, KeyError, AttributeError) as e:
             out.append(f"? {name}  cannot compare: {type(e).__name__}: {e}")
             continue
-        if not (in_old and in_new):
+        if not (in_old and in_new) and name not in renamed:
             out.append(f"{'+' if in_new else '-'} {name}  {kind} ({'new' if in_new else 'removed'})")
             added += in_new
             removed += in_old
@@ -162,7 +177,10 @@ def _diff_packages(old_pkg: Path, new_pkg: Path, names: list[str] | None, label:
                 body += [f"    {l}" for l in d]
                 for l in d:
                     lines["+-~".index(l[0])] += 1
-        if body:
+        if name in renamed:  # the same UId under a new name: compared as one item, the rename said once
+            changed += 1
+            out += [f"~ {old_name} -> {name}  {kind} (renamed)"] + body
+        elif body:
             changed += 1
             out += [f"{name}  {kind}"] + body
     if not out:

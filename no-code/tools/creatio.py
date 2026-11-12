@@ -27,6 +27,7 @@ TOOLS: dict[str, str] = {
     "describe": "describe/describe.py", "push": "push/push.py", "resources": "resources/resources.py",
     "scaffold": "scaffold/scaffold.py", "project": "project.py",
     "env sql": "env/sql.py", "env call": "env/call.py", "env proc-run": "env/proc-run.py", "env unit": "env/unit.py", "env api": "env/api.py",
+    "env record": "env/record.py", "env roles": "env/roles.py", "env setting": "env/setting.py", "env proc-runs": "env/proc-runs.py",
 }
 DOC_RE = re.compile(r'^(?:#![^\n]*\n)?\s*(?:"""|\'\'\')\s*([^\n]+)', re.S)
 

@@ -18,8 +18,7 @@ from ..entity.hierarchy import merge_order
 CUSTOM_LAYER = "Custom"
 
 
-def _quote(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
+from ..records import quote as _quote  # noqa: E402
 
 
 def layers_sql(schema: str, custom_layer: str = CUSTOM_LAYER) -> str:

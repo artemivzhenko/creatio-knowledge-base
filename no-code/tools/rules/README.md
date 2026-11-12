@@ -117,6 +117,10 @@ One JSON object per rule (a file may hold a list):
 }
 ```
 
+- `when`: the conditions as text in the shared grammar ([creatio_schemas/expressions/README.md](../creatio_schemas/expressions/README.md)),
+  `"when": "UsrAmount > 100; UsrOwner = sys:CurrentUserContact"`; added after `conditions`, so a spec may use either or both. An unquoted number or
+  `true`/`false` is a number or a boolean, `attr:X` / `{Record:X}` an attribute, `sys:X` a system value, `setting:X` a setting.
+  `op` of a `conditions` entry takes the same spellings as the text. `inspect` prints the `when` line in this grammar (`is null`, `is not null`, `=`).
 - `op`: `filled`, `empty`, `equal`, `not-equal`, `contain`, `not-contain`; `greater`,
   `greater-or-equal`, `less`, `less-or-equal` only on 8.3+ (validate flags them on 8.2).
 - right side: `value` (constant; `null` = empty lookup), `attr` (another column, `A.B` paths

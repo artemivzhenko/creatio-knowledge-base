@@ -21,6 +21,7 @@ creatio_schemas/
   clio.py         Clio: call-service and SQL on a saved environment
   environment.py  Environment: one site over HTTP (login, CSRF, OData, services, RunProcess) and SQL through clio
   cli.py          the shared command-line skeleton (sub-commands, --dry-run, save + validate)
+  expressions/    the condition grammar (`parse`), the meta-path codec (`encode`/`decode` over `Names`), `describe`; its README
   process/        ProcessSchema, catalog (ElementKind per designer element, user tasks), expressions
   rules/          RuleSchema, model (keys and enums), actions (ActionType registry), builder (spec -> rule),
                   storage (own JSON / replacing diff), engine (the platform rule services)

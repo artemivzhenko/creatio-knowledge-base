@@ -196,6 +196,29 @@ def test_page_file_from_schema_equals_what_analyse_wrote():
         shutil.rmtree(pkg.parent, ignore_errors=True)
 
 
+def test_a_page_rule_marks_its_targets_conditional():
+    from creatio_schemas import RuleSchema
+    from creatio_schemas.page import compare_page_files
+    plain = PageSchema(FIXTURES, "UsrTests_FormPage").page_file()[0]
+    assert not any("conditional" in e for e in plain["elements"])  # no rule schema, no key
+    pkg = copy()
+    try:
+        rules = RuleSchema.create(pkg, "UsrTests_FormPage")
+        rules.add({"conditions": [{"left": "UsrIsActive", "op": "equal", "value": True}], "actions": [{"type": "hide", "items": ["UsrIsActive"]}]})
+        rules.add({"conditions": [{"left": "UsrIsActive", "op": "empty"}], "actions": [{"type": "show", "items": ["UsrOrderList"]}, {"type": "required", "items": ["UsrIsActive"]}]})
+        rules.save()
+        page = PageSchema(pkg, "UsrTests_FormPage")
+        assert page.rule_toggled() == {"UsrIsActive", "UsrOrderList"}  # `required` does not hide anything
+        data = page.page_file()[0]
+        assert sorted(e["code"] for e in data["elements"] if e.get("conditional")) == ["UsrIsActive", "UsrOrderList"]
+        assert all(e.get("conditional") is True for e in data["elements"] if e["code"] in ("UsrIsActive", "UsrOrderList"))
+        assert {k: v for k, v in data.items() if k != "elements"} == {k: v for k, v in plain.items() if k != "elements"}
+        assert [e for e in data["elements"] if not e.get("conditional")] == [e for e in plain["elements"] if e["code"] not in ("UsrIsActive", "UsrOrderList")]
+        assert compare_page_files(plain, data) == []  # --compare: `conditional` is not a difference
+    finally:
+        shutil.rmtree(pkg.parent, ignore_errors=True)
+
+
 def test_page_file_labels_types_and_template_elements():
     page = PageSchema(FIXTURES, "UsrTests_FormPage")
     ops = page.view_config_diff
@@ -215,6 +238,10 @@ def test_page_file_labels_types_and_template_elements():
     assert got["UsrDateTime"]["type"] == "DateTime" and "UsrAccount" not in got and any("hidden" in n and "UsrAccount" in n for n in notes)
     assert got["GeneralInfoTab"]["label"] == "Main" and "BackButton" not in got
     assert got["UsrNumber"]["type"] == "Integer" and got["UsrAmount"]["type"] == "Decimal" and got["UsrOrderList"]["columns"] == ["Name", "Quantity"]
+    page.rule_toggled = lambda: {"UsrAccount"}  # a rule may show the control the page hides: the file lists what the page can show
+    data, notes = page.page_file()
+    shown = {e["code"]: e for e in data["elements"]}
+    assert shown["UsrAccount"]["conditional"] is True and not any("UsrAccount" in n for n in notes)
     page.descriptor.set("Parent", {"UId": "00000000-0000-0000-0000-000000000001", "Name": "BaseMiniPageTemplate"})
     data, notes = page.page_file()
     assert "CloseButton" not in {e["code"] for e in data["elements"]} and any("BaseMiniPageTemplate" in n for n in notes)

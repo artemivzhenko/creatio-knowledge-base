@@ -15,12 +15,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from creatio_schemas import Clio  # noqa: E402
+from creatio_schemas.cli import resolve_package  # noqa: E402
 from creatio_schemas.push import push  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("package", help="path to the package folder")
+    p.add_argument("package", help="path to the package folder, or its name (packages/<name> here or next to --project)")
     p.add_argument("-e", "--env", required=True, help="clio environment name")
     p.add_argument("--probe", action="store_true", help="run probes for each schema")
     p.add_argument("--dry-run", action="store_true", help="print commands without executing")
@@ -36,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     try:
-        return push(Path(args.package), args.env, Clio(args.env), args.probe, args.dry_run,
+        return push(resolve_package(args.package, args.project), args.env, Clio(args.env), args.probe, args.dry_run,
                     project=args.project, tasks=args.tasks, task=args.task, force=args.force, baseline=args.baseline,
                     skip_drift=args.skip_drift, skip_foreign_files=args.skip_foreign_files,
                     skip_sql_dates=args.skip_sql_dates, skip_compile_package=args.skip_compile_package)

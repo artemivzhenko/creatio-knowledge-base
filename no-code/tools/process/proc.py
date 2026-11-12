@@ -14,6 +14,7 @@ Inspect and change business processes stored in a package (library: ../creatio_s
     python proc.py element   <package> <Process> formula <Name> "<expression>" --result <ProcessParam>
     python proc.py element   <package> <Process> values <Name> Column=value .. [--expr]     Add / Modify data: the columns it writes
     python proc.py element   <package> <Process> map <Name> Param=value .. [--expr]        sub-process: the called process's parameters
+    python proc.py element   <package> <Process> filter <Name> "<Column> = {Parameter:X}; <Column> is not null"   Read / Modify / Delete data
     python proc.py flow      <package> <Process> add <Src> <Dst> [--condition "{Parameter:X} > 0"] [--name ..] [--caption ..]
     python proc.py flow      <package> <Process> remove <Name> | condition <Name> "<expr>"
     python proc.py script    <package> <Process> get <Element> [--out file] | set <Element> --file body.cs
@@ -210,6 +211,10 @@ def build() -> CommandLine:
     p.add_argument("name")
     p.add_argument("values", nargs="+", metavar="Param=value")
     p.add_argument("--expr", action="store_true", help="every value is an expression")
+    p = c("filter", lambda proc, a: proc.set_filter(proc.element(a.name), a.conditions),
+          "Read / Modify / Delete data: which records (ANDed conditions; a {Parameter:X} right side is a meta path)", True, g)
+    p.add_argument("name")
+    p.add_argument("conditions", help='e.g. "Id = {Parameter:OrderId}; UsrAmount > 100; UsrStatus is not null"; "" = every record')
     p = c("formula", lambda proc, a: proc.set_formula(a.name, a.expression, a.result), "formula task: expression -> process parameter", True, g)
     p.add_argument("name")
     p.add_argument("expression")

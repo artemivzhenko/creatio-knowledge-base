@@ -255,9 +255,18 @@ def test_call_and_proc_run_cli():
         code, out = run_cli("call", ["-e", "dev", "get", "odata/Contact?$top=1"], settings=s, opener=opener)
         assert code == 0 and "%24top=1" in out, out
         assert run_cli("call", ["-e", "dev", "POST", "rest/X", "{bad json"], settings=s, opener=opener)[0] == 2
-        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process", "Qty=3", "--result", "Total"], settings=s, opener=opener)
+        done = [[{"Id": "p", "Name": "Order", "Status": "Completed", "ErrorDescription": None, "StartDate": "2026-11-11T08:00:00",
+                  "CompleteDate": "2026-11-11T08:00:02", "Process": "UsrOrder_Process"}]]
+        clio = FakeClio(rows=done)
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process", "Qty=3", "--result", "Total"], settings=s, opener=opener, clio_run=clio)
         assert code == 0 and "UsrOrder_Process: ok" in out and "Total = 3" in out, out  # 3 sent as a number
-        code, out = run_cli("proc-run", ["-e", "dev", "UsrBad", "Name=abc"], settings=s, opener=opener)
+        assert "log: not read - 'p' is not an Id (a guid)" in out and clio.calls == [], out  # a non-guid id never reaches SQL
+        pid = "aaaaaaaa-0000-0000-0000-000000000002"
+        done[0][0]["Id"] = pid
+        engine = FakeOpener({("POST", "/ServiceModel/ProcessEngineService.svc/RunProcess"): (200, json.dumps({"success": True, "processId": pid}))})
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process"], settings=s, opener=engine, clio_run=FakeClio(rows=done))
+        assert code == 0 and "log: Completed (completed)  started 2026-11-11 08:00:00 UTC" in out and "ended 2026-11-11 08:00:02 UTC" in out, out
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrBad", "Name=abc"], settings=s, opener=opener, clio_run=FakeClio(rows=done))
         assert code == 1 and "FAILED boom" in out
         assert run_cli("proc-run", ["-e", "dev", "UsrX", "novalue"], settings=s, opener=opener)[0] == 2
 
@@ -281,11 +290,11 @@ def test_unit_runner():
                              ("POST", "/rest/UsrTests/Odd"): (200, json.dumps({"total": 1}))})
         evidence = tmp / "result.json"
         code, out = run_cli("unit", ["run", "--project", str(project), "--category", "UsrOrders", "--evidence", str(evidence)], settings=s, opener=opener)
-        assert code == 1 and "ok    T1" in out and "FAIL  T2  - expected 3" in out and "2 test(s), 1 failed" in out, out
+        assert code == 1 and out.splitlines()[:3] == ["FAIL  T2  - expected 3", "ok    T1", "1 passed, 1 failed"], out  # failures first
         assert opener.requests[-1]["body"]["parameterValues"] == [{"name": "Category", "value": "UsrOrders"}]
         assert json.loads(evidence.read_text(encoding="utf-8")) == xml  # the whole answer
         code, out = run_cli("unit", ["run", "-e", "dev", "--runner", "rest/UsrTests/Run", "--class", "UsrOrderTest"], settings=s, opener=opener)
-        assert code == 0 and "1 test(s), 0 failed" in out and opener.requests[-1]["body"] == {"Class": "UsrOrderTest"}, out
+        assert code == 0 and "1 passed, 0 failed" in out and opener.requests[-1]["body"] == {"Class": "UsrOrderTest"}, out
         code, out = run_cli("unit", ["run", "-e", "dev", "--runner", "rest/UsrTests/Odd", "--category", "X"], settings=s, opener=opener)
         assert code == 2 and "no list of tests" in out
         code, out = run_cli("unit", ["run", "-e", "dev", "--category", "X"], settings=s, opener=opener)
@@ -316,6 +325,102 @@ def test_api_listing():
         assert api.main(["Nope", "--bin", str(HERE)], runner=runner) == 1
         assert api.main(["Select", "--bin", str(HERE / "missing")], runner=runner) == 2
     assert seen == {"bin": str(HERE), "type": "Nope", "member": ""} and "no public type 'Nope'" in out.getvalue()
+
+
+def test_sqlstate_errors_odata_faults_and_spaces_in_paths():
+    # some clio builds print the SQLSTATE and the message, then Done, exit 0 - no [ERR]: still an error, never "no rows"
+    bad = FakeClio(output='42703: column "NoSuch" does not exist\nDone')
+    raises(lambda: Environment("https://s", "u", "p", clio_name="dev", clio_run=bad).sql('select "NoSuch" from "SysSchema"'), RuntimeError, '42703: column "NoSuch" does not exist')
+    raises(lambda: Environment("https://s", "u", "p", clio_name="dev", clio_run=bad).sql_exec("update x set a = 1"), RuntimeError, "42703")
+    assert Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[[{"n": 1}]], output="Done\n")).sql("select 1") == [{"n": 1}]
+    assert Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[5], output="Done")).sql("update x set a = 1") == []  # an update: clio writes the row count
+    # an OData fault: the message chain, decoded (no \u escape cut in the middle)
+    odata = json.dumps({"error": {"code": "", "message": "An error has occurred.", "innererror": {
+        "message": "Column лон is not found", "type": "X", "internalexception": {"message": "deeper", "type": "Y"}}}})
+    assert reduce_fault(odata) == "An error has occurred. <- Column лон is not found <- deeper"
+    assert not reduce_fault("x" * 496 + "\\u04").endswith("\\u04")
+    # a path with spaces, typed by hand, reaches the site percent-encoded; what is encoded already stays
+    e, opener = env({("GET", "/0/odata/Contact"): (200, json.dumps({"value": []}))})
+    assert e.request("GET", "odata/Contact?$filter=Name eq 'A b'&$top=1").ok
+    assert opener.requests[-1]["query"] == "$filter=Name%20eq%20'A%20b'&$top=1", opener.requests[-1]["query"]
+    assert e.request("GET", "odata/Contact?$filter=Name%20eq%20'A'").ok and opener.requests[-1]["query"] == "$filter=Name%20eq%20'A'"
+
+
+def test_process_log_and_proc_run_exit_codes():
+    pid = "aaaaaaaa-0000-0000-0000-000000000001"
+    route = {("POST", "/ServiceModel/ProcessEngineService.svc/RunProcess"): (200, json.dumps({"success": True, "processId": pid}))}
+    row = {"Id": pid, "Name": "Order", "Status": "Error", "ErrorDescription": "Expression expected" + chr(10) + "   at Terrasoft.Core.X()",
+           "StartDate": "2026-11-11T08:00:00Z", "CompleteDate": None, "Process": "UsrOrder_Process"}
+    clio = FakeClio(rows=[[row]])
+    e = Environment("https://s", "u", "p", clio_name="dev", clio_run=clio)
+    assert e.process_log(pid, "+03:00") == {"id": pid, "process": "UsrOrder_Process", "status": "Error", "state": "failed", "error": "Expression expected",
+                                            "start": "2026-11-11 08:00:00 UTC (11:00 +03:00)", "end": "", "owner": None}
+    assert f"where l.\"Id\" = '{pid}'" in clio.scripts[0] and 'left join "SysProcessStatus" st on st."Id" = l."StatusId"' in clio.scripts[0]
+    assert Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[[]])).process_log(pid) is None
+    raises(lambda: e.process_log("p'; drop table x"), ValueError, "not an Id")
+    with tempfile.TemporaryDirectory() as tmp:
+        s = settings_file(Path(tmp))
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process"], settings=s, opener=FakeOpener(route), clio_run=FakeClio(rows=[[row]]))
+        assert code == 1 and "UsrOrder_Process: ok" in out and "log: Error (failed)" in out and "error: Expression expected" in out, out
+        running = dict(row, Status="Running", ErrorDescription=None)
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process"], settings=s, opener=FakeOpener(route), clio_run=FakeClio(rows=[[running]]))
+        assert code == 1 and "log: Running (running)" in out, out  # not completed: a process waiting on a signal is not done
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process"], settings=s, opener=FakeOpener(route), clio_run=FakeClio(rows=[[]]))
+        assert code == 0 and f"log: no SysProcessLog row for {pid}" in out, out
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process"], settings=s, opener=FakeOpener(route), clio_run=FakeClio(output="[ERR] - denied"))
+        assert code == 0 and "log: not read - sql: [ERR] - denied" in out, out
+        clio = FakeClio(rows=[[row]])
+        code, out = run_cli("proc-run", ["-e", "dev", "UsrOrder_Process", "--no-log"], settings=s, opener=FakeOpener(route), clio_run=clio)
+        assert code == 0 and "log:" not in out and clio.calls == []
+
+
+def test_unit_runner_warns_when_the_test_dll_is_older_than_the_package():
+    unit = load("unit")
+    stale = FakeClio(rows=[[{"changed": "2026-11-11T09:00:00", "compiled": "2026-11-11T08:00:00"}]])
+    e = Environment("https://s", "u", "p", clio_name="dev", clio_run=stale)
+    assert unit.stale_dll(e, "UsrTests") == "warning: the test package's dll is older than its last push (UsrTests changed 2026-11-11T09:00:00, compiled 2026-11-11T08:00:00)"
+    assert "from \"SysPackage\" p where p.\"Name\" = 'UsrTests'" in stale.scripts[0] and "\"ProjectName\" like '%UsrTests%'" in stale.scripts[0]
+    fresh = Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[[{"changed": "2026-11-11T08:00:00", "compiled": "2026-11-11T08:05:00"}]]))
+    assert unit.stale_dll(fresh, "UsrTests") is None
+    never = Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[[{"changed": "2026-11-11T08:00:00", "compiled": None}]]))
+    assert "no successful compilation of UsrTests" in unit.stale_dll(never, "UsrTests")
+    assert unit.stale_dll(Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[[]])), "UsrTests") == "warning: no package UsrTests on the site"
+    # MS SQL has no boolean literal: the bit form is tried after the first statement fails
+    class Bits(FakeClio):
+        def __call__(self, args):
+            text = Path(args[args.index("-f") + 1]).read_text(encoding="utf-8")
+            if '"Result" = true' in text:
+                return 0, "[ERR] - Invalid column name 'true'"
+            return super().__call__(args)
+    bits = Bits(rows=[[{"changed": "2026-11-11T08:00:00", "compiled": "2026-11-11T08:05:00"}]])
+    assert unit.stale_dll(Environment("https://s", "u", "p", clio_name="dev", clio_run=bits), "UsrTests") is None and '"Result" = 1' in bits.scripts[-1]
+    raises(lambda: unit.stale_dll(e, "Usr'Tests"), ValueError, "not a table or column name")
+    with tempfile.TemporaryDirectory() as tmp:
+        s = settings_file(Path(tmp))
+        opener = FakeOpener({("POST", "/rest/UsrTests/Run"): (200, json.dumps([{"Name": "S1", "Success": True}]))})
+        clio = FakeClio(rows=[[{"changed": "2026-11-11T09:00:00", "compiled": "2026-11-11T08:00:00"}]])
+        code, out = run_cli("unit", ["run", "-e", "dev", "--runner", "rest/UsrTests/Run", "--class", "UsrOrderTest", "--package", "UsrTests"],
+                            settings=s, opener=opener, clio_run=clio)
+        assert code == 0 and out.splitlines() == ["ok    S1", "1 passed, 0 failed", "warning: the test package's dll is older than its last push "
+                                                  "(UsrTests changed 2026-11-11T09:00:00, compiled 2026-11-11T08:00:00)"], out
+        code, out = run_cli("unit", ["run", "-e", "dev", "--runner", "rest/UsrTests/Run", "--class", "X", "--package", "UsrTests"],
+                            settings=s, opener=opener, clio_run=FakeClio(output="[ERR] - denied"))
+        assert code == 0 and "warning: the dll age was not checked - sql: [ERR] - denied" in out, out
+
+def test_references_to_the_layers_a_merge_removes():
+    from creatio_schemas.describe.merge import references
+    ids = [{"id": "11111111-0000-4000-8000-000000000001", "package": "UsrB"}, {"id": "11111111-0000-4000-8000-000000000002", "package": "UsrC"}]
+    fks = [{"table": "SysEditPage", "column": "SysEntitySchemaId"}, {"table": "SysGridPage", "column": "SysEntitySchemaId"}]
+    hits = [{"ref": "SysEditPage.SysEntitySchemaId", "id": ids[1]["id"], "n": "2"}, {"ref": "SysGridPage.SysEntitySchemaId", "id": ids[0]["id"], "n": "0"}]
+    clio = FakeClio(rows=[ids, fks, hits])
+    e = Environment("https://s", "u", "p", clio_name="dev", clio_run=clio)
+    assert references(e, "Contact", ["UsrB", "UsrC"]) == ["references: SysEditPage.SysEntitySchemaId 2 rows point at UsrC's Contact"]
+    assert "s.\"Name\" = 'Contact'" in clio.scripts[0] and "p.\"Name\" in ('UsrB', 'UsrC')" in clio.scripts[0]
+    assert "rc.delete_rule = 'NO ACTION'" in clio.scripts[1] and "ccu.table_name = 'SysSchema'" in clio.scripts[1]
+    assert clio.scripts[2].count("union all") == 1 and f"\"SysEntitySchemaId\" in ('{ids[0]['id']}', '{ids[1]['id']}')" in clio.scripts[2]
+    clean = FakeClio(rows=[ids, fks, []])
+    assert references(Environment("https://s", "u", "p", clio_name="dev", clio_run=clean), "Contact", ["UsrB", "UsrC"]) == []
+    assert references(Environment("https://s", "u", "p", clio_name="dev", clio_run=FakeClio(rows=[[]])), "Contact", ["UsrB"]) == []  # no layer on the site
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ def test_describe_reads_stages_steps_conditions_moves_and_filter():
     text = DcmSchema(FIXTURES, "UsrRequestCases").describe()
     assert "Stage3 'Approval'" in text and "(1 steps)" in text
     assert "DcmElement3 'Approval' subprocess" in text and "[optional]" in text
-    assert "when [#Approval.Next stage#] ==" in text and "-> Stage4" in text
+    assert "when NextStage = Stage4" in text and "-> Stage4" in text
     assert "Stage2 'Reopened'" in text and "alternative of Stage1" in text
     assert "applies to: UsrRequest where UsrCategory = Parent request" in text
     assert "Stage1 -> Stage3, Stage4, Stage5, Stage6" in text and "Stage2 -> any" in text
@@ -128,6 +128,9 @@ def test_steps_with_mappings_and_conditions():
         assert len(maps) == 2 and all(m["GT4"] == called.uid and m["GT1"] == {"GS5": called.uid} for m in maps)
         cond = json.loads(e["Conditions"])[0]
         assert cond["nextStageId"] == case.stage("Stage4")["StageRecordId"] and cond["resultFormula"]["displayValue"].startswith("[#Check request.Next stage#] == [#Lookup.")
+        assert case.conditions(e) == [{"when": "NextStage = Stage4", "then": "Stage4"}]  # what add_step reads, read back
+        formulas = {w: case._condition(e, flow, w, "Stage4")["resultFormula"] for w in ("NextStage == Stage4", "NextStage = Stage4", "NextStage equal Stage4")}
+        assert len({json.dumps(f) for f in formulas.values()}) == 1
         assert case.errors() == []
         case.save()
 

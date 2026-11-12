@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from .schema import WARNING, Schema
 
@@ -17,6 +18,16 @@ def parse_assignments(items: list[str]) -> dict[str, str]:
         k, v = item.split("=", 1)
         out[k] = v
     return out
+
+
+def resolve_package(name: str, project: Path | None = None) -> Path:
+    """A package folder given by path, or by name: packages/<name> under the current folder or the project's."""
+    if Path(name).is_dir():
+        return Path(name)
+    for base in (Path.cwd(), Path(project).resolve().parent if project else None):
+        if base is not None and (base / "packages" / name).is_dir():
+            return base / "packages" / name
+    raise FileNotFoundError(f"no package folder named {name}; give its path (packages/{name})")
 
 
 def finish(schema: Schema, dry_run: bool) -> int:
@@ -63,6 +74,8 @@ class CommandLine:
     def run(self, argv: list[str], open_schema) -> int:
         a = self.parser.parse_args(argv)
         try:
+            if getattr(a, "package", None):
+                a.package = str(resolve_package(a.package))
             schema = open_schema(a)
             result = a.handler(schema, a)
         except (KeyError, ValueError, FileNotFoundError, FileExistsError, RuntimeError) as e:

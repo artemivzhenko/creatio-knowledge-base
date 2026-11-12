@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+from ..expressions import Column, Condition, Const, Null, Setting, Sys
 from ..files import new_uid
 
 NS = "Terrasoft.Core.BusinessRules."
@@ -35,6 +36,10 @@ T_SET_VALUES, T_FILTER_LOOKUP, T_SET_FILTER = A + "SetValues", A + "FilterLookup
 
 OPS = {"empty": 0, "filled": 1, "equal": 2, "not-equal": 3, "less": 5, "less-or-equal": 6, "greater": 7, "greater-or-equal": 8, "contain": 11, "not-contain": 12}
 OP_NAMES = {v: k for k, v in OPS.items()}
+# the canonical operators of the expression grammar -> the spec's op names (a rule has no "starts with" / "ends with")
+SPEC_OP = {"eq": "equal", "ne": "not-equal", "lt": "less", "le": "less-or-equal", "gt": "greater", "ge": "greater-or-equal",
+           "contains": "contain", "not-contains": "not-contain", "empty": "empty", "filled": "filled"}
+_CANONICAL = {v: k for k, v in SPEC_OP.items()}
 UNARY = {0, 1}
 RELATIONAL = {5, 6, 7, 8}  # BusinessRuleExpressionComparisonType has them only from 8.3
 LOGIC = {"and": 1, "or": 2}  # Terrasoft.Common.LogicalOperation: None, And, Or
@@ -92,6 +97,15 @@ def format_expr(e: dict | None) -> str:
     if "BVE1" in e:
         return json.dumps(e["BVE1"], ensure_ascii=False)[:80] + (f" ({e['BRE3']})" if e.get("BRE3") else "")
     return short_type(t)
+
+
+def condition_of(c: dict) -> Condition:
+    """A stored BusinessRuleCondition as a grammar `Condition`, for `render.describe`."""
+    e = c.get("BCO2")
+    t = (e or {}).get("JI0")
+    right = (Null() if not e else Column(format_expr(e)) if t == T_ATTR else Sys(e.get("BSV1")) if t == T_SYS
+             else Setting(e.get("BSS1")) if t == T_SETTING else Const(format_expr(e)))
+    return Condition(format_expr(c["BCO1"]), _CANONICAL.get(OP_NAMES.get(c.get("BCO3")), str(c.get("BCO3"))), right)
 
 
 @dataclass

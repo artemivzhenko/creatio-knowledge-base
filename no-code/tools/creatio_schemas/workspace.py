@@ -32,15 +32,36 @@ def _fingerprint(root: Path) -> tuple:
     return tuple(fp)
 
 
+def _depth(text: str) -> int:
+    """Brackets a JSON fragment leaves open (strings ignored)."""
+    bare = re.sub(r'"(?:[^"\\]|\\.)*"', "", text)
+    return sum(bare.count(c) for c in "{[") - sum(bare.count(c) for c in "}]")
+
+
 def parse_diff(text: str) -> list[tuple[str, str, str]]:
-    """Lines of a replacing schema's metadata.json (`op path value`, values may span lines) as (op, path, value); CRLF expected."""
-    ops = []
-    for line in text.split("\r\n"):
+    """Lines of a replacing schema's metadata.json (`op path value`, values may span lines) as (op, path, value), the lines
+    of a value joined by CRLF. Two forms of the platform's own files are read as meant: an operation line met inside a value
+    that has not closed (`~ MetaData.Schema.D2 [order]` before a column's last `}`) comes after that value, and blank lines
+    after a value are not part of it. LF files read the same."""
+    ops, deferred, depth = [], [], 0
+    for line in text.replace("\r\n", "\n").split("\n"):
         m = DIFF_LINE_RE.match(line)
+        if m and depth > 0:
+            deferred.append(m)
+            continue
         if m:
             ops.append([m.group(1), m.group(2), [m.group(3) or ""]])
+            depth = _depth(m.group(3) or "")
         elif ops:
             ops[-1][2].append(line)
+            depth += _depth(line)
+            if depth <= 0 and deferred:
+                ops += [[d.group(1), d.group(2), [d.group(3) or ""]] for d in deferred]
+                deferred = []
+    ops += [[d.group(1), d.group(2), [d.group(3) or ""]] for d in deferred]  # a value that never closed: keep them anyway
+    for op in ops:
+        while len(op[2]) > 1 and not op[2][-1].strip():
+            op[2].pop()
     return [(op, path, "\r\n".join(v)) for op, path, v in ops]
 
 

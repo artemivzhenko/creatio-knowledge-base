@@ -25,8 +25,7 @@ for _t in ALL_DATA_VALUE_TYPES.values():
         PG_TYPES.setdefault(_t, {"character varying", "text"})
 
 
-def _quote(name: str) -> str:
-    return "'" + name.replace("'", "''") + "'"
+from ..records import quote as _quote  # noqa: E402
 
 
 def check(entity: EntitySchema, clio: Clio) -> list[tuple[str, str]]:

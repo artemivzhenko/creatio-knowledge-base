@@ -50,8 +50,15 @@ python describe.py find    <workspace|package> <Schema>              # package, 
 | `deps` | typed dependencies of a schema over the workspace: what it builds on and who builds on it |
 | `impact` | the dependents of the schemas a task changes, and the other active tasks that change or affect them; exit 1 on a conflict |
 | `layers` | the copies of a schema on an environment, applied first to last; exit 1 when the Custom layer has one |
+| `snapshot` | an object as lines: effective columns over the workspace layers (disk), table columns / rows / checksums / copies (site) |
+| `merge-plan` | the plan of collapsing each schema's replacing layers into one: target, additions, conflicts, dependencies; read-only, exit 1 on a conflict |
+| `merge` | the replacing layers of one object collapsed into one layer of the target package; prints the files, --apply writes them; exit 1 when it stops |
+| `compare` | two snapshot files: + - ~ lines; exit 1 on a difference |
 | `export` | a snapshot for reading without the tools: one text file per schema, one per package |
 | `diff` | the working copy against git HEAD, a revision or a folder, in schema terms: + added, - removed, ~ changed lines |
+| `uid` | what a UId names in the workspace (a schema, a column, a process element or parameter), a dotted name's UId, or a text with every UId named |
+| `review` | a pulled package against git HEAD: line endings / BOM only, content changes, dependencies, orphan resources; --keep restores the rest |
+| `precommit` | the staged files that must not be committed: over 5 MB, archives, binaries outside Files/Bin, files outside packages/; exit 1 |
 <!-- commands:end -->
 
 ## The package index
@@ -176,6 +183,47 @@ and the count-only `resources` are left out (a changed caption shows through its
 Nothing is written: the revision is extracted to a temporary folder and removed. The tester reads it to know
 what the author changed before mapping the regression rows; the author, to check a pull did what it should.
 
+## Review of a pulled package, and a pre-commit check
+
+`describe.py review <package>` (MCP `review_download`) sorts the working copy against git HEAD: files that differ only
+in line endings or a BOM (compared over the bytes - BOM dropped, CRLF read as LF - what
+`git diff --stat -w --ignore-cr-at-eol` would call empty), the items changed in content (the schema diff above, renames
+by UId included), dependencies dropped or added (descriptor.json `DependsOn` and the csproj references, the push's own
+helper), resource folders whose schema is not in the package, and files git does not track. `--keep <Schema>...`
+lists `git checkout HEAD -- <path>` for every changed tracked file outside the kept items (their `Schemas/`,
+`Resources/<Item>.*`, `SqlScripts/`, `Data/` files) - the descriptor too, so dropped dependencies come back -
+and `--apply` runs those lines. Untracked files are listed, never deleted. The MCP tool only prints.
+
+`describe.py precommit <workspace>` (MCP `precommit_check`) lists the staged files that must not be committed and exits
+1: over 5 MB, archives (`.rar .zip .7z .gz .bak`), binaries (`.dll .exe .pdb`) outside `packages/<P>/Files/Bin` of an
+assembly package (descriptor `Type` 1), files outside `packages/` and the known roots (`.gitignore`, `.gitattributes`,
+`.editorconfig`, `README.md`, `project.json`, `.clio`, `.vscode`, `tasks`, `docs`). As a hook, `.git/hooks/pre-commit`:
+
+```sh
+#!/bin/sh
+python "<knowledge base>/no-code/tools/describe/describe.py" precommit "$(git rev-parse --show-toplevel)"
+```
+
+## UIds
+
+`describe.py uid <workspace> <text>` (MCP `resolve_uid`) names what a UId points at - a schema (own or
+replacing copy), a column (`column UsrOrder.UsrAmount`), a process element or parameter - and goes the
+other way for a dotted name (`UsrOrder.UsrAmount`, `UsrOrder_Process.ReadData.ResultEntity`,
+`UsrOrder_Process.OrderId`). A text with UIds in it - a meta path copied from `SysSchema` metadata, a
+filter, several of them - comes back with every UId named, then the text with the names in place:
+
+```
+59bdd0b9-...  process UsrOrder_Process element ReadData (UserTask)
+c7dfd892-...  process UsrOrder_Process element ReadData parameter ResultEntity
+ef3edc7c-...  column UsrOrder.UsrAmount
+
+[Element:{ReadData}].[Parameter:{ResultEntity}].[EntityColumn:{UsrAmount}]
+```
+
+Schemas come from the workspace scan, columns from every object's metadata, process items from the
+processes - each map is built only when a question needs it. A UId the workspace does not hold (a lookup
+row, a system record) says so; `env_sql` finds those.
+
 ## Lookups
 
 `describe.py lookups <workspace|package>` (MCP `list_lookups`) lists every object whose parent
@@ -184,6 +232,96 @@ chain reaches `BaseLookup` - through the workspace's own objects or the stock on
 columns, the data bindings that seed it (rows counted) and how many items refer to it. That is
 the list a de-duplication or binding-value task starts from. An object whose parent is outside
 both the workspace and the stock list is reported as *not decided* rather than guessed.
+
+## Snapshot of an object
+
+`describe.py snapshot <Schema> [--workspace <ws>] [-e <env>] [--columns a,b] [--out <file>]` (library
+`creatio_schemas/integrity.py::snapshot`) prints what an object is as lines, and `describe.py compare <before> <after>`
+prints the `+ - ~` lines between two of them (`diff_lines`, the same as `diff`) and exits 1 on any difference: an empty
+compare after a layer merge is the proof that nothing observable changed.
+
+Disk (`--workspace`), the effective object over every layer in `describe/merge.py::layers_in_order` (the site's order with
+`-e`, else dependency order with `siblings ordered by name` when two layers are not ordered by `DependsOn`):
+
+```
+layers: UsrPkg > UsrPkg2
+column UsrRating 6bfc7215-... Integer required default 3
+column Owner 7c85a229-... Lookup lookup Contact default 4f367ca9-...
+index IAccountAlternativeName on AlternativeName
+```
+
+The first layer's parent (its own copy, or the base `objects.py base` fetched) takes each layer's diff in turn
+(`SchemaDiff.apply`, the code `EntitySchema.effective` runs for one layer). A vendor base that is neither on disk nor
+fetched stops the snapshot with the `objects.py base` command to run: it would describe the additions only.
+
+Site (`-e`), one statement each, written in [env](../env/README.md#snapshot-of-an-object): `table <T> column <col> <type>`,
+`rows <n>`, `checksum <col> <md5>`, `copy <package> extendParent=<bool>`. The MCP tools are `schema_snapshot` and
+`snapshot_compare`. A planted difference is tested: a copy of the fixture workspace with one layer's column removed compares
+as `- column UsrRating ...`.
+
+## Merge plan
+
+`describe.py merge-plan <workspace> [<Schema>...] [-e <env>] [--limit N]` (MCP `merge_plan`; library
+`describe/merge.py::merge_plan`): for each schema with a replacing copy in more than one package of the workspace
+(or the named ones), what collapsing those layers into one would do. Read-only: it opens the layer files and
+writes nothing, no `.creatio-index` either, so it runs on a client workspace as it is.
+
+```
+Contact object: 3 layers, target UsrA
+  layer UsrA: +1 column
+  layer UsrB: +3 columns
+  layer UsrC: +1 column
+  siblings: UsrB, UsrC (order guessed)
+  conflict lookup UsrStatus -> UsrBStatus (its package UsrB depends on the target): UsrB
+  conflict column UsrDup (two UIds): UsrB and UsrC
+  depends: UsrA gains UsrExtra
+UsrThing object: 2 layers, no common lowest package: UsrB, UsrC
+3 schemas, 3 layers to remove, 4 conflicts, 1 without a common lowest package
+```
+
+- **Target**: the package every other layer's package depends on, directly or through other workspace packages
+  (`DependsOn`). Without one the schema is skipped with `no common lowest package: <the bottom layers>`.
+- **Layers** in `layers_in_order` (the site's order with `-e`, a copy only on the site says `on the site only, not
+  merged`); the counts come from the describe answers: an object's added columns, a client schema's `diff` items
+  and `methods`, a page's `viewConfigDiff` items and `handlers`.
+- **Conflicts**, each a stop for the merge: one column name with two UIds; one column UId with two types; two layers
+  with a `merge` / `remove` / `move` on one element (an `insert` below and a `merge` above is the normal form); one
+  method overridden in two layers (`three-deep override` from three), and in such a method a `callParent` inside a
+  nested function or with its value assigned; a lookup column whose object lives in a package that depends on the
+  target (the merged layer could not see it); an unreadable layer.
+- **`depends:`** the packages a removed layer's package depends on that the target does not reach yet, leaving out
+  the layer packages and any package that depends on the target (that would be a cycle).
+- Exit code 1 when there is a conflict, 2 on an error.
+
+## Merge of an object
+
+`describe.py merge <workspace> <Object> [--target <pkg>] [-e <env>] [--apply]` (MCP `merge_layers`, which prints only;
+library `describe/merge.py::merge_object`): the replacing layers of one object collapsed into one layer of the target
+package. It prints the merge plan for the object, then `write <file>` / `delete <folder>` per file, and writes only with
+`--apply`. It stops with `stopped: ... - nothing written` and exit 1 on a plan conflict, on siblings without `-e` (their
+order is the site's `SysPackage.HierarchyLevel`, which the files cannot show), on a layer that stores the whole schema,
+on a layer the site holds and the workspace does not (a vendor package) that folds after the target - the merge would put the
+removed layers' lines before it - and with `-e` on a site row that still points at a layer to remove (the statements are in `env/README.md`, "References
+to a layer a merge removes").
+
+- **The diff**: every layer's lines in fold order (the site's `HierarchyLevel` with `-e`, the dependency depth and the name
+  without it), as the platform folds them. The lines that say whose layer it is (`UId`, `A5`, `B6`, `B8`, `D36.A3`, `EG1.UId`,
+  `EG1.A2`, `EG1.A5`, `EG1.B8`, `EG1.BK8`) come from one layer only; `B6` is the target package. From every layer but the
+  top, the lines `EntitySchemaManager.ActualizeSchemaDifferencePackage` drops are left out (an add on a path holding
+  `EG1` and `C2`, a remove on `D20.FA*`). The UIds of the removed layers and of their packages become the merged layer's
+  and the target's, so each column's `A3` / `A4` / `A5` (created in schema, modified in schema, created in package) names
+  the layer that now holds it.
+- **The UId**: the target's own layer's when it has one, else the top layer's (`--target` may name a package below every
+  layer that holds none).
+- **The other files**: `descriptor.json` and `<Object>.cs` of that same layer, `properties.json` of the top layer (the
+  object flags of the whole fold), the resource files merged key by key with the upper layer winning.
+- **The removed layers**: `Schemas/<Object>` and `Resources/<Object>.Entity` deleted from their packages; `push-pkg` of
+  each package then drops its `SysSchema` row, and the table columns and their data stay (S24-T01). No backup step.
+- **`DependsOn`**: the target gains the `depends:` packages of the plan, each entry copied from the removed package's
+  descriptor.
+- Push the packages in any order (the target first is the natural one). Proved on the test site: three layers (two of them
+  siblings) merged, the three packages pushed, the snapshot's columns, table, rows and checksums the same before and
+  after, the merged layer pulled back byte-identical.
 
 ## Layers on an environment
 
@@ -202,6 +340,16 @@ project.json, or `--custom-layer` - the last line is `Custom layer present: <pac
 code is 1: that copy is applied after every package a task pushes and overrides it. The author runs
 it before the plan, the tester as the first preflight step; `--json` is the evidence. One SQL call
 through `Environment.sql` (tools/env), PostgreSQL only.
+
+The same order over a workspace, for code: `creatio_schemas/describe/merge.py::layers_in_order(workspace, schema,
+env=None, manager=None)` returns `Layer(package, folder, replacing, uid, manager, source, siblings)` applied first
+to last, in the order the runtime folds them (`SysPackage.HierarchyLevel`: the dependency depth, then the name in
+ordinal order). With `env`: the site's copies (`source = "site"`; a site-only copy has `folder = None`), the replacing
+ones re-sorted by the site's `HierarchyLevel` (the design-time function above has no tiebreak for siblings); a workspace
+copy not on the site yet comes last. Without it, the workspace's copies: the own copy first, then the replacing ones by
+their depth over the workspace's `DependsOn` and the name; two copies with no dependency path either way name each
+other in `siblings` - their depth may differ through vendor packages the workspace does not hold, so the order is a
+guess. It reads descriptors only and writes nothing into the workspace. The layer merge (S24) takes its order from it.
 
 ## The output contract
 

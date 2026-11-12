@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from .environment import err_line, sql_failed
+
 
 class Clio:
     def __init__(self, env: str):
@@ -17,7 +19,7 @@ class Clio:
     def run(self, args: list[str], cwd: Path | None = None) -> str:
         """Run clio and return its output, raising on a non-zero exit."""
         try:
-            result = subprocess.run(["clio", *args], cwd=cwd, capture_output=True, text=True, check=False)
+            result = subprocess.run(["clio", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         except OSError as e:
             raise RuntimeError(f"could not run clio: {e}") from e
         output = result.stdout + result.stderr
@@ -31,7 +33,7 @@ class Clio:
             req, out = Path(tmp) / "req.json", Path(tmp) / "out.json"
             req.write_text(json.dumps(body), encoding="utf-8")
             run = subprocess.run(["clio", "call-service", "-e", self.env, "--service-path", path, "-f", str(req), "-d", str(out)],
-                                 capture_output=True, text=True, check=False)
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
             if not out.is_file():
                 raise RuntimeError(f"clio call-service wrote no response (environment {self.env!r}?): {run.stdout[-500:]}{run.stderr[-500:]}")
             return json.loads(out.read_text(encoding="utf-8-sig"))
@@ -42,9 +44,9 @@ class Clio:
             src, out = Path(tmp) / "q.sql", Path(tmp) / "out.json"
             src.write_text(query, encoding="utf-8")
             run = subprocess.run(["clio", "execute-sql-script", "-e", self.env, "-f", str(src), "-v", "json", "-d", str(out)],
-                                 capture_output=True, text=True, check=False)
-            if run.returncode or "[ERR]" in (run.stdout + run.stderr):
-                raise RuntimeError(f"clio execute-sql-script failed: {(run.stdout + run.stderr)[-500:]}")
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+            if sql_failed(run.returncode, run.stdout + run.stderr):
+                raise RuntimeError(f"sql: {err_line(run.stdout + run.stderr)}")
             if not out.is_file():
                 raise RuntimeError(f"clio execute-sql-script wrote no result (environment {self.env!r}?): {run.stdout[-500:]}{run.stderr[-500:]}")
             text = out.read_text(encoding="utf-8-sig").strip()
@@ -53,8 +55,8 @@ class Clio:
     def execute_sql(self, sql: str) -> None:
         """Execute a SQL script without requiring a result file."""
         output = self.run(["execute-sql-script", sql, "-e", self.env])
-        if "[ERR]" in output:
-            raise RuntimeError(output[-500:])
+        if sql_failed(0, output):
+            raise RuntimeError(f"sql: {err_line(output)}")
 
     def execute_sql_rows(self, sql: str) -> list[dict]:
         """Return SQL result rows using the file and JSON export form."""

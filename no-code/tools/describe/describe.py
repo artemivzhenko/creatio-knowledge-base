@@ -26,8 +26,15 @@ Topics: every schema - files, resources [culture=], resource <key>, missing [cul
     python describe.py deps    <workspace|package> <Schema> [--in|--out] [--kind object] [--via lookup]  # typed graph
     python describe.py impact  <workspace|package> <Schema>... [--tasks <folder>] [--current <task>] [--md]  # dependents + locks
     python describe.py layers  <Schema> -e <env> [--rule <UId>] [--json]  # the SysSchema copies on an environment, Custom detected
+    python describe.py snapshot <Schema> [--workspace <ws>] [-e <env>] [--columns a,b] [--out <file>]  # an object as lines: effective columns on disk; table, rows, checksums, copies on a site
+    python describe.py compare <before> <after>                    # two snapshot files: + - ~ lines; exit 1 on a difference
+    python describe.py merge-plan <workspace> [<Schema>...] [-e <env>]  # collapsing replacing layers into one: target, conflicts; exit 1 on a conflict
+    python describe.py merge   <workspace> <Object> [--target <pkg>] [-e <env>] [--apply]  # the object's layers as one layer of the target; exit 1 when it stops
     python describe.py export  <workspace|package> [--out <folder>]    # a text file per schema and per package (default <workspace>/.creatio-export)
     python describe.py diff    <package> [<Schema>...] [--against HEAD|<rev>|<folder>]  # what changed, in schema terms: + - ~ lines
+    python describe.py review  <package> [--keep <Schema>...] [--apply]   # a pulled package sorted: line endings only, content, deps, orphans
+    python describe.py precommit <workspace>                       # staged files that must not be committed (size, archives, binaries); exit 1
+    python describe.py uid     <workspace|package> <uid | Schema.Column | Process.Element[.Param] | "<text with UIds>">  # what a UId names, and back
 
 The same calls are MCP tools of the creatio-kb server (describe_package, describe_schema, describe_item, index_workspace, find_schema, list_lookups).
 The index checks itself against the disk on every call: after `clio pull-pkg` the next call sees the new schemas.
@@ -58,6 +65,27 @@ def layers_command(args) -> int:
         return 2
     print(to_json(result) if args.json else render(result, env.clio_name or env.url))
     return 1 if result["custom"] else 0
+
+
+def snapshot_command(args) -> int:
+    from creatio_schemas.environment import open_environment
+    from creatio_schemas.integrity import compare, snapshot
+    try:
+        if args.command == "compare":
+            diff = compare(Path(args.before).read_text(encoding="utf-8").splitlines(), Path(args.after).read_text(encoding="utf-8").splitlines())
+            print("\n".join(diff) if diff else "same")
+            return 1 if diff else 0
+        if not args.workspace and not (args.env or args.project):
+            raise ValueError("give --workspace (the disk lines), -e / --project (the site lines), or both")
+        env = open_environment(args.env, args.project) if args.env or args.project else None
+        lines = snapshot(args.workspace, args.schema, env, [c.strip() for c in args.columns.split(",") if c.strip()] or None)
+    except (ValueError, KeyError, OSError, RuntimeError) as e:
+        print(f"error: {e.args[0] if e.args else e}", file=sys.stderr)
+        return 2
+    if args.out:
+        Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    return 0
 
 
 def main(argv=None) -> int:
@@ -99,6 +127,7 @@ def main(argv=None) -> int:
     i.add_argument("--tasks", help="the loop's tasks folder (project.json paths.tasks): locks of the other active tasks are checked")
     i.add_argument("--current", help="this task's folder name, left out of the lock check")
     i.add_argument("--md", action="store_true", help="the `## Impact` table for plan.md and the `affects:` line for schemas.json")
+    i.add_argument("--kind", default="", help="only dependents of this kind (page, process, rules, dcm, data, csharp ...)")
     i.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     g = sub.add_parser("layers", help="the copies of a schema on an environment, applied first to last; exit 1 when the Custom layer has one")
     g.add_argument("schema")
@@ -107,6 +136,29 @@ def main(argv=None) -> int:
     g.add_argument("--rule", help="a business rule UId: its state in every layer")
     g.add_argument("--custom-layer", help="the customisation package (default: project.json environment.customLayer, else Custom)")
     g.add_argument("--json", action="store_true", help="the result as JSON, for evidence")
+    sn = sub.add_parser("snapshot", help="an object as lines: effective columns over the workspace layers (disk), table columns / rows / checksums / copies (site)")
+    sn.add_argument("schema")
+    sn.add_argument("--workspace", help="the workspace: the effective columns over its layers (in the site's order with -e)")
+    sn.add_argument("-e", "--env", help="clio environment name")
+    sn.add_argument("--project", help="project.json holding the environment")
+    sn.add_argument("--columns", default="", help="comma list of columns to checksum (default: all but Id)")
+    sn.add_argument("--out", help="also write the lines to this file (the evidence)")
+    mp = sub.add_parser("merge-plan", help="the plan of collapsing each schema's replacing layers into one: target, additions, conflicts, dependencies; read-only, exit 1 on a conflict")
+    mp.add_argument("path")
+    mp.add_argument("schemas", nargs="*", metavar="Schema", help="only these (default: every schema replaced by more than one package)")
+    mp.add_argument("-e", "--env", help="clio environment name: the layer order of the site")
+    mp.add_argument("--project", help="project.json holding the environment")
+    mp.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    mg = sub.add_parser("merge", help="the replacing layers of one object collapsed into one layer of the target package; prints the files, --apply writes them; exit 1 when it stops")
+    mg.add_argument("path")
+    mg.add_argument("schema")
+    mg.add_argument("--target", help="the package to merge into (default: the lowest layer's); every layer's package must depend on it")
+    mg.add_argument("-e", "--env", help="clio environment name: the site's layer order and the references check")
+    mg.add_argument("--project", help="project.json holding the environment")
+    mg.add_argument("--apply", action="store_true", help="write and delete the files (without it: print only)")
+    cp = sub.add_parser("compare", help="two snapshot files: + - ~ lines; exit 1 on a difference")
+    cp.add_argument("before")
+    cp.add_argument("after")
     x = sub.add_parser("export", help="a snapshot for reading without the tools: one text file per schema, one per package")
     x.add_argument("path")
     x.add_argument("--out", help="the folder (default <workspace>/.creatio-export; elsewhere for a client workspace)")
@@ -114,9 +166,52 @@ def main(argv=None) -> int:
     y.add_argument("package")
     y.add_argument("schemas", nargs="*", metavar="Schema", help="only these items (default: the whole package)")
     y.add_argument("--against", help="a git revision (default HEAD) or a folder holding the package (a pulled copy)")
+    z = sub.add_parser("uid", help="what a UId names in the workspace (a schema, a column, a process element or parameter), a dotted name's UId, or a text with every UId named")
+    z.add_argument("path")
+    z.add_argument("text", help="a UId, Schema.Column, Process.Element[.Parameter], or a text holding UIds (a meta path, a filter)")
+    r = sub.add_parser("review", help="a pulled package against git HEAD: line endings / BOM only, content changes, dependencies, orphan resources; --keep restores the rest")
+    r.add_argument("package")
+    r.add_argument("--keep", nargs="*", metavar="Schema", help="the items to keep; every other changed file is restored from HEAD (printed; run with --apply)")
+    r.add_argument("--apply", action="store_true", help="with --keep: run the git checkout lines")
+    q = sub.add_parser("precommit", help="the staged files that must not be committed: over 5 MB, archives, binaries outside Files/Bin, files outside packages/; exit 1")
+    q.add_argument("workspace")
     args = p.parse_args(argv)
+    if args.command == "review":
+        from creatio_schemas.describe.review import render, review
+        try:
+            print(render(review(args.package, args.keep, args.apply and args.keep is not None)))
+        except (FileNotFoundError, RuntimeError, QueryError) as e:
+            print(f"error: {e.args[0] if e.args else e}", file=sys.stderr)
+            return 2
+        return 0
+    if args.command == "precommit":
+        from creatio_schemas.describe.review import precommit
+        try:
+            problems = precommit(args.workspace)
+        except (FileNotFoundError, RuntimeError) as e:
+            print(f"error: {e.args[0] if e.args else e}", file=sys.stderr)
+            return 2
+        print("\n".join(problems) if problems else "ok")
+        return 1 if problems else 0
     if args.command == "layers":
         return layers_command(args)
+    if args.command in ("snapshot", "compare"):
+        return snapshot_command(args)
+    if args.command in ("merge-plan", "merge"):
+        from creatio_schemas.describe.merge import merge_object, merge_plan
+        from creatio_schemas.environment import open_environment
+        try:
+            env = open_environment(args.env, args.project) if args.env or args.project else None
+            if args.command == "merge":
+                text, code = merge_object(args.path, args.schema, args.target, env, args.apply)
+            else:
+                text, conflicts = merge_plan(args.path, args.schemas, env, args.limit)
+                code = 1 if conflicts else 0
+        except (ValueError, KeyError, OSError, RuntimeError, QueryError) as e:
+            print(f"error: {e.args[0] if e.args else e}", file=sys.stderr)
+            return 2
+        print(text)
+        return code
     try:
         if args.command == "package":
             print(describe_package(args.package, args.kind, args.limit))
@@ -127,7 +222,7 @@ def main(argv=None) -> int:
             print(dependencies(args.path, args.schema, args.direction, args.kind, args.via, args.limit))
         elif args.command == "impact":
             from creatio_schemas.describe.deps import impact
-            text, conflicts = impact(args.path, args.schemas, args.tasks, args.current, args.md, args.limit)
+            text, conflicts = impact(args.path, args.schemas, args.tasks, args.current, args.md, args.limit, args.kind)
             print(text)
             return 1 if conflicts else 0
         elif args.command == "schema":
@@ -138,6 +233,9 @@ def main(argv=None) -> int:
         elif args.command == "diff":
             from creatio_schemas.describe.diff import schema_diff
             print(schema_diff(args.package, args.schemas, args.against))
+        elif args.command == "uid":
+            from creatio_schemas.describe.uids import resolve
+            print(resolve(args.path, args.text))
         elif args.command == "index":
             print(index_workspace(args.path, args.rebuild))
         elif args.command == "find":

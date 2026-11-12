@@ -505,12 +505,13 @@ def dependencies(path: Path | str, name: str, direction: str = "both", kind: str
 
 
 def impact(path: Path | str, schemas: list[str], tasks: Path | str | None = None, current: str | None = None,
-           md: bool = False, limit: int | None = None) -> tuple[str, int]:
+           md: bool = False, limit: int | None = None, kind: str = "") -> tuple[str, int]:
     """The dependents of the schemas a task changes, with the other active tasks that change or affect them.
 
     Returns (text, conflicts): a conflict is a schema of the list, or one of its dependents, that another active task
     changes (its schemas.json `schemas`). `md` gives the `## Impact` table of plan.md plus the `affects:` line for
-    schemas.json; the plain form is one block per schema."""
+    schemas.json; the plain form is one block per schema. `kind` keeps only the dependents of that kind (page,
+    process, rules ...) - a lookup of a hundred dependents is read one kind at a time."""
     from ..tasks import active_locks
     from .core import DEFAULT_LIMIT, cut
     from .index import PackageIndex, packages_of
@@ -530,7 +531,8 @@ def impact(path: Path | str, schemas: list[str], tasks: Path | str | None = None
             conflicts += 1
         if key in affects:
             notes.append(f"task {affects[key]} depends on it")
-        dependents = sorted({(fk, fn, e.via) for idx in indexes for fk, fn, e in idx.dependents(schema)}, key=lambda d: (d[0], d[1].lower(), d[2]))
+        dependents = sorted({(fk, fn, e.via) for idx in indexes for fk, fn, e in idx.dependents(schema) if not kind or fk == kind},
+                            key=lambda d: (d[0], d[1].lower(), d[2]))
         lines = []
         for fk, fn, via in dependents:
             mark = f" - task {changes[fn.lower()]} changes it" if fn.lower() in changes else ""

@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 from ..entity.catalog import STOCK_ENTITIES
+from ..expressions import Condition, Const, describe, metapath, parse
 from ..files import EMPTY_GUID, dump_json, is_uid, new_uid, write_text
 from ..filters import summarize
 from ..resources import Resources
@@ -27,6 +28,35 @@ DEFAULT_COLOR = "#4D84E2"
 LOOKUP_TYPE = "b295071f-7ea9-4e62-8d1a-919bf3732ff2"
 SUBPROCESS_MANAGER = "49eafdbb-a89e-4bdf-a29d-7f17b1670a45"  # BL7 of a step's flow element
 ID_COLUMN = "ae0e45ca-c495-4fe7-a39d-3ab7278e1617"
+
+
+_OP = {"eq": "==", "ne": "!=", "lt": "<", "le": "<=", "gt": ">", "ge": ">="}  # the comparisons a step's result formula stores
+_CANONICAL = {v: k for k, v in _OP.items()}
+
+
+class _Names:
+    """The `Names` of a case: its parameters, and - for a step's result condition - the step and the parameters of its process."""
+
+    def __init__(self, case: "DcmSchema", element: dict | None = None):
+        self.case, self.element = case, element
+        self.flow = (element or {}).get("ProcessFlowElement") or {}
+
+    def uid_of(self, kind: str, name: str, parent: str | None = None) -> str:
+        if kind == "Element":
+            if name != self.element["A2"]:
+                raise KeyError(f"no step {name!r}")
+            return self.element["UId"]
+        if parent is not None:
+            return next(x["UId"] for x in self.flow.get("BP2", []) if x["A2"] == name)
+        p = next((x for x in self.case.schema.get("FJ1", []) if x["A2"] == name), None)
+        if not p:
+            raise KeyError(f"the case has no parameter {name}; use {{Record:Column}} for a column of the case's record")
+        return p["UId"]
+
+    def name_of(self, uid: str) -> str | None:
+        found = [self.element] if self.element and self.element["UId"] == uid else []
+        found += [x for x in self.flow.get("BP2", []) + self.case.schema.get("FJ1", []) if x["UId"] == uid]
+        return found[0]["A2"] if found else None
 
 
 class DcmSchema(Schema):
@@ -135,9 +165,22 @@ class DcmSchema(Schema):
         out = []
         for c in items:
             then = self.stage_by_record(c.get("nextStageId"))
-            formula = c.get("resultFormula") or {}
-            out.append({"when": formula.get("displayValue") or formula.get("value") or "", "then": (then or {}).get("A2") or c.get("nextStageId")})
+            out.append({"when": self._when(c.get("resultFormula") or {}, element), "then": (then or {}).get("A2") or c.get("nextStageId")})
         return out
+
+    def _when(self, formula: dict, element: dict) -> str:
+        """`Result = Approved`: the stored `<meta path> op <value or lookup record>` in the grammar `add_step` reads;
+        the designer's display text when the formula is in a shape this does not know."""
+        shown = formula.get("displayValue") or formula.get("value") or ""
+        m = re.fullmatch(r"(\[#.*?#\])\s*(==|!=|>=|<=|>|<)\s*(.*)", formula.get("value") or "")
+        name = re.search(r"Parameter:(\w+)\}$", metapath.decode(m.group(1), _Names(self, element))) if m else None
+        if not name:
+            return shown
+        right = m.group(3)
+        record = re.fullmatch(r"\[#Lookup\.[^.\]]+\.([^.\]]+)#\]", right)
+        if record:
+            right = (self.stage_by_record(record.group(1)) or {}).get("A2") or record.group(1)
+        return describe(Condition(name.group(1), _CANONICAL[m.group(2)], Const(right)))
 
     @property
     def connections(self) -> list[tuple[str, str]]:
@@ -337,18 +380,18 @@ class DcmSchema(Schema):
                     f"[#Main record.{m.group(1)}#]")
         m = re.fullmatch(r"\{Parameter:(\w+)\}", text)
         if m:
-            p = next((x for x in self.schema.get("FJ1", []) if x["A2"] == m.group(1)), None)
-            if not p:
-                raise KeyError(f"the case has no parameter {m.group(1)}; use {{Record:Column}} for a column of the case's record")
-            return {"GS1": 3, "GS2": f"[#[IsOwnerSchema:false].[IsSchema:false].[Parameter:{{{p['UId']}}}]#]", "GS5": self.uid}, f"[#{m.group(1)}#]"
+            return {"GS1": 3, "GS2": metapath.encode(text, _Names(self)), "GS5": self.uid}, f"[#{m.group(1)}#]"
         return {"GS1": 1, "GS2": text, "GS5": self.uid}, text
 
     def _condition(self, element: dict, flow: dict, when: str, next_stage: str) -> dict:
         """One result condition `Param op value` -> the next stage, in the designer's form."""
-        m = re.fullmatch(r"\s*(\w+)\s*(==|!=|>=|<=|=|>|<)\s*(.+?)\s*", when)
-        if not m:
-            raise ValueError(f"condition {when!r}: expected `Param op value` (op ==, !=, >, >=, <, <=)")
-        pname, op, value = m.group(1), "==" if m.group(2) == "=" else m.group(2), m.group(3)
+        try:
+            (parsed,) = parse(when)
+            if parsed.op not in _OP or not isinstance(parsed.right, Const):
+                raise ValueError
+        except ValueError:
+            raise ValueError(f"condition {when!r}: expected `Param op value` (op ==, !=, >, >=, <, <=)") from None
+        pname, op, value = parsed.left, _OP[parsed.op], parsed.right.text
         p = next((x for x in flow.get("BP2", []) if x["A2"] == pname), None)
         if not p:
             raise KeyError(f"condition {when!r}: the called process has no parameter {pname}; have {[x['A2'] for x in flow.get('BP2', [])]}")
@@ -356,10 +399,10 @@ class DcmSchema(Schema):
         if p.get("L1") == LOOKUP_TYPE:
             record = value if is_uid(value) else self.stage(value)["StageRecordId"]  # a stage name stands for its lookup record
             ref_name = self.workspace.name_of(ref) or ref
-            rhs, rhs_display = f"[#Lookup.{ref}.{record}#]", f"[#Lookup.{ref_name}.{record}.{record}#]"
+            rhs, rhs_display = metapath.lookup(ref, record), metapath.lookup(ref, record, ref_name)
         else:
             rhs = rhs_display = value
-        left = f"[#[IsOwnerSchema:false].[IsSchema:false].[Element:{{{element['UId']}}}].[Parameter:{{{p['UId']}}}]#]"
+        left = metapath.encode(f"{{Element:{element['A2']}.Parameter:{pname}}}", _Names(self, element))
         prefix = f"Stages.{self._stage_of(element)['A2']}.Elements.{element['A2']}"
         caption = self.resources.get(f"{prefix}.Caption") or element["A2"]
         pcaption = self.resources.get(f"{prefix}.ProcessFlowElement.Parameters.{pname}.Caption") or pname

@@ -73,7 +73,9 @@ as JSON, `env_odata(env, Entity, select, filter, top)` records, `env_call(env, m
 body)` a service or OData call with login and CSRF, `schema_layers(env|project.json, Schema)`
 the copies of a schema in the order the platform applies them - run it before planning a change
 to a page or object another package already has; `Custom layer present` means a copy on the
-site overrides whatever you push.
+site overrides whatever you push. A process change is done when `run_process(env, process, params)` ends with `exit code 0` (the
+run's `SysProcessLog` row completed); `process_runs(env, record="<Entity>:<Id>")` lists what ran when a record was
+saved, `process_error(env, log_id)` the whole error and the element it stopped on.
 
 For C# code, also read `get_code_style` (whole, or a section such as `"logging"` or
 `"review checklist"`): recipes show what to call, the style guide says how the code
