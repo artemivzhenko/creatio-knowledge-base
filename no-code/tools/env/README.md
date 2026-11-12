@@ -137,18 +137,19 @@ loop's `environment` block (`url`, `login`, `password`, `clioName`; `isNetCore`,
 
 Three commands answer what an author used to find out table by table. Every statement they send is below, so a human can
 run it with `sql.py`; none writes. Times print in UTC and in `environment.timeZone` of `project.json` (`+03:00`, `UTC-5`
-or an IANA name where the machine has the tz database; else the machine's zone, said so).
+or an IANA name where the machine has the tz database - Windows needs `pip install tzdata`, which the MCP server's
+`pyproject.toml` lists; else the machine's zone, said so).
 
 **`record.py find <id>`** - `information_schema.columns` joined to `information_schema.tables` for the base tables with a
 uuid `Id` (`data_type in ('uuid', 'uniqueidentifier')`: PostgreSQL and MS SQL), then
 `select '<T>' as "table" from "<T>" where "Id" = '<id>'` joined with `union all` in batches of 50 tables - the objects of
 `--workspace` first, the scan stops after the first batch with a hit unless `--everywhere` - then `select * from "<T>"
 where "Id" = ...` for each table found, and `Contact."Name"` of its `CreatedById` / `ModifiedById`. The caption is the
-first non-empty of `Name`, `Caption`, `Title`, `Subject`, `Number`.
+first non-empty of `Name`, `Caption`, `Title`, `Subject`, `Number`, else the first column ending in one of those words.
 
 **`record.py context <Entity> <id>`** - `select *` of the row; the foreign keys of the table
 (`referential_constraints` + `key_column_usage` + `constraint_column_usage`, never guessed from a column name) name every
-lookup by the `Name` of the referenced row; `--columns "Name,Usr*Id"` picks columns by `*` wildcards (default: every
+lookup by the `Name` of the referenced row; `--columns "Name,Usr*Id"` picks columns by `*` wildcards, a lookup also by its name without `Id` (default: every
 column with a value). `--depth 1` adds the tables with a foreign key to the entity, a `count(*)` per table in unions of 50,
 and for each table with rows the first 20 (`order by "Id" offset 0 rows fetch first 20 rows only`: the Id, the column that
 points here and a caption column); `--depth 2` names the lookups of those rows too.
@@ -158,7 +159,7 @@ member, `SysAdminUnitRoleId` the role), joined to `SysAdminUnit` for names and `
 (0 organization, 1 division, 2 manager, 4 user, 6 functional role; users only unless `--units`). *Why* a user is in it
 comes from the tables the closure is built from, read once each: `SysUserInRole` (`SysUserId`, `SysRoleId`: a user put
 in a role by hand, `direct`), `SysAdminUnit.ParentRoleId` (the org and functional trees) and `SysFuncRoleInOrgRole`
-(`SysFuncRoleId`, `SysOrgRoleId`: a functional role granted to an org role); `through <role>` names the direct role the
+(`FuncRoleId`, `OrgRoleId`: a functional role granted to an org role); `through <role>` names the direct role the
 chain starts from, `chain not found` says the closure has a row none of the three explains. The closure's `Source`
 column is an integer code (1, 2, 16, 18 on the test site) and is not read. A user is found by login
 (`SysAdminUnit.Name`) or contact name; two matches are refused with both logins, and so is a role name two units share.

@@ -59,7 +59,7 @@ def _zone(name: str | None):
             from zoneinfo import ZoneInfo
             return ZoneInfo(name), name
         except Exception:  # no tz database (Windows without tzdata) or an unknown name
-            return None, f"local, zone {name!r} unknown here"
+            return None, f"local, zone {name!r} unknown here (Windows needs `pip install tzdata` for IANA names; an offset like +02:00 always works)"
     return None, "local"
 
 
@@ -87,7 +87,11 @@ def zone_of(project: str | None) -> str | None:
 
 
 def _first(row: dict, names=CAPTION_COLUMNS):
-    return next(((n, row[n]) for n in names if row.get(n) not in (None, "")), (None, None))
+    """(column, value) that stands for the record: a caption column, else the first `...Name` / `...Number` ... column with a value."""
+    for n in names:
+        if row.get(n) not in (None, ""):
+            return n, row[n]
+    return next(((k, v) for k, v in row.items() if k.endswith(names) and v not in (None, "")), (None, None))
 
 
 def names_of(env, table: str, ids: list[str]) -> dict[str, str]:
@@ -142,8 +146,10 @@ def record_context(env, entity: str, record_id: str, columns: str = "", depth: i
         raise KeyError(f"no row {record_id} in {entity}")
     row = rows[0]
     wanted = [c.strip() for c in columns.split(",") if c.strip()]
-    shown = {k: v for k, v in row.items() if (any(fnmatch.fnmatchcase(k.lower(), w.lower()) for w in wanted) if wanted else v not in (None, ""))}
-    out = {"entity": entity, "id": record_id, "columns": _named(env, entity, [shown], zone)[0], "details": []}
+    # a lookup may be named without its Id suffix (`UsrService` for `UsrServiceId`)
+    shown = {k: v for k, v in row.items() if (any(fnmatch.fnmatchcase(k.lower(), w.lower()) or fnmatch.fnmatchcase(k.lower(), w.lower() + "id")
+                                                 for w in wanted) if wanted else v not in (None, ""))}
+    out = {"entity": entity, "id": record_id, "columns": _named(env, entity, [shown], zone)[0], "details": [], "depth": depth}
     if depth < 1:
         return out
     pointing = foreign_keys(env, entity, incoming=True)
@@ -202,6 +208,6 @@ def render_context(context: dict) -> str:
     for d in context["details"]:
         lines.append(f"{d['table']}.{d['column']}: {d['count']} row(s)" + (f", first {len(d['rows'])}" if d["count"] > len(d["rows"]) else ""))
         lines += ["  " + "  ".join(f"{k}={_cell(v)}" for k, v in r.items()) for r in d["rows"]]
-    if not context["details"]:
+    if not context["details"] and context.get("depth", 1):  # depth 0 did not look
         lines.append("(no other table has a row pointing at this record)")
     return "\n".join(lines)

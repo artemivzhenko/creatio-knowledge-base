@@ -134,7 +134,9 @@ def precommit(workspace: Path | str) -> list[str]:
     return out
 
 
-def render(answer: dict) -> str:
+def render(answer: dict, limit: int = 0) -> str:
+    """`limit` cuts the content lines (0 = all)."""
+    from .core import cut
     lines = [f"{answer['package']}: {answer['changed']} changed file(s) against HEAD"]
     if answer["eol_only"]:
         lines.append(f"line endings or BOM only ({len(answer['eol_only'])}) - nothing changed:")
@@ -151,7 +153,7 @@ def render(answer: dict) -> str:
         lines.append(f"not tracked by git ({len(answer['untracked'])}):")
         lines += [f"  {p}" for p in answer["untracked"]]
     lines.append("content:")
-    lines += [f"  {l}" for l in answer["content"].splitlines()]
+    lines += [f"  {l}" for l in cut(answer["content"].splitlines(), limit, "lines")]
     if answer["restore"] or answer["applied"]:
         verb = "restored" if answer["applied"] else "would restore (run with --apply)"
         lines.append(f"{verb} from HEAD ({len(answer['restore'])}):")

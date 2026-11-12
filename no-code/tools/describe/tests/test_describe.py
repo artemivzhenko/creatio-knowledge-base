@@ -776,6 +776,14 @@ def test_schema_diff_names_the_added_column_against_head_and_a_folder():
     with tempfile.TemporaryDirectory() as tmp:
         pkg = Path(tmp) / "packages" / "UsrPkg"
         shutil.copytree(OBJECTS, pkg)
+        other = Path(tmp) / "packages" / "UsrOther"  # a lookup into another package: HEAD is extracted alone, the name must still resolve
+        (other / "Schemas" / "UsrOtherStatus").mkdir(parents=True)
+        (other / "descriptor.json").write_text('{"Descriptor": {"UId": "pkg-other", "Name": "UsrOther", "DependsOn": []}}', encoding="utf-8")
+        (other / "Schemas" / "UsrOtherStatus" / "descriptor.json").write_text(
+            '{"Descriptor": {"UId": "77777777-7777-4777-8777-777777777777", "Name": "UsrOtherStatus", "ManagerName": "EntitySchemaManager"}}', encoding="utf-8")
+        entity = EntitySchema(pkg, "UsrOrder")
+        entity.add_column("UsrOther", "Lookup", "Other", ref="UsrOtherStatus")
+        entity.save()
         subprocess.run(git + ["init", "-q"], cwd=tmp, check=True)
         subprocess.run(git + ["add", "."], cwd=tmp, check=True)
         subprocess.run(git + ["commit", "-q", "-m", "base"], cwd=tmp, check=True)
@@ -788,8 +796,8 @@ def test_schema_diff_names_the_added_column_against_head_and_a_folder():
         lines = text.splitlines()
         assert lines[0] == "UsrOrder  object" and lines[1] == "  columns" and "    + UsrWeight Float 'Weight'" in lines
         assert "- UsrOrderStatus  object (removed)" in lines and text.count("+ UsrWeight") == 1  # the summary does not repeat it
-        assert any(l.startswith("    ~ UsrStatus  Lookup -> UsrOrderStatus") and "Lookup -> c59697c2" in l for l in lines)  # its lookup lost its name
-        assert lines[-1] == "UsrPkg against HEAD: 1 changed, 0 new, 1 removed; lines +1 -0 ~1"
+        assert not any("~ UsrStatus" in l for l in lines), lines  # the removed target is the `- UsrOrderStatus` line, not a change of every column pointing at it
+        assert lines[-1] == "UsrPkg against HEAD: 1 changed, 0 new, 1 removed; lines +1 -0 ~0"
         only = schema_diff(pkg, ["UsrOrder"], str(OBJECTS.parent))  # a folder of packages instead of git
         assert only.splitlines()[0] == "UsrOrder  object" and "(removed)" not in only
         with contextlib.redirect_stdout(io.StringIO()) as out:

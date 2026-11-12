@@ -33,6 +33,13 @@ def copy() -> Path:
     return tmp / "UsrPkg"
 
 
+def test_validate_tolerates_an_attribute_that_is_a_list():
+    page = PageSchema(FIXTURES, PAGES[0])
+    page.attributes_w()["UsrListAttr"] = ["a", "b"]  # a designer may store a list under attributes (seen in a client page)
+    page.validate()
+    page.describe()
+
+
 def test_round_trip_is_byte_identical():
     for name in PAGES:
         page = PageSchema(FIXTURES, name)

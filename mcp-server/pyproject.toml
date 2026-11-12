@@ -12,6 +12,7 @@ requires-python = ">=3.10"
 # MCP transport needs a dependency.
 dependencies = [
     "mcp>=2.0",
+    "tzdata; sys_platform == 'win32'",  # IANA zone names (Europe/Kyiv) for the time_zone arguments
 ]
 
 [project.scripts]

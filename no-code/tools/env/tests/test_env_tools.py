@@ -177,6 +177,16 @@ def test_run_process():
     raises(lambda: e.run_process("UsrX"), RuntimeError, "not JSON")
 
 
+def test_sql_rows_keep_a_raw_newline_inside_a_value():
+    class RawClio(FakeClio):  # clio writes a multi-line value (an error text) with the newline raw; json's strict mode refuses it
+        def __call__(self, args):
+            self.calls.append(args)
+            Path(args[args.index("-d") + 1]).write_text('[{"ErrorDescription": "line one\nline two"}]', encoding="utf-8")
+            return 0, "Done"
+    e = Environment("https://s", "u", "p", clio_name="dev", clio_run=RawClio())
+    assert e.sql("select 1")[0]["ErrorDescription"] == "line one\nline two"
+
+
 def test_sql_splitting_and_rows():
     assert split_statements("select 1;\nselect ';' as x ;  \r\n-- a comment only\n;\nupdate t set a = 1") == ["select 1", "select ';' as x", "update t set a = 1"]
     clio = FakeClio(rows=[[{"Name": "A"}], [{"Name": "B"}, {"Name": "C"}]])

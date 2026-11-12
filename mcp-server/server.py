@@ -10,6 +10,7 @@ Run directly for stdio:  python server.py
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 # The SDK renamed FastMCP to MCPServer in mcp 2.0. Both expose the same .tool()
@@ -513,8 +514,9 @@ def push_package(package: str, env: str, probe: bool = False, dry_run: bool = Fa
     project tasks folder. Without either tasks or project the ownership check is skipped.
     force, baseline and the skip flags have the same meaning as in the push CLI.
     """
+    package = _package_path(package, project)
     if not package.strip() or not (Path(package) / "descriptor.json").is_file():
-        return "error: package must contain descriptor.json"
+        return "error: package must be a folder with descriptor.json, or a package name found under the project's workspace (project.json paths.workspace) or the current folder's packages/"
     if not env.strip():
         return "error: env must not be empty"
     _tools_path()
@@ -532,6 +534,26 @@ def push_package(package: str, env: str, probe: bool = False, dry_run: bool = Fa
         code = 2
     lines.append(f"exit code {code}")
     return "\n".join(lines)
+
+
+def _package_path(package: str, project: str = "") -> str:
+    """A package folder as given, or a package name looked up under the project's workspace (`paths.workspace` of
+    project.json, relative to it) and then under the current folder (`packages/<name>`, `<name>`)."""
+    if not package.strip() or (Path(package) / "descriptor.json").is_file():
+        return package
+    roots = [Path.cwd()]
+    if project and Path(project).is_file():
+        try:
+            ws = (json.loads(Path(project).read_text(encoding="utf-8-sig")).get("paths") or {}).get("workspace")
+        except ValueError:
+            ws = None
+        if ws:
+            roots.insert(0, Path(project).resolve().parent / ws)
+    for root in roots:
+        for candidate in (root / "packages" / package, root / package):
+            if (candidate / "descriptor.json").is_file():
+                return str(candidate)
+    return package
 
 
 def _env(env: str):
@@ -723,34 +745,37 @@ def sys_setting(code: str, envs: str, workspace: str = "", time_zone: str = "") 
 
 
 @mcp.tool()
-def schema_diff(package: str, schemas: str = "", against: str = "") -> str:
+def schema_diff(package: str, schemas: str = "", against: str = "", limit: int = DEFAULT_LIMIT) -> str:
     """
     What changed in a package, in schema terms: the working copy against git HEAD
     (default), another revision, or a folder holding the package (a pulled copy of the
     environment). Per item the lines the describe layer prints: `+` added (a column, an
     element, a rule), `-` removed, `~ key old -> new` changed; `+ Name kind (new)` /
     `- Name kind (removed)` for whole items. `schemas` limits it to a space-separated
-    list of items. The tester's reading of what the author changed; never a JSON hunk.
+    list of items. The tester's reading of what the author changed; never a JSON hunk. `limit` cuts the lines (0 = all).
     """
     _tools_path()
+    from creatio_schemas.describe import cut
     from creatio_schemas.describe.diff import schema_diff as _sd
     try:
-        return _sd(package, schemas.split() or None, against or None)
+        lines = _sd(package, schemas.split() or None, against or None).splitlines()
+        return "\n".join(cut(lines[:-1], limit, "lines") + lines[-1:])  # the last line is the count
     except (FileNotFoundError, KeyError, ValueError) as e:
         return f"error: {e}"
 
 
 @mcp.tool()
-def review_download(package: str, keep: str = "") -> str:
+def review_download(package: str, keep: str = "", limit: int = DEFAULT_LIMIT) -> str:
     """A pulled package (a folder that holds it, or its path) sorted against git HEAD before anything is committed:
     files that differ only in line endings or a BOM (nothing changed), the items changed in content (`schema_diff`'s
     lines, renames by UId), dependencies dropped or added (descriptor.json, csproj), resource folders with no schema,
     files git does not track. `keep` (space-separated items) adds the `git checkout HEAD -- <path>` lines that would
-    restore every other changed file; this tool only prints them - `describe.py review --keep ... --apply` runs them."""
+    restore every other changed file; this tool only prints them - `describe.py review --keep ... --apply` runs them.
+    `limit` cuts the content lines (0 = all)."""
     _tools_path()
     from creatio_schemas.describe.review import render, review
     try:
-        return render(review(package, keep.split() if keep.strip() else None))
+        return render(review(package, keep.split() if keep.strip() else None), limit)
     except (FileNotFoundError, KeyError, ValueError, RuntimeError) as e:
         return f"error: {e}"
 

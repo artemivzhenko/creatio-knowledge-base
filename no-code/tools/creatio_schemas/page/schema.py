@@ -179,6 +179,11 @@ class PageSchema(Schema):
         """The view model attributes (a copy-safe read: write through attributes_w())."""
         return self._part("attributes", "SCHEMA_VIEW_MODEL_CONFIG", "SCHEMA_VIEW_MODEL_CONFIG_DIFF", False)
 
+    def _attr_path(self, key) -> str:
+        """The `modelConfig.path` of an attribute, '' when it has none or is not a dict (a designer may store a list)."""
+        attr = self.attributes.get(key) if isinstance(key, str) else None
+        return ((attr.get("modelConfig") or {}).get("path") or "") if isinstance(attr, dict) else ""
+
     def attributes_w(self) -> dict:
         return self._part("attributes", "SCHEMA_VIEW_MODEL_CONFIG", "SCHEMA_VIEW_MODEL_CONFIG_DIFF", True)
 
@@ -368,7 +373,7 @@ class PageSchema(Schema):
         op = self.element(name)
         self.view_config_diff.remove(op)
         attr = self.attributes_w().pop(name, None)
-        if attr and attr.get("isCollection"):
+        if isinstance(attr, dict) and attr.get("isCollection"):
             self.data_sources_w().pop(attr["modelConfig"]["path"], None)
 
     def _captions_of(self, entity: str) -> dict[str, str]:
@@ -394,8 +399,8 @@ class PageSchema(Schema):
             if control.startswith("$") and control[1:] not in self.attributes:
                 problems.append(f"{op['name']} is bound to {control} but the page has no such attribute")
         prefix = self.primary + "."
-        for name, attr in self.attributes.items():
-            path = (attr.get("modelConfig") or {}).get("path", "")
+        for name in self.attributes:
+            path = self._attr_path(name)
             if path.startswith(prefix) and columns and path[len(prefix):] not in columns:
                 problems.append(f"{WARNING}attribute {name} reads {path}, which {self.entity} does not have")
         return problems
@@ -429,7 +434,7 @@ class PageSchema(Schema):
         if text is not None:
             return text
         # not a page string: an attribute (PDS_Name -> PDS.Name) or <DataSource>_<Column>, shown with the column's caption
-        path = ((self.attributes.get(key) or {}).get("modelConfig") or {}).get("path") or key.replace("_", ".", 1)
+        path = self._attr_path(key) or key.replace("_", ".", 1)
         ds, _, column = path.partition(".")
         entity = ((self.data_sources.get(ds) or {}).get("config") or {}).get("entitySchemaName")
         return self._captions_of(entity).get(column) if entity and column else None
@@ -437,7 +442,7 @@ class PageSchema(Schema):
     def _bound_type(self, values: dict) -> str | None:
         """The type name of the column a control is bound to (`control: "$Attr"` -> PDS.Column), when the workspace knows it."""
         control = values.get("control")
-        path = ((self.attributes.get(control[1:]) or {}).get("modelConfig") or {}).get("path", "") if isinstance(control, str) and control.startswith("$") else ""
+        path = self._attr_path(control[1:]) if isinstance(control, str) and control.startswith("$") else ""
         ds, _, column = path.partition(".")
         entity = ((self.data_sources.get(ds) or {}).get("config") or {}).get("entitySchemaName")
         return self.workspace.columns(entity).get(column, (None,))[0] if entity and column else None

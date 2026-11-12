@@ -33,6 +33,21 @@ def test_dry_run_uses_the_library_without_starting_processes():
         assert output.endswith("exit code 0"), output
 
 
+def test_a_package_name_is_found_through_the_project_workspace():
+    with tempfile.TemporaryDirectory() as tmp:
+        pkg = Path(tmp) / "ws" / "packages" / "UsrPkg"
+        pkg.mkdir(parents=True)
+        (pkg / "descriptor.json").write_text("{}", encoding="utf-8")
+        project = Path(tmp) / "project.json"
+        project.write_text('{"paths": {"workspace": "ws"}}', encoding="utf-8")
+        seen = []
+        with patch.object(push_module, "Clio", return_value=FakeClio()), \
+             patch.object(push_module, "push", side_effect=lambda package, *a, **k: seen.append(package) or 0):
+            assert server.push_package("UsrPkg", "dev", project=str(project)).endswith("exit code 0")
+            assert server.push_package("UsrNone", "dev", project=str(project)).startswith("error: package must be a folder")
+        assert seen == [pkg]
+
+
 def test_invalid_arguments_are_refused_before_calling_clio():
     with tempfile.TemporaryDirectory() as tmp:
         with patch.object(push_module, "Clio", side_effect=AssertionError("Clio must not start")):

@@ -36,7 +36,7 @@ class Clio:
                                  capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
             if not out.is_file():
                 raise RuntimeError(f"clio call-service wrote no response (environment {self.env!r}?): {run.stdout[-500:]}{run.stderr[-500:]}")
-            return json.loads(out.read_text(encoding="utf-8-sig"))
+            return json.loads(out.read_text(encoding="utf-8-sig"), strict=False)  # a raw newline inside a value
 
     def sql(self, query: str) -> list[dict]:
         """Rows of a SELECT through `clio execute-sql-script` (the file form keeps quoted identifiers intact)."""
@@ -50,7 +50,7 @@ class Clio:
             if not out.is_file():
                 raise RuntimeError(f"clio execute-sql-script wrote no result (environment {self.env!r}?): {run.stdout[-500:]}{run.stderr[-500:]}")
             text = out.read_text(encoding="utf-8-sig").strip()
-            return json.loads(text) if text else []
+            return json.loads(text, strict=False) if text else []  # a raw newline inside a value (a multi-line error text)
 
     def execute_sql(self, sql: str) -> None:
         """Execute a SQL script without requiring a result file."""

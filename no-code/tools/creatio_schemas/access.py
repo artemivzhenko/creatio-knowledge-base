@@ -48,8 +48,8 @@ def _units(env) -> dict[str, dict]:
 def _granted(env) -> dict[str, list[str]]:
     """org role Id -> the functional roles its members get."""
     out: dict[str, list[str]] = {}
-    for r in env.sql('select "SysFuncRoleId", "SysOrgRoleId" from "SysFuncRoleInOrgRole"'):
-        out.setdefault(str(r["SysOrgRoleId"]).lower(), []).append(str(r["SysFuncRoleId"]).lower())
+    for r in env.sql('select "FuncRoleId", "OrgRoleId" from "SysFuncRoleInOrgRole"'):
+        out.setdefault(str(r["OrgRoleId"]).lower(), []).append(str(r["FuncRoleId"]).lower())
     return out
 
 
@@ -194,7 +194,14 @@ def bindings_of(workspace: Path | str, setting_ids: set[str], code: str) -> list
     from .data import DataBinding
     packages = [p for p in sorted((Path(workspace) / "packages").glob("*")) if (p / "descriptor.json").is_file()] or \
                [p for p in sorted(Path(workspace).glob("*")) if (p / "descriptor.json").is_file()]
-    bindings = [(p, b) for p in packages for b in DataBinding.all(p)]
+    bindings = []
+    for p in packages:
+        for d in sorted((p / "Data").glob("*")):
+            if (d / "descriptor.json").is_file():
+                try:
+                    bindings.append((p, DataBinding(p, d.name)))
+                except ValueError:
+                    continue  # an empty or broken data.json carries no value
     ids = {i.lower() for i in setting_ids}
     types = {}
     for _, b in bindings:

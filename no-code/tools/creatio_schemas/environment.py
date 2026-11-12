@@ -102,7 +102,7 @@ class Response:
 
     def json(self) -> Any | None:
         try:
-            return json.loads(unwrap_xml_string(self.text)) if self.text.strip() else None
+            return json.loads(unwrap_xml_string(self.text), strict=False) if self.text.strip() else None
         except ValueError:
             return None
 
@@ -288,7 +288,7 @@ class Environment:
                 if sql_failed(code, output):
                     raise RuntimeError(f"sql: {err_line(output)}")
                 result = out.read_text(encoding="utf-8-sig").strip() if out.is_file() else ""
-            parsed = json.loads(result) if result else []
+            parsed = json.loads(result, strict=False) if result else []  # strict=False: a raw newline inside a value
             rows.extend(parsed if isinstance(parsed, list) else [])  # an update: clio writes the affected row count
         return rows
 

@@ -94,6 +94,8 @@ def test_find_record_scans_the_workspace_objects_first_and_stops_at_the_first_hi
         records.CHUNK = old
     raises(lambda: records.find_record(e, "not-a-guid"), ValueError, "not an Id")
     raises(lambda: records.ident('A"; drop table "B'), ValueError, "not a table or column name")
+    assert records._first({"Id": "x", "Name": None, "UsrOrderNumber": "N-7"}) == ("UsrOrderNumber", "N-7")  # no caption column: the first ...Number / ...Name
+    assert records._first({"Id": "x", "UsrNote": "n"}) == (None, None)
 
 
 def test_record_context_names_lookups_filters_columns_and_walks_the_details():
@@ -113,8 +115,9 @@ def test_record_context_names_lookups_filters_columns_and_walks_the_details():
     assert got["details"][0]["rows"] == [{"Id": "aa", "UsrOrderId": ID, "Name": "Pump"}] and "offset 0 rows fetch first 20 rows only" in clio.statements[-1]
     deep = records.record_context(e, "UsrOrder", ID, depth=2)["details"][0]["rows"][0]
     assert deep["UsrContactId"] == {"id": CONTACT, "name": "Olga"} and deep["Extra"] == 1  # depth 2: every column of the detail row, its lookups named
-    wild = records.record_context(e, "UsrOrder", ID, columns="Usr*Id, name", depth=0)
+    wild = records.record_context(e, "UsrOrder", ID, columns="UsrContact, name", depth=0)  # a lookup named without its Id suffix
     assert sorted(wild["columns"]) == ["Name", "UsrContactId"] and wild["details"] == []
+    assert "no other table" not in records.render_context(wild)  # depth 0 did not look at the details
     text = records.render_context(got)
     assert "UsrContactId = Olga (" + CONTACT + ")" in text and "UsrOrderItem.UsrOrderId: 3 row(s), first 1" in text
     e, _ = env({'select * from "UsrOrder" where': []})
@@ -142,7 +145,7 @@ ROLE = {"Id": BOSS, "Name": "UsrManagers", "SysAdminUnitTypeValue": 6}
 TEAM, IVAN, OLGA, GHOST = "44444444-4444-4444-4444-444444444444", CONTACT, "55555555-5555-5555-5555-555555555555", "66666666-6666-6666-6666-666666666666"
 # the tables the closure is built from: the org role "Sales team" grants the functional role UsrManagers; ivan is in the team by hand, olga in the role by hand
 TREE = [{"Id": BOSS, "Name": "UsrManagers", "ParentRoleId": None, "SysAdminUnitTypeValue": 6}, {"Id": TEAM, "Name": "Sales team", "ParentRoleId": None, "SysAdminUnitTypeValue": 1}]
-GRANTED = [{"SysFuncRoleId": BOSS, "SysOrgRoleId": TEAM}]
+GRANTED = [{"FuncRoleId": BOSS, "OrgRoleId": TEAM}]
 BY_HAND = [{"SysUserId": IVAN, "SysRoleId": TEAM}, {"SysUserId": OLGA, "SysRoleId": BOSS}]
 CHAIN = {'"ParentRoleId", "SysAdminUnitTypeValue" from "SysAdminUnit"': TREE, 'from "SysFuncRoleInOrgRole"': GRANTED, 'from "SysUserInRole" where': BY_HAND}
 
@@ -204,6 +207,10 @@ def test_a_setting_shows_each_value_type_and_the_bindings_that_carry_it():
     workspace = Path(tempfile.mkdtemp())
     try:
         shutil.copytree(TOOLS / "data" / "tests" / "fixtures" / "UsrPkg", workspace / "packages" / "UsrPkg")
+        empty = workspace / "packages" / "UsrPkg" / "Data" / "UsrEmpty"  # an empty data.json (seen in a client workspace) is skipped
+        empty.mkdir()
+        (empty / "descriptor.json").write_text('{"Descriptor": {"UId": "0", "Name": "UsrEmpty"}}', encoding="utf-8")
+        (empty / "data.json").write_text("", encoding="utf-8")
         answer = access.sys_setting("UsrMaxRows", {"dev": e}, workspace)
         assert answer["bindings"] == [{"package": "UsrPkg", "binding": "SysSettingsValue_UsrMaxRows", "value": "10000", "for": "a29a3ba5-4b0d-de11-9a51-005056c00008"}]
         text = access.render_setting(answer)

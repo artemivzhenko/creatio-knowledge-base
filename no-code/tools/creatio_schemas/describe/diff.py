@@ -41,9 +41,15 @@ def items_of(package: Path) -> list[str]:
     return sorted(set(names), key=str.lower)
 
 
-def sections_of(package: Path, name: str) -> tuple[str, dict[str, list[str]]]:
-    """(kind, {section: lines}) of one item: the summary, then every topic it answers without a name."""
+def sections_of(package: Path, name: str, like=None) -> tuple[str, dict[str, list[str]], object]:
+    """(kind, {section: lines}, item) of one item: the summary, then every topic it answers without a name. `like` is the
+    same item opened in the other state: its workspace (the names of lookups) and its base are used for this one too, so
+    a temporary extraction with no other packages and no `.creatio-bases` describes the item the way the working copy does."""
     item = open_item(package, name.removeprefix("Data/"))
+    if like is not None and type(like) is type(item) and hasattr(like, "_workspace"):
+        item._workspace = like.workspace
+        if hasattr(like, "_parent"):
+            item._parent, item._base_info = like.parent, like.base_info
     sections = {"summary": item.describe().splitlines()}
     for topic in sorted(topics_of(item)):
         if topic in SKIP_TOPICS:
@@ -52,7 +58,7 @@ def sections_of(package: Path, name: str) -> tuple[str, dict[str, list[str]]]:
             sections[topic] = answer(item, topic, None, {"limit": "0"}).splitlines()
         except QueryError:  # the topic needs a name (`column <name>`)
             continue
-    return kind_name(item), sections
+    return kind_name(item), sections, item
 
 
 def _key(line: str) -> str:
@@ -158,8 +164,8 @@ def _diff_packages(old_pkg: Path, new_pkg: Path, names: list[str] | None, label:
             continue
         in_old, in_new, old_name = name in old_names, name in new_names, renamed.get(name, name)
         try:
-            kind, new_sec = sections_of(new_pkg, name) if in_new else sections_of(old_pkg, name)
-            old_sec = sections_of(old_pkg, old_name)[1] if (in_old or name in renamed) and in_new else {}
+            kind, new_sec, item = sections_of(new_pkg, name) if in_new else sections_of(old_pkg, name)
+            old_sec = sections_of(old_pkg, old_name, like=item)[1] if (in_old or name in renamed) and in_new else {}
         except (OSError, ValueError, KeyError, AttributeError) as e:
             out.append(f"? {name}  cannot compare: {type(e).__name__}: {e}")
             continue
